@@ -145,6 +145,8 @@ internal class NationPickerPopup(
         
         close()
         playerPicker.update()
+        // UncivGC 联机大厅: 通知房间同步文明到服务器
+        playerPicker.onCivChanged?.invoke(player)
     }
 
     private data class NationIterationElement(

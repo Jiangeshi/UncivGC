@@ -1,0 +1,743 @@
+package com.unciv.ui.screens.lobbyscreens
+
+import com.badlogic.gdx.Gdx
+import com.badlogic.gdx.graphics.Color
+import com.badlogic.gdx.scenes.scene2d.Touchable
+import com.badlogic.gdx.scenes.scene2d.ui.Table
+import com.badlogic.gdx.utils.Base64Coder
+import com.unciv.UncivGame
+import com.unciv.logic.github.Github
+import com.unciv.logic.github.Github.folderNameToRepoName
+import com.unciv.logic.github.GithubAPI
+import com.unciv.logic.github.GithubAPI.downloadAndExtract
+import com.unciv.logic.github.Zip
+import com.unciv.logic.lobby.LobbyApi
+import com.unciv.logic.lobby.LobbyRoom
+import com.unciv.logic.map.MapShape
+import com.unciv.logic.map.MapSize
+import com.unciv.logic.multiplayer.storage.UncivServerFileStorage
+import com.unciv.models.metadata.GameSetupInfo
+import com.unciv.models.metadata.Player
+import com.unciv.logic.civilization.PlayerType
+import com.unciv.models.ruleset.RulesetCache
+import com.unciv.models.translations.tr
+import com.unciv.ui.components.extensions.enable
+import com.unciv.ui.components.extensions.toLabel
+import com.unciv.ui.components.extensions.toTextButton
+import com.unciv.ui.components.input.KeyCharAndCode
+import com.unciv.ui.components.input.ActivationTypes
+import com.unciv.ui.components.input.ActorAttachments
+import com.unciv.ui.components.input.keyShortcuts
+import com.unciv.ui.components.input.onActivation
+import com.unciv.ui.components.input.onClick
+import com.unciv.ui.popups.ConfirmPopup
+import com.unciv.ui.popups.Popup
+import com.unciv.ui.popups.ToastPopup
+import com.unciv.ui.screens.basescreen.BaseScreen
+import com.unciv.ui.screens.basescreen.RecreateOnResize
+import com.unciv.ui.screens.newgamescreen.LobbyPlayerStatus
+import com.unciv.ui.screens.lobbyscreens.LobbyScreen
+import com.unciv.ui.screens.newgamescreen.NewGameScreen
+import com.unciv.utils.Concurrency
+import com.unciv.utils.launchOnGLThread
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.floatOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.put
+import java.util.UUID
+
+/**
+ * UncivGC 联机大厅: 房间内界面
+ * 直接复用原版「开始新游戏」界面 (游戏设置 | 地图设置 | 文明 三块 + 原版选文明弹窗),
+ * 叠加大厅逻辑: 成员同步/准备/房主开始/进入游戏。
+ * 设置: 统一存服务器 (房主可改/保存, 全员只读同享), 生成时用服务器设置。
+ */
+class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map<String, JsonElement> = emptyMap())
+    : NewGameScreen(
+        lobbyGameSetupInfo(settings),
+        showOnlineMultiplayer = false,
+        lobbyMode = true,
+        lobbyCanEdit = { it.playerId == currentPlayerId() },
+    ), RecreateOnResize {
+
+    companion object {
+        /** UncivGC 自建存档服务器 (与 gen_lobby.py 一致): 存档上传/下载都走这里 */
+        const val SP_SERVER_URL = "http://110.40.151.9:30123"
+
+        /** 已应用的服务器设置指纹 (跨实例共享, 避免重建循环) */
+        var lastAppliedSettings = ""
+        /** 房主已推送的设置指纹 (自动推送去重用) */
+        var lastPushedSettings = ""
+        /** 当前所在房间 ID (游戏内菜单「退出房间」用) */
+        var activeRoomId: String? = null
+        /** 已提示过缺失的模组集合指纹 (跨实例共享, 避免重建界面后重复弹窗) */
+        var promptedMissingMods = ""
+        /** 当前用户是否房主 (游戏内菜单「跳海」用, 随同步更新) */
+        var activeAmOwner = false
+        /** 进大厅局前用户配置的多人服务器 (退出时恢复, 避免污染官方多人列表) */
+        var previousServer: String? = null
+        /** 是否正在通过菜单主动退出 (监视器不重复导航) */
+        var leavingGame = false
+        /** 游戏内房间监视器是否在跑 (防止重复启动) */
+        private var gameWatcherRunning = false
+
+        /** 大厅房间固定规则集: 原版 G&K, 无模组 (现阶段) */
+        fun lobbyGameSetupInfo(settings: Map<String, JsonElement> = emptyMap()): GameSetupInfo =
+            GameSetupInfo().apply {
+                gameParameters.baseRuleset = "Civ V - Gods & Kings"
+                gameParameters.mods.clear()
+                gameParameters.players = ArrayList()
+                gameParameters.espionageEnabled = false
+                mapParameters.shape = MapShape.rectangular
+                mapParameters.worldWrap = true
+                applyServerSettings(this, settings)
+            }
+
+        fun currentNickname() = UncivGame.Current.settings.lobbyNickname.ifBlank { "玩家" }
+        fun currentPlayerId() = UncivGame.Current.settings.multiplayer.getUserId()
+
+        /** 从房间设置解析模组列表 */
+        fun parseMods(settings: Map<String, JsonElement>): List<String> {
+            val gp = settings["gp"] as? JsonObject ?: return emptyList()
+            return (gp["mods"] as? JsonArray)
+                ?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
+        }
+
+        /** 本机已安装模组 (mods 目录文件夹名 + 已加载规则集) */
+        fun installedMods(): Set<String> {
+            val fromFolder = try {
+                UncivGame.Current.files.getModsFolder().list().map { it.name() }.toSet()
+            } catch (e: Exception) {
+                emptySet()
+            }
+            return fromFolder + RulesetCache.keys
+        }
+
+        /** 房间设置里缺哪些模组 (含模组型基础规则集, 如 LM2 被选为基础规则集时) */
+        fun missingModsOf(settings: Map<String, JsonElement>): List<String> {
+            val installed = installedMods()
+            val gp = settings["gp"] as? JsonObject ?: return emptyList()
+            val missing = mutableListOf<String>()
+            val base = gp["baseRuleset"]?.jsonPrimitive?.contentOrNull
+            if (base != null && base !in installed) missing.add(base)
+            (gp["mods"] as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull }
+                ?.filter { it !in installed }?.let { missing.addAll(it) }
+            return missing.distinct()
+        }
+
+        /** 通过 GitHub 下载缺失模组 (搜索 + 带进度条), 完成后回调 */
+        fun downloadMissingMods(mods: List<String>, screen: BaseScreen?, onDone: () -> Unit) {
+            if (screen == null) return
+            val popup = Popup(screen)
+            popup.addGoodSizedLabel("正在从 GitHub 下载模组...").row()
+            val progressLabel = "0%".toLabel()
+            popup.add(progressLabel).row()
+            popup.open()
+            Concurrency.runOnNonDaemonThreadPool("LobbyDownloadMods") {
+                val errors = mutableListOf<String>()
+                // 镜像清单 (服务器上有备份的模组优先从服务器下载, 国内快)
+                val mirrorMods = try {
+                    LobbyApi.modMirrorManifest().map { it.name }.toSet()
+                } catch (e: Exception) {
+                    emptySet()
+                }
+                try {
+                    val cachedRepos = UncivGame.Current.files.loadModCache().mapNotNull { it.repo }
+                    val cachedByName = cachedRepos.associateBy { it.name }
+                    for (modName in mods) {
+                        // 1. 优先从我们的服务器镜像下载
+                        if (modName in mirrorMods) {
+                            var mirrorOk = false
+                            try {
+                                val zipPath = LobbyApi.downloadModFromMirror(modName) { p ->
+                                    launchOnGLThread { progressLabel.setText("[$modName] $p% (服务器)") }
+                                }
+                                if (zipPath != null) {
+                                    Zip.extractFolder(Gdx.files.absolute(zipPath), UncivGame.Current.files.getModsFolder())
+                                    Gdx.files.absolute(zipPath).delete()
+                                    mirrorOk = true
+                                }
+                            } catch (e: Exception) {
+                                mirrorOk = false
+                            }
+                            if (mirrorOk) continue
+                            errors.add("[$modName] 服务器镜像下载失败, 尝试 GitHub...")
+                        }
+                        // 2. GitHub 回退 (U 自带机制)
+                        val repoName = modName.folderNameToRepoName().lowercase()
+                        val repo = cachedByName[repoName]
+                            ?: Github.tryGetGithubReposWithTopic(1, 10, repoName)
+                                ?.items?.firstOrNull { it.name.lowercase() == repoName }
+                        if (repo == null) {
+                            errors.add("未找到模组 [$modName] (GitHub 搜索无结果)")
+                            continue
+                        }
+                        var lastPercent = -1
+                        repo.downloadAndExtract { _, percent ->
+                            val p = percent ?: 0
+                            if (p != lastPercent) {
+                                lastPercent = p
+                                launchOnGLThread { progressLabel.setText("[$modName] $p% (GitHub)") }
+                            }
+                        } ?: run { errors.add("[$modName] 下载失败 (404)"); continue }
+                    }
+                } catch (e: Exception) {
+                    errors.add(e.message ?: "下载异常")
+                }
+                launchOnGLThread {
+                    popup.close()
+                    if (errors.isNotEmpty()) {
+                        ToastPopup(errors.joinToString("\n"), screen)
+                    } else {
+                        RulesetCache.loadRulesets()
+                        ToastPopup("模组下载完成", screen)
+                        onDone()
+                    }
+                }
+            }
+        }
+
+        /** 直接进入大厅游戏 (房间监视器/自动进房/正常开局共用入口); 开局前强制检查模组齐全 */
+        fun enterLobbyGame(gameId: String, room: LobbyRoom, screen: BaseScreen?) {
+            val missing = missingModsOf(room.settings)
+            if (missing.isNotEmpty()) {
+                if (screen != null) {
+                    Concurrency.runOnGLThread("LobbyModPrompt") {
+                        ConfirmPopup(screen, "缺少模组: ${missing.joinToString("、")}\n是否通过 GitHub 下载？", "下载") {
+                            downloadMissingMods(missing, screen) {
+                                enterLobbyGame(gameId, room, screen)
+                            }
+                        }.open()
+                    }
+                }
+                return
+            }
+            doEnterLobbyGame(gameId, room, screen)
+        }
+
+        private fun doEnterLobbyGame(gameId: String, room: LobbyRoom, screen: BaseScreen?) {
+            activeRoomId = room.id
+            activeAmOwner = room.members.firstOrNull { it.playerId == currentPlayerId() }?.isOwner == true
+            Concurrency.run("LobbyEnterGame") {
+                try {
+                    leavingGame = false
+                    // 存档在自己服务器上, 客户端必须切到该服务器才能下载
+                    // 记住原多人服务器, 退出大厅局时恢复 (官方多人列表不混入大厅游戏)
+                    val settings = UncivGame.Current.settings.multiplayer
+                    if (settings.getServer() != SP_SERVER_URL) {
+                        previousServer = settings.getServer()
+                    }
+                    settings.setServer(SP_SERVER_URL)
+                    // 官方客户端不会自动注册: 先确保存档服务器上有本设备账号 (PUT /auth 幂等, 密码失效可自愈)
+                    ensureSaveServerRegistered()
+                    UncivGame.Current.onlineMultiplayer.downloadGame(gameId)
+                    // 后台盯房间: 跳海新局 (gameId 变化) 自动切图; 独立守护线程, 不受屏幕销毁影响
+                    startGameWatcher(room.id, gameId, isMember = true)
+                } catch (e: Exception) {
+                    if (screen != null) {
+                        launchOnGLThread { ToastPopup("进入游戏失败: ${e.message}", screen) }
+                    }
+                }
+            }
+        }
+
+        /** 恢复进大厅局之前的多人服务器设置 */
+        fun restoreMultiplayerServer() {
+            val prev = previousServer ?: return
+            previousServer = null
+            try {
+                UncivGame.Current.settings.multiplayer.setServer(prev)
+            } catch (e: Exception) {
+            }
+        }
+
+        /** 在存档服务器上注册/刷新本设备账号, 并保存密码到设置 (下载/上传回合都要用) */
+        fun ensureSaveServerRegistered() {
+            val settings = UncivGame.Current.settings.multiplayer
+            val userId = settings.getUserId()
+            val password = settings.getPassword(SP_SERVER_URL)
+                ?: UUID.randomUUID().toString().replace("-", "").take(16)
+            val storage = UncivServerFileStorage.apply {
+                serverUrl = SP_SERVER_URL
+                authHeader = mapOf("Authorization" to "Basic " + Base64Coder.encodeString("$userId:$password"))
+            }
+            if (storage.setPassword(password)) {
+                settings.setCurrentServerPassword(password)
+            }
+        }
+
+        /** 游戏内房间监视器: 长轮询房间, 发现新 gameId (跳海) 自动下载进入新图;
+         *  发现房间回到等待 (重新开始, 仅成员) → 回房间界面等房主再点开始 */
+        fun startGameWatcher(roomId: String, currentGameId: String, isMember: Boolean) {
+            if (gameWatcherRunning) return
+            gameWatcherRunning = true
+            Concurrency.run("LobbyGameWatcher") {
+                var since = -1
+                var myGameId = currentGameId
+                try {
+                    while (true) {
+                        val room = LobbyApi.waitRoom(roomId, since) ?: continue
+                        since = room.version
+                        // 房间解散或我被移除 (仅成员) → 回大厅并恢复服务器 (主动退出时由菜单处理, 不重复导航)
+                        if (isMember && room.members.none { it.playerId == currentPlayerId() }) {
+                            if (!leavingGame) {
+                                launchOnGLThread {
+                                    restoreMultiplayerServer()
+                                    UncivGame.Current.replaceCurrentScreen(LobbyScreen())
+                                }
+                            }
+                            break
+                        }
+                        if (isMember && room.status == "waiting") {
+                            // 可能是跳海的中间态 (马上会变 playing), 等 3 秒确认
+                            Thread.sleep(3000)
+                            val confirmed = LobbyApi.getRoom(roomId)
+                            since = confirmed.version
+                            if (confirmed.status == "waiting") {
+                                // 重新开始: 回房间界面 (已自动准备, 房主点开始)
+                                launchOnGLThread {
+                                    UncivGame.Current.replaceCurrentScreen(LobbyRoomScreen(roomId, confirmed.name))
+                                }
+                                break
+                            }
+                            continue
+                        }
+                        // 跳海: 新局已开始 → 自动切图
+                        if (room.status == "playing" && !room.gameId.isNullOrEmpty() && room.gameId != myGameId) {
+                            myGameId = room.gameId!!
+                            UncivGame.Current.onlineMultiplayer.downloadGame(myGameId)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // 房间 404 / 网络异常 → 回大厅并恢复服务器 (主动退出时由菜单处理)
+                    if (!leavingGame && isMember) {
+                        launchOnGLThread {
+                            restoreMultiplayerServer()
+                            UncivGame.Current.replaceCurrentScreen(LobbyScreen())
+                        }
+                    }
+                } finally {
+                    gameWatcherRunning = false
+                }
+            }
+        }
+
+        // ---- 服务器设置 → 本机设置 ----
+        private fun JsonObject.s(key: String) = this[key]?.jsonPrimitive?.contentOrNull
+        private fun JsonObject.b(key: String, def: Boolean) =
+            this[key]?.jsonPrimitive?.let { if (it.isString) it.content.toBooleanStrictOrNull() else it.booleanOrNull } ?: def
+        private fun JsonObject.i(key: String, def: Int) = this[key]?.jsonPrimitive?.intOrNull ?: def
+        private fun JsonObject.f(key: String, def: Float) =
+            this[key]?.jsonPrimitive?.let { it.floatOrNull ?: it.content.toFloatOrNull() } ?: def
+        private fun JsonObject.l(key: String, def: Long) =
+            this[key]?.jsonPrimitive?.let { it.longOrNull ?: it.content.toLongOrNull() } ?: def
+        private val JsonElement.jsonPrimitive get() = this as JsonPrimitive
+
+        private fun applyServerSettings(setup: GameSetupInfo, settings: Map<String, JsonElement>) {
+            val gp = settings["gp"] as? JsonObject ?: return
+            val mp = settings["mp"] as? JsonObject
+            val g = setup.gameParameters
+            g.baseRuleset = gp.s("baseRuleset") ?: g.baseRuleset
+            gp["mods"]?.let { modsJson ->
+                val mods = (modsJson as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull }
+                if (mods != null) g.mods = LinkedHashSet(mods)
+            }
+            g.difficulty = gp.s("difficulty") ?: g.difficulty
+            g.speed = gp.s("speed") ?: g.speed
+            g.startingEra = gp.s("startingEra") ?: g.startingEra
+            gp["victoryTypes"]?.let { vt ->
+                val arr = (vt as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull }
+                if (arr != null) g.victoryTypes = ArrayList(arr)
+            }
+            g.espionageEnabled = gp.b("espionageEnabled", g.espionageEnabled)
+            g.noStartBias = gp.b("noStartBias", g.noStartBias)
+            g.noBarbarians = gp.b("noBarbarians", g.noBarbarians)
+            g.ragingBarbarians = gp.b("ragingBarbarians", g.ragingBarbarians)
+            g.oneCityChallenge = gp.b("oneCityChallenge", g.oneCityChallenge)
+            g.nuclearWeaponsEnabled = gp.b("nuclearWeaponsEnabled", g.nuclearWeaponsEnabled)
+            g.godMode = gp.b("godMode", g.godMode)
+            g.maxTurns = gp.i("maxTurns", g.maxTurns)
+            g.numberOfCityStates = gp.i("numberOfCityStates", g.numberOfCityStates)
+            g.noCityRazing = gp.b("noCityRazing", g.noCityRazing)
+
+            if (mp != null) {
+                val m = setup.mapParameters
+                m.type = mp.s("type") ?: m.type
+                m.shape = mp.s("shape") ?: m.shape
+                // mapSize 是 MapSize 类型, 需要从名称转换
+                mp.s("mapSize")?.let { sizeName ->
+                    MapSize.Predefined.values().firstOrNull { it.name == sizeName }?.let { m.mapSize = MapSize(it) }
+                }
+                m.mapResources = mp.s("mapResources") ?: m.mapResources
+                m.worldWrap = mp.b("worldWrap", m.worldWrap)
+                m.legendaryStart = mp.b("legendaryStart", m.legendaryStart)
+                m.strategicBalance = mp.b("strategicBalance", m.strategicBalance)
+                m.noRuins = mp.b("noRuins", m.noRuins)
+                m.noNaturalWonders = mp.b("noNaturalWonders", m.noNaturalWonders)
+                m.seed = mp.l("seed", m.seed)
+                m.tilesPerBiomeArea = mp.i("tilesPerBiomeArea", m.tilesPerBiomeArea)
+                m.maxCoastExtension = mp.i("maxCoastExtension", m.maxCoastExtension)
+                m.elevationExponent = mp.f("elevationExponent", m.elevationExponent)
+                m.temperatureintensity = mp.f("temperatureintensity", m.temperatureintensity)
+                m.temperatureShift = mp.f("temperatureShift", m.temperatureShift)
+                m.vegetationRichness = mp.f("vegetationRichness", m.vegetationRichness)
+                m.rareFeaturesRichness = mp.f("rareFeaturesRichness", m.rareFeaturesRichness)
+                m.resourceRichness = mp.f("resourceRichness", m.resourceRichness)
+                m.waterThreshold = mp.f("waterThreshold", m.waterThreshold)
+            }
+        }
+    }
+
+    private var closed = false
+    private var enteredGame = false
+    private var voluntarilyLeft = false
+    private var lastRoomVersion = -1
+    private var currentRoom: LobbyRoom? = null
+
+    private val nickname: String
+        get() = UncivGame.Current.settings.lobbyNickname.ifBlank { "玩家" }
+    private val playerId: String
+        get() = UncivGame.Current.settings.multiplayer.getUserId()
+
+    private val readyButton = "准备".toTextButton()
+    private val startLobbyButton = "开始游戏".toTextButton().apply { color = Color.GREEN }
+
+    init {
+        activeRoomId = roomId
+
+        // ---- 底部按钮: 替换原版 Start game! 按钮组 ----
+        rightSideGroup.clearChildren()
+        val bar = Table()
+        bar.defaults().pad(5f)
+        readyButton.enable()
+        bar.add(readyButton).width(150f).fillX()
+        bar.add(startLobbyButton).width(230f).fillX()
+        rightSideGroup.addActor(bar)
+        // 固定到最右边: 去掉 rightSideGroup 单元格的右内边距, 组内靠右
+        rightSideGroup.align(com.badlogic.gdx.utils.Align.right)
+        bottomTable.getCell(rightSideGroup)?.padRight(0f)
+
+        // ---- 退出房间 (替换原版返回动作: 先清掉原版 Tap 激活, 避免双重弹屏) ----
+        closeButton.setText("退出房间".tr())
+        ActorAttachments.get(closeButton).clearActivationActions(ActivationTypes.Tap)
+        closeButton.onActivation {
+            voluntarilyLeft = true
+            Concurrency.run("LobbyLeave") {
+                try {
+                    LobbyApi.leaveRoom(roomId, nickname, playerId)
+                } catch (e: Exception) {
+                    // 房间可能已解散, 直接返回
+                }
+                launchOnGLThread { game.popScreen() }
+            }
+        }
+        closeButton.keyShortcuts.add(KeyCharAndCode.BACK)
+
+        readyButton.onClick { toggleReady() }
+        startLobbyButton.onClick { tryStart() }
+
+        // ---- 文明变更 (仅自己) → 同步服务器 ----
+        playerPickerTable.onCivChanged = { player ->
+            if (player.playerId == playerId && player.chosenCiv.isNotEmpty()) {
+                Concurrency.run("LobbySyncCiv") {
+                    try {
+                        LobbyApi.setCiv(roomId, nickname, player.chosenCiv, playerId)
+                    } catch (e: Exception) {
+                        launchOnGLThread { ToastPopup("文明同步失败: ${e.message}", this@LobbyRoomScreen) }
+                    }
+                }
+            }
+        }
+
+        // ---- 成员状态喂给玩家表 (昵称/准备/房主) ----
+        playerPickerTable.lobbyGetStatus = { p ->
+            currentRoom?.members?.firstOrNull { it.playerId == p.playerId }
+                ?.let { LobbyPlayerStatus(it.nickname, it.ready, it.isOwner) }
+        }
+
+        // ---- 当前用户是否房主 (踢出按钮显示条件) ----
+        playerPickerTable.lobbyAmOwner = {
+            currentRoom?.members?.firstOrNull { it.playerId == playerId }?.isOwner == true
+        }
+
+        // ---- 房主踢人 ----
+        playerPickerTable.lobbyOnKick = { p -> kickPlayer(p.playerId) }
+
+        // ---- 房主设置自动推送 (实时刷新, 无保存按钮): 1 秒检测一次本地变更 ----
+        Concurrency.run("LobbySettingsSync") {
+            while (!closed) {
+                try {
+                    val room = currentRoom
+                    val me = room?.members?.firstOrNull { it.playerId == playerId }
+                    if (me?.isOwner == true && room?.status == "waiting") {
+                        val payload = buildSettingsPayload()
+                        val fp = payload.toString()
+                        if (fp != lastPushedSettings) {
+                            val result = LobbyApi.updateSettings(roomId, nickname, playerId, payload)
+                            if (result.ok) {
+                                lastPushedSettings = fp
+                                // 自己刚推的就是屏幕上的, 避免自己触发重建
+                                lastAppliedSettings = fp
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    // 静默, 下轮再试
+                }
+                Thread.sleep(400)  // 设置推送检测间隔 (实时性优先)
+            }
+        }
+
+        // ---- 轮询(长轮询): 成员/文明/状态/设置实时同步 + 开始后进入游戏 ----
+        Concurrency.run("LobbyRoomPoll") {
+            var since = -1
+            while (!closed) {
+                try {
+                    // 长轮询: 房间一变就立即返回, 25 秒无变化返回 null
+                    val room = LobbyApi.waitRoom(roomId, since) ?: continue
+                    since = room.version
+                    // 设置同步: 服务器设置变了 → 用新设置重建房间界面
+                    val settingsStr = room.settings.toString()
+                    if (settingsStr != lastAppliedSettings && room.settings.isNotEmpty()) {
+                        lastAppliedSettings = settingsStr
+                        launchOnGLThread {
+                            if (!closed) game.replaceCurrentScreen(LobbyRoomScreen(roomId, initialName, room.settings))
+                        }
+                        break
+                    }
+                    launchOnGLThread { syncRoom(room) }
+                    if (room.status == "playing" && !room.gameId.isNullOrEmpty() && !enteredGame) {
+                        enteredGame = true
+                        enterGame(room.gameId!!)
+                        break
+                    }
+                    // 被房主踢出: 成员列表里没有自己 → 回大厅并提示 (主动退出不算)
+                    if (!voluntarilyLeft && room.status != "playing" && room.members.none { it.playerId == playerId }) {
+                        launchOnGLThread {
+                            ToastPopup("你已被房主踢出", this@LobbyRoomScreen)
+                            game.popScreen()
+                        }
+                        break
+                    }
+                } catch (e: Exception) {
+                    if (e.message?.contains("404") == true) {
+                        launchOnGLThread {
+                            ToastPopup("房间已解散", this@LobbyRoomScreen)
+                            game.popScreen()
+                        }
+                        break
+                    }
+                    Thread.sleep(500)  // 网络异常退避后重试
+                }
+            }
+        }
+    }
+
+    /** 服务器成员 → 原版玩家列表 (按 playerId 保留 Player 对象, 文明/人数变化自动反映)
+     *  只有房间 version 变化才重建界面, 避免每 3 秒全量刷新导致的卡顿 */
+    private fun syncRoom(room: LobbyRoom) {
+        if (closed) return
+        if (room.version == lastRoomVersion) return
+        lastRoomVersion = room.version
+        currentRoom = room
+        val existing = gameSetupInfo.gameParameters.players
+        val newPlayers = ArrayList<Player>()
+        for (m in room.members) {
+            val p = existing.firstOrNull { it.playerId == m.playerId }
+                ?: Player().apply { playerType = PlayerType.Human }
+            p.playerId = m.playerId
+            p.chosenCiv = m.civ ?: "Random"
+            newPlayers.add(p)
+        }
+        gameSetupInfo.gameParameters.players = newPlayers
+        playerPickerTable.update()
+
+        // ---- 文明被规则集变更重置 (无效文明→Random) → 自动同步回服务器 (否则生成会用旧文明失败) ----
+        val myMember = room.members.firstOrNull { it.playerId == playerId }
+        if (myMember != null) {
+            val myPlayer = newPlayers.firstOrNull { it.playerId == playerId }
+            if (myPlayer != null && myPlayer.chosenCiv != (myMember.civ ?: "Random")) {
+                Concurrency.run("LobbySyncCivReset") {
+                    try {
+                        LobbyApi.setCiv(roomId, nickname, myPlayer.chosenCiv, playerId)
+                    } catch (e: Exception) {
+                    }
+                }
+            }
+        }
+
+        // ---- 按钮状态 ----
+        val me = room.members.firstOrNull { it.playerId == playerId }
+        val isOwner = me?.isOwner == true
+        activeAmOwner = isOwner
+        readyButton.setText(if (me?.ready == true) "取消准备" else "准备")
+        readyButton.isVisible = room.status == "waiting"
+        startLobbyButton.isVisible = room.status == "waiting" || room.status == "starting"
+        val allReady = room.members.isNotEmpty() && room.members.all { it.ready }
+        if (isOwner) {
+            // 房主: 全员准备后才能开始
+            startLobbyButton.isDisabled = !allReady
+            startLobbyButton.setText(
+                when {
+                    room.status == "starting" -> "地图生成中..."
+                    !allReady -> "等待全员准备..."
+                    else -> "开始游戏"
+                }
+            )
+        } else {
+            // 非房主: 只读状态展示, 不能点
+            startLobbyButton.isDisabled = true
+            startLobbyButton.setText(
+                when {
+                    room.status == "starting" -> "地图生成中..."
+                    !allReady -> "等待全员准备..."
+                    else -> "等待开始游戏"
+                }
+            )
+        }
+
+        // ---- 设置权限: 只有房主能改, 非房主整个面板锁定 (touchable 禁用, 锁全部控件) ----
+        newGameOptionsTable.touchable = if (isOwner) Touchable.enabled else Touchable.disabled
+        mapOptionsTable.touchable = if (isOwner) Touchable.enabled else Touchable.disabled
+
+        // ---- 模组检查: 房主选的模组本地缺了 → 提示通过 GitHub 下载 (同组缺失只提示一次) ----
+        val missing = missingModsOf(room.settings)
+        val missingFp = missing.joinToString(",")
+        if (missing.isNotEmpty() && missingFp != promptedMissingMods) {
+            promptedMissingMods = missingFp
+            ConfirmPopup(this, "缺少模组: ${missing.joinToString("、")}\n是否通过 GitHub 下载？", "下载") {
+                downloadMissingMods(missing, this) {
+                    // 下载完重建房间界面 (模组勾选/文明列表刷新)
+                    game.replaceCurrentScreen(LobbyRoomScreen(roomId, initialName, room.settings))
+                }
+            }.open()
+        }
+    }
+
+    // ---- 本机设置 → 服务器 (房主保存) ----
+    private fun buildSettingsPayload(): Map<String, JsonElement> {
+        val gp = gameSetupInfo.gameParameters
+        val mp = gameSetupInfo.mapParameters
+        val gpJson = buildJsonObject {
+            put("baseRuleset", gp.baseRuleset)
+            // 模组型基础规则集 (如 LM2) 同时进 mods, 保证生成端和缺失检测都能处理
+            val standardBases = setOf("Civ V - Vanilla", "Civ V - Gods & Kings")
+            val effectiveMods = LinkedHashSet(gp.mods)
+            if (gp.baseRuleset !in standardBases && gp.baseRuleset.isNotEmpty()) {
+                effectiveMods.add(gp.baseRuleset)
+            }
+            put("mods", JsonArray(effectiveMods.map { JsonPrimitive(it) }))
+            put("difficulty", gp.difficulty)
+            put("speed", gp.speed)
+            put("startingEra", gp.startingEra)
+            put("victoryTypes", JsonArray(gp.victoryTypes.map { JsonPrimitive(it) }))
+            put("espionageEnabled", gp.espionageEnabled)
+            put("noStartBias", gp.noStartBias)
+            put("noBarbarians", gp.noBarbarians)
+            put("ragingBarbarians", gp.ragingBarbarians)
+            put("oneCityChallenge", gp.oneCityChallenge)
+            put("nuclearWeaponsEnabled", gp.nuclearWeaponsEnabled)
+            put("godMode", gp.godMode)
+            put("maxTurns", gp.maxTurns)
+            put("numberOfCityStates", gp.numberOfCityStates)
+            put("noCityRazing", gp.noCityRazing)
+        }
+        val mpJson = buildJsonObject {
+            put("type", mp.type)
+            put("shape", mp.shape)
+            put("mapSize", mp.mapSize.name)
+            put("mapResources", mp.mapResources)
+            put("worldWrap", mp.worldWrap)
+            put("legendaryStart", mp.legendaryStart)
+            put("strategicBalance", mp.strategicBalance)
+            put("noRuins", mp.noRuins)
+            put("noNaturalWonders", mp.noNaturalWonders)
+            put("seed", mp.seed)
+            put("tilesPerBiomeArea", mp.tilesPerBiomeArea)
+            put("maxCoastExtension", mp.maxCoastExtension)
+            put("elevationExponent", mp.elevationExponent)
+            put("temperatureintensity", mp.temperatureintensity)
+            put("temperatureShift", mp.temperatureShift)
+            put("vegetationRichness", mp.vegetationRichness)
+            put("rareFeaturesRichness", mp.rareFeaturesRichness)
+            put("resourceRichness", mp.resourceRichness)
+            put("waterThreshold", mp.waterThreshold)
+        }
+        return mapOf("gp" to gpJson, "mp" to mpJson)
+    }
+
+    private fun kickPlayer(targetPlayerId: String) {
+        val target = currentRoom?.members?.firstOrNull { it.playerId == targetPlayerId } ?: return
+        Concurrency.run("LobbyKick") {
+            try {
+                val result = LobbyApi.kick(roomId, nickname, target.nickname, playerId)
+                launchOnGLThread { ToastPopup(result.msg, this@LobbyRoomScreen) }
+            } catch (e: Exception) {
+                launchOnGLThread { ToastPopup("踢出失败: ${e.message}", this@LobbyRoomScreen) }
+            }
+        }
+    }
+
+    private fun toggleReady() {
+        val me = currentRoom?.members?.firstOrNull { it.playerId == playerId } ?: return
+        val target = !me.ready
+        // 乐观更新: 不等服务器轮询, 立即切换按钮状态; 失败再回滚
+        readyButton.setText(if (target) "取消准备" else "准备")
+        Concurrency.run("LobbyReady") {
+            try {
+                LobbyApi.setReady(roomId, nickname, target, playerId)
+            } catch (e: Exception) {
+                launchOnGLThread {
+                    readyButton.setText(if (!target) "取消准备" else "准备")
+                    ToastPopup("操作失败: ${e.message}", this@LobbyRoomScreen)
+                }
+            }
+        }
+    }
+
+    private fun tryStart() {
+        val loading = Popup(this)
+        loading.addGoodSizedLabel("正在生成地图并开始...")
+        loading.open()
+        Concurrency.run("LobbyStart") {
+            try {
+                val result = LobbyApi.startGame(roomId, nickname, playerId)
+                launchOnGLThread {
+                    loading.close()
+                    if (!result.ok) {
+                        ToastPopup(result.msg.ifEmpty { "开始失败" }, this@LobbyRoomScreen)
+                    }
+                    // 成功后由轮询检测到 playing 并自动进入游戏
+                }
+            } catch (e: Exception) {
+                launchOnGLThread { loading.reuseWith("开始失败: ${e.message}", true) }
+            }
+        }
+    }
+
+    private fun enterGame(gameId: String) {
+        Concurrency.runOnGLThread("LobbyEnterToast") {
+            ToastPopup("游戏已开始, 进入游戏中...", this@LobbyRoomScreen)
+        }
+        val room = currentRoom
+        if (room != null) {
+            enterLobbyGame(gameId, room, this)
+        }
+    }
+
+        /** 在存档服务器上注册/刷新本设备账号, 并保存密码到设置 (下载/上传回合都要用) */
+    override fun recreate(): BaseScreen = LobbyRoomScreen(roomId, initialName)
+
+    override fun dispose() {
+        closed = true
+        // 注意: 不能清 activeRoomId — loadGame 会销毁本屏幕, 但游戏内菜单「退出房间」还需要房间 ID
+        super.dispose()
+    }
+}

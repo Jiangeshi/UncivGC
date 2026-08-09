@@ -54,6 +54,7 @@ import com.unciv.ui.screens.mapeditorscreen.EditorMapHolder
 import com.unciv.ui.screens.mapeditorscreen.MapEditorScreen
 import com.unciv.ui.screens.modmanager.ModManagementScreen
 import com.unciv.ui.screens.multiplayerscreens.MultiplayerScreen
+import com.unciv.ui.screens.lobbyscreens.LobbyScreen
 import com.unciv.ui.screens.newgamescreen.NewGameScreen
 import com.unciv.ui.screens.savescreens.LoadGameScreen
 import com.unciv.ui.screens.savescreens.QuickSave
@@ -172,6 +173,11 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
         val multiplayerTable = getMenuButton("Multiplayer", "OtherIcons/Multiplayer", KeyboardBinding.Multiplayer)
             { game.pushScreen(MultiplayerScreen()) }
         column2.add(multiplayerTable).row()
+
+        // Unciv 共创: 联机大厅
+        val lobbyTable = getMenuButton("联机大厅", "OtherIcons/Multiplayer", KeyboardBinding.Multiplayer)
+            { game.pushScreen(LobbyScreen()) }
+        column2.add(lobbyTable).row()
 
         val mapEditorScreenTable = getMenuButton("Map editor", "OtherIcons/MapEditor", KeyboardBinding.MapEditor)
             { game.pushScreen(MapEditorScreen()) }

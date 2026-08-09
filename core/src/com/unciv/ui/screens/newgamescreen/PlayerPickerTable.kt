@@ -2,8 +2,10 @@ package com.unciv.ui.screens.newgamescreen
 
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
+import com.badlogic.gdx.scenes.scene2d.Actor
 import com.badlogic.gdx.scenes.scene2d.Touchable
 import com.badlogic.gdx.scenes.scene2d.ui.Table
+import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.utils.Align
 import com.unciv.Constants
 import com.unciv.UncivGame
@@ -50,10 +52,19 @@ import com.unciv.ui.components.widgets.AutoScrollPane as ScrollPane
  * @param gameParameters contains info about number of players.
  * @param blockWidth sets a width for the Civ "blocks". If too small a third of the stage is used.
  */
+/** UncivGC 联机大厅: 成员在房间里的状态 (昵称/准备/房主), 由房间界面喂给玩家表 */
+class LobbyPlayerStatus(val nickname: String, val ready: Boolean, val isOwner: Boolean)
+
 class PlayerPickerTable(
     val previousScreen: IPreviousScreen,
     var gameParameters: GameParameters,
-    blockWidth: Float = 0f
+    blockWidth: Float = 0f,
+    /** UncivGC 联机大厅模式: 不清理 playerId, 隐藏 AI/加减玩家等本地选项 */
+    val lobbyMode: Boolean = false,
+    /** 大厅模式: 是否允许编辑该玩家的文明 (一般只有自己) */
+    val lobbyCanEdit: ((Player) -> Boolean)? = null,
+    /** 大厅模式: 文明变更回调 (选完文明后触发, 用于同步服务器) */
+    var onCivChanged: ((Player) -> Unit)? = null,
 ): Table() {
     val playerListTable = Table()
     val civBlocksWidth = if (blockWidth <= 10f) previousScreen.stage.width / 3 - 5f else blockWidth
@@ -65,15 +76,28 @@ class PlayerPickerTable(
     /** No random civilization is available, potentially used in the future during map editing. */
     var noRandom = false
 
+    /** UncivGC 大厅: 每个玩家的房间状态 (昵称/准备/房主), 由房间界面设置 */
+    var lobbyGetStatus: ((Player) -> LobbyPlayerStatus?)? = null
+
+    /** UncivGC 大厅: 房主踢人回调 (显示在别人的块上), 由房间界面设置 */
+    var lobbyOnKick: ((Player) -> Unit)? = null
+
+    /** UncivGC 大厅: 当前用户是否房主 (踢出按钮显示条件), 由房间界面设置 */
+    var lobbyAmOwner: (() -> Boolean)? = null
+
     private val friendList = FriendList()
 
     init {
-        for (player in gameParameters.players)
-            player.playerId = "" // This is to stop people from getting other users' IDs and cheating with them in multiplayer games
+        if (!lobbyMode) {
+            for (player in gameParameters.players)
+                player.playerId = "" // This is to stop people from getting other users' IDs and cheating with them in multiplayer games
+        }
 
         top()
         gameParameters.shufflePlayerOrder = false
-        add("Shuffle Civ Order at Start".toCheckBox(false) { gameParameters.shufflePlayerOrder = it }).padTop(5f).padBottom(5f).row()
+        if (!lobbyMode) {
+            add("Shuffle Civ Order at Start".toCheckBox(false) { gameParameters.shufflePlayerOrder = it }).padTop(5f).padBottom(5f).row()
+        }
         add(ScrollPane(playerListTable).apply { setOverscroll(false, false) }).width(civBlocksWidth)
         update()
         background = BaseScreen.skinStrings.getUiBackground("NewGameScreen/PlayerPickerTable", tintColor = BaseScreen.skinStrings.skinConfig.clearColor)
@@ -96,7 +120,10 @@ class PlayerPickerTable(
         if (desiredCiv.isNotEmpty()) assignDesiredCiv(desiredCiv)
 
         for (player in gameParameters.players) {
-            playerListTable.add(getPlayerTable(player)).width(civBlocksWidth).padBottom(20f).row()
+            val cell = playerListTable.add(getPlayerTable(player)).width(civBlocksWidth).padBottom(20f)
+            // UncivGC 大厅: 块强制撑满列宽, 避免内容宽度不同导致块与块不对齐
+            if (lobbyMode) cell.fillX()
+            cell.row()
         }
 
         val isRandomNumberOfPlayers = gameParameters.randomNumberOfPlayers
@@ -106,7 +133,7 @@ class PlayerPickerTable(
             updateRandomNumberLabel()
         }
 
-        if (!locked && gameParameters.players.size < gameBasics.nations.values.count { it.isMajorCiv }) {
+        if (!lobbyMode && !locked && gameParameters.players.size < gameBasics.nations.values.count { it.isMajorCiv }) {
             val addPlayerButton = "+".toLabel(ImageGetter.CHARCOAL, 30)
                 .apply { this.setAlignment(Align.center) }
                 .surroundWithCircle(50f)
@@ -183,6 +210,8 @@ class PlayerPickerTable(
      * @return [Table] containing the all the elements
      */
     private fun getPlayerTable(player: Player): Table {
+        if (lobbyMode) return buildLobbyPlayerBlock(player)
+
         val playerTable = Table()
         playerTable.pad(5f)
         playerTable.background = BaseScreen.skinStrings.getUiBackground(
@@ -193,11 +222,18 @@ class PlayerPickerTable(
         val nationTable = getNationTable(player)
         playerTable.add(nationTable).left()
 
-        val playerTypeTextButton = player.playerType.name.toTextButton()
-        playerTable.add(playerTypeTextButton).width(100f).pad(5f).right()
+        val playerTypeTextButton: TextButton? = if (!lobbyMode) {
+            val btn = player.playerType.name.toTextButton()
+            playerTable.add(btn).width(100f).pad(5f).right()
+            btn.onClick {
+                player.playerType = if (player.playerType == AI) Human else AI
+                update()
+            }
+            btn
+        } else null
+
         fun updatePlayerTypeButtonEnabled() {
-            // This could be written much shorter with logical operators - I think this is readable
-            playerTypeTextButton.isEnabled = when {
+            playerTypeTextButton?.isEnabled = when {
                 // Can always change AI to Human
                 player.playerType == PlayerType.AI -> true
                 // we cannot change Spectator player to AI type, robots not allowed to spectate :(
@@ -211,17 +247,14 @@ class PlayerPickerTable(
 
         nationTable.onClick {
             if (locked) return@onClick
+            if (lobbyCanEdit?.invoke(player) == false) return@onClick
             val noRandom = noRandom ||
                     gameParameters.randomNumberOfPlayers && player.playerType == PlayerType.AI
             popupNationPicker(player, noRandom)
             updatePlayerTypeButtonEnabled()
         }
-        playerTypeTextButton.onClick {
-            player.playerType = if (player.playerType == AI) Human else AI
-            update()
-        }
 
-        if (!locked) {
+        if (!lobbyMode) {
             playerTable.add("-".toLabel(ImageGetter.CHARCOAL, 30, Align.center)
                 .surroundWithCircle(40f)
                 .onClick {
@@ -235,6 +268,55 @@ class PlayerPickerTable(
             playerTable.addPlayerTableMultiplayerControls(player)
 
         return playerTable
+    }
+
+    /** UncivGC 大厅模式: 成员块 (行1 原版图标+文明+Human标签 / 行2 玩家昵称+踢出 / 行3 准备状态) */
+    private fun buildLobbyPlayerBlock(player: Player): Table {
+        val block = Table()
+        block.pad(5f)
+        val status = lobbyGetStatus?.invoke(player)
+        val canEdit = lobbyCanEdit?.invoke(player) == true
+        // 自身高亮: 自己的块背景更亮, 方便区分
+        val tint = if (canEdit) BaseScreen.skinStrings.skinConfig.baseColor.darken(0.35f)
+                   else BaseScreen.skinStrings.skinConfig.baseColor.darken(0.8f)
+        block.background = BaseScreen.skinStrings.getUiBackground(
+            "NewGameScreen/PlayerPickerTable/PlayerTable",
+            tintColor = tint
+        )
+        block.defaults().pad(3f)
+
+        // 行1: 原版文明区 (图标+文明名, 真实图片) + 原版玩家类型按钮 (Human, 按了没反应)
+        val nationTable = getNationTable(player)
+        nationTable.onClick {
+            if (locked) return@onClick
+            if (!canEdit) return@onClick
+            popupNationPicker(player, noRandom)
+        }
+        block.add(nationTable).left()
+        // 弹性占位: Human 按钮永远贴块右边缘 (否则按钮位置随文明名长度漂移)
+        block.add("".toLabel()).expandX()
+        // 原版同款按钮, 但不挂任何点击行为 (大厅里全是人类玩家, 不需要切换)
+        val playerTypeButton = player.playerType.name.toTextButton()
+        block.add(playerTypeButton).width(100f).pad(5f).right().row()
+
+        // 行2: 玩家昵称 (纯显示) + 踢出 (仅房主看别人的块, 永远贴右对齐)
+        val nickRow = Table()
+        nickRow.defaults().padRight(6f)
+        val displayName = status?.nickname?.takeIf { it.isNotEmpty() }
+            ?: player.playerId.take(8)
+        nickRow.add(("玩家昵称: $displayName" + if (status?.isOwner == true) "（房主）" else "").toLabel())
+        nickRow.add("".toLabel()).expandX()
+        if (lobbyAmOwner?.invoke() == true && !canEdit) {
+            val kickButton = "踢出".toTextButton()
+            kickButton.onClick { lobbyOnKick?.invoke(player) }
+            nickRow.add(kickButton)
+        }
+        block.add(nickRow).fillX().row()
+
+        // 行3: 准备状态
+        block.add((if (status?.ready == true) "✅ 已准备" else "⏳ 未准备").toLabel()).left().row()
+
+        return block
     }
 
     private fun Table.addPlayerTableMultiplayerControls(player: Player) {

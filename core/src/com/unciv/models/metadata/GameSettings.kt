@@ -138,6 +138,8 @@ class GameSettings {
 
     //region 6: Multiplayer
     var multiplayer = GameSettingsMultiplayer()
+    // 联机大厅昵称 (首次进大厅弹窗设置)
+    var lobbyNickname = ""
     //endregion
 
     //region 7: Keyboard

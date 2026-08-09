@@ -7,12 +7,16 @@ import com.unciv.ui.components.input.onChange
 import com.unciv.ui.components.widgets.TranslatedSelectBox
 import com.unciv.ui.screens.basescreen.BaseScreen
 
-class MapOptionsTable(private val newGameScreen: NewGameScreen) : Table() {
+class MapOptionsTable(
+    private val newGameScreen: NewGameScreen,
+    /** UncivGC 联机大厅: 折叠区默认展开 */
+    private val lobbyMode: Boolean = false,
+) : Table() {
 
     private val mapParameters = newGameScreen.gameSetupInfo.mapParameters
     private var mapTypeSpecificTable = Table()
-    internal val generatedMapOptionsTable = MapParametersTable(newGameScreen, mapParameters, MapGeneratedMainType.generated)
-    private val randomMapOptionsTable = MapParametersTable(newGameScreen, mapParameters, MapGeneratedMainType.randomGenerated)
+    internal val generatedMapOptionsTable = MapParametersTable(newGameScreen, mapParameters, MapGeneratedMainType.generated, defaultExpanded = lobbyMode)
+    private val randomMapOptionsTable = MapParametersTable(newGameScreen, mapParameters, MapGeneratedMainType.randomGenerated, defaultExpanded = lobbyMode)
     private val savedMapOptionsTable = MapFileSelectTable(newGameScreen, mapParameters)
     private val scenarioOptionsTable = ScenarioSelectTable(newGameScreen)
     internal val mapTypeSelectBox: TranslatedSelectBox

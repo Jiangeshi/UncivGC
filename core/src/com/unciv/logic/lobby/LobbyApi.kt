@@ -1,0 +1,198 @@
+package com.unciv.logic.lobby
+
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.get
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsChannel
+import io.ktor.http.ContentType
+import io.ktor.http.contentLength
+import io.ktor.http.contentType
+import io.ktor.http.isSuccess
+import io.ktor.serialization.kotlinx.json.json
+import io.ktor.utils.io.readAvailable
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+
+@Serializable
+data class ModMirrorEntry(val name: String = "", val size: Long = 0, val updatedAt: Double = 0.0)
+
+@Serializable
+data class LobbyMember(
+    val nickname: String,
+    val playerId: String = "",
+    val civ: String? = null,
+    val ready: Boolean = false,
+    val isOwner: Boolean = false,
+    val joinedAt: Double = 0.0,
+)
+
+@Serializable
+data class LobbyRoom(
+    val id: String,
+    val name: String,
+    val status: String = "waiting",   // waiting | starting | playing
+    val gameId: String? = null,
+    val version: Int = 1,
+    val playerCount: Int = 0,
+    val owner: String? = null,
+    val settings: Map<String, JsonElement> = emptyMap(),
+    val members: List<LobbyMember> = emptyList(),
+)
+
+@Serializable
+data class ApiResult(val ok: Boolean = false, val msg: String = "", val gameId: String? = null, val room: LobbyRoom? = null)
+
+@Serializable
+data class ApiError(val error: String? = null)
+
+@Serializable
+data class CreateRoomRequest(val name: String, val nickname: String, val playerId: String, val civ: String)
+@Serializable
+data class JoinRequest(val nickname: String, val playerId: String, val civ: String)
+@Serializable
+data class ReadyRequest(val nickname: String, val playerId: String, val ready: Boolean)
+@Serializable
+data class CivRequest(val nickname: String, val playerId: String, val civ: String)
+@Serializable
+data class LeaveRequest(val nickname: String, val playerId: String)
+@Serializable
+data class KickRequest(val nickname: String, val playerId: String, val target: String)
+@Serializable
+data class StartRequest(val nickname: String, val playerId: String)
+@Serializable
+data class RestartRequest(val nickname: String, val playerId: String)
+@Serializable
+data class SettingsRequest(val nickname: String, val playerId: String, val settings: Map<String, JsonElement>)
+
+/** 联机大厅 API 客户端 (M2 服务器: unciv-lobby/lobby_server.py) */
+object LobbyApi {
+    // TODO: 上架前改为可配置 (设置页)
+    const val SERVER_URL = "http://110.40.151.9:8123"
+
+    private val client = HttpClient(CIO) {
+        install(ContentNegotiation) {
+            json(Json { ignoreUnknownKeys = true })
+        }
+        install(HttpTimeout) {
+            requestTimeoutMillis = 35000   // 长轮询最长挂 25s + 余量
+        }
+    }
+
+    private suspend inline fun <reified T> parse(response: HttpResponse): T {
+        if (!response.status.isSuccess()) {
+            val err = try { response.body<ApiError>().error } catch (e: Exception) { null }
+            throw RuntimeException(err ?: "HTTP ${response.status.value}")
+        }
+        return response.body()
+    }
+
+    suspend fun listRooms(): List<LobbyRoom> =
+        parse(client.get("$SERVER_URL/api/rooms"))
+
+    suspend fun createRoom(name: String, nickname: String, playerId: String, civ: String?): LobbyRoom =
+        parse(client.post("$SERVER_URL/api/rooms") {
+            contentType(ContentType.Application.Json)
+            setBody(CreateRoomRequest(name, nickname, playerId, civ ?: ""))
+        })
+
+    suspend fun getRoom(roomId: String): LobbyRoom =
+        parse(client.get("$SERVER_URL/api/rooms/$roomId"))
+
+    /** 长轮询: 房间变化立即返回; 25 秒无变化返回 null */
+    suspend fun waitRoom(roomId: String, since: Int): LobbyRoom? {
+        val response = client.get("$SERVER_URL/api/rooms/$roomId/wait?since=$since")
+        if (response.status.value == 204) return null
+        return parse(response)
+    }
+
+    suspend fun joinRoom(roomId: String, nickname: String, playerId: String, civ: String?): ApiResult =
+        parse(client.post("$SERVER_URL/api/rooms/$roomId/join") {
+            contentType(ContentType.Application.Json)
+            setBody(JoinRequest(nickname, playerId, civ ?: ""))
+        })
+
+    suspend fun leaveRoom(roomId: String, nickname: String, playerId: String? = null): ApiResult =
+        parse(client.post("$SERVER_URL/api/rooms/$roomId/leave") {
+            contentType(ContentType.Application.Json)
+            setBody(LeaveRequest(nickname, playerId ?: ""))
+        })
+
+    suspend fun setReady(roomId: String, nickname: String, ready: Boolean, playerId: String? = null): ApiResult =
+        parse(client.post("$SERVER_URL/api/rooms/$roomId/ready") {
+            contentType(ContentType.Application.Json)
+            setBody(ReadyRequest(nickname, playerId ?: "", ready))
+        })
+
+    suspend fun setCiv(roomId: String, nickname: String, civ: String, playerId: String? = null): ApiResult =
+        parse(client.post("$SERVER_URL/api/rooms/$roomId/civ") {
+            contentType(ContentType.Application.Json)
+            setBody(CivRequest(nickname, playerId ?: "", civ))
+        })
+
+    suspend fun kick(roomId: String, nickname: String, target: String, playerId: String? = null): ApiResult =
+        parse(client.post("$SERVER_URL/api/rooms/$roomId/kick") {
+            contentType(ContentType.Application.Json)
+            setBody(KickRequest(nickname, playerId ?: "", target))
+        })
+
+    suspend fun startGame(roomId: String, nickname: String, playerId: String? = null): ApiResult =
+        parse(client.post("$SERVER_URL/api/rooms/$roomId/start") {
+            contentType(ContentType.Application.Json)
+            setBody(StartRequest(nickname, playerId ?: ""))
+        })
+
+    /** 跳海: 删旧存档, 房间重置为等待 (全员自动准备), 随后调用 startGame 直接开新图 */
+    suspend fun restartRoom(roomId: String, nickname: String, playerId: String? = null): ApiResult =
+        parse(client.post("$SERVER_URL/api/rooms/$roomId/restart") {
+            contentType(ContentType.Application.Json)
+            setBody(RestartRequest(nickname, playerId ?: ""))
+        })
+
+    /** 观战: 加入进行中的房间, 返回 gameId (不进成员列表) */
+    suspend fun spectateRoom(roomId: String, nickname: String, playerId: String? = null): ApiResult =
+        parse(client.post("$SERVER_URL/api/rooms/$roomId/spectate") {
+            contentType(ContentType.Application.Json)
+            setBody(JoinRequest(nickname, playerId ?: "", ""))
+        })
+
+    suspend fun updateSettings(roomId: String, nickname: String, playerId: String? = null, settings: Map<String, JsonElement>): ApiResult =
+        parse(client.post("$SERVER_URL/api/rooms/$roomId/settings") {
+            contentType(ContentType.Application.Json)
+            setBody(SettingsRequest(nickname, playerId ?: "", settings))
+        })
+
+    /** 模组镜像清单 */
+    suspend fun modMirrorManifest(): List<ModMirrorEntry> =
+        parse(client.get("$SERVER_URL/api/mods"))
+
+    /** 从服务器镜像下载模组 zip (流式, 带进度) → 本地临时文件路径; 失败返回 null */
+    suspend fun downloadModFromMirror(modName: String, onProgress: (Int) -> Unit): String? {
+        val response = client.get("$SERVER_URL/api/mods/$modName")
+        if (!response.status.isSuccess()) return null
+        val total = response.contentLength() ?: 0L
+        val temp = com.badlogic.gdx.Gdx.files.local("temp-mod-$modName.zip")
+        val out = java.io.FileOutputStream(temp.file())
+        try {
+            val channel = response.bodyAsChannel()
+            val buf = ByteArray(8192)
+            var received = 0L
+            while (true) {
+                val read = channel.readAvailable(buf, 0, buf.size)
+                if (read == -1) break
+                out.write(buf, 0, read)
+                received += read
+                if (total > 0) onProgress(((received * 100) / total).toInt().coerceIn(0, 99))
+            }
+        } finally {
+            out.close()
+        }
+        return temp.path()
+    }
+}

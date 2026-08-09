@@ -42,7 +42,11 @@ class GameOptionsTable(
     private val previousScreen: IPreviousScreen,
     private val isPortrait: Boolean = false,
     private val updatePlayerPickerTable: (desiredCiv: String) -> Unit,
-    private val updatePlayerPickerRandomLabel: () -> Unit
+    private val updatePlayerPickerRandomLabel: () -> Unit,
+    /** UncivGC 联机大厅: 隐藏「Online Multiplayer」选项 */
+    private val showOnlineMultiplayer: Boolean = true,
+    /** UncivGC 联机大厅: 高级设置默认展开 (非房主看不到折叠开关, 需默认展开) */
+    private val advancedOpenByDefault: Boolean = false,
 ) : Table(BaseScreen.skin) {
     private var gameParameters = previousScreen.gameSetupInfo.gameParameters
     private var ruleset = previousScreen.ruleset
@@ -108,8 +112,10 @@ class GameOptionsTable(
 
         val checkboxTable = Table().apply { defaults().left().pad(2.5f) }
         val selectBoxTable = Table()
-        checkboxTable.addIsOnlineMultiplayerCheckbox()
-        if (gameParameters.isOnlineMultiplayer){
+        if (showOnlineMultiplayer) {
+            checkboxTable.addIsOnlineMultiplayerCheckbox()
+        }
+        if (showOnlineMultiplayer && gameParameters.isOnlineMultiplayer){
             checkboxTable.addAnyoneCanSpectateCheckbox()
             selectBoxTable.addDurationSelectBox("Time until skip turn:", GameParameters::minutesUntilSkipTurn, 1, 0, 0)
             selectBoxTable.addDurationSelectBox("Total time to play:", GameParameters::minutesUntilForceResign, 3, 0, 0)
@@ -120,8 +126,9 @@ class GameOptionsTable(
 
         val expander = ExpanderTab(
             "Advanced Settings",
-            startsOutOpened = gameParameters.enableRandomNationsPool,
-            persistenceID = "GameOptionsTable.Advanced"
+            startsOutOpened = advancedOpenByDefault || gameParameters.enableRandomNationsPool,
+            // UncivGC 大厅: 独立 ID, 避免被历史开合状态覆盖 (保证默认展开)
+            persistenceID = if (advancedOpenByDefault) "LobbyGameOptionsTable.Advanced" else "GameOptionsTable.Advanced"
         ) {
             it.defaults().pad(5f, 0f)
             it.addNoCityRazingCheckbox()

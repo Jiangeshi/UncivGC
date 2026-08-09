@@ -29,7 +29,8 @@ android {
     }
     defaultConfig {
         namespace = BuildConfig.identifier
-        applicationId = BuildConfig.identifier
+        // UncivGC: 独立应用ID, 与原版 Unciv (com.unciv.app) 可共存不覆盖
+        applicationId = "com.uncivgc.app"
         minSdk = 21
         targetSdk = 35
         versionCode = BuildConfig.appCodeNumber

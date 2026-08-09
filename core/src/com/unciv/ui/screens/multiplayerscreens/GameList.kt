@@ -19,6 +19,7 @@ import com.unciv.logic.multiplayer.MultiplayerGameUpdated
 import com.unciv.logic.multiplayer.isUsersTurn
 import com.unciv.ui.images.ImageGetter
 import com.unciv.ui.screens.basescreen.BaseScreen
+import com.unciv.ui.screens.lobbyscreens.LobbyRoomScreen
 import com.unciv.ui.components.input.onClick
 import com.unciv.ui.components.extensions.setSize
 
@@ -45,6 +46,8 @@ class GameList(
         clearChildren()
         gameDisplays.clear()
         for (game in UncivGame.Current.onlineMultiplayer.games) {
+            // UncivGC: 联机大厅的游戏不出现在官方多人列表 (按存档服务器地址识别)
+            if (game.preview?.gameParameters?.multiplayerServerUrl == LobbyRoomScreen.SP_SERVER_URL) continue
             val gameDisplay = GameDisplay(game.name, game.preview, game.error, onSelected)
             gameDisplays[game.name] = gameDisplay
             addActor(gameDisplay)

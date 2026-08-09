@@ -33,7 +33,9 @@ class MapParametersTable(
     private val mapParameters: MapParameters,
     private val mapGeneratedMainType: String,
     private val forMapEditor: Boolean = false,
-    private val sizeChangedCallback: (()->Unit)? = null
+    private val sizeChangedCallback: (()->Unit)? = null,
+    /** UncivGC 联机大厅: 折叠区默认展开 (非房主看不到折叠开关) */
+    private val defaultExpanded: Boolean = false,
 ) : Table() {
     // These are accessed from outside the class to read _and_ write values,
     // namely from MapOptionsTable, NewMapScreen and NewGameScreen
@@ -409,7 +411,7 @@ class MapParametersTable(
     private fun addWrappedCheckBoxes() {
         val worldWrapWarning = "World wrap maps are very memory intensive - creating large world wrap maps on Android can lead to crashes!"
         if (mapGeneratedMainType == MapGeneratedMainType.randomGenerated) {
-            add(ExpanderTab("{Other Settings}", persistenceID = "NewGameOtherSettings", startsOutOpened = false) {
+            add(ExpanderTab("{Other Settings}", persistenceID = if (defaultExpanded) "LobbyNewGameOtherSettings" else "NewGameOtherSettings", startsOutOpened = defaultExpanded) {
                 it.defaults().pad(5f,0f)
                 it.addStrategicBalanceCheckbox()
                 it.addLegendaryStartCheckbox()
@@ -432,7 +434,8 @@ class MapParametersTable(
     }
 
     private fun addAdvancedSettings() {
-        val expander = ExpanderTab("Advanced Settings", startsOutOpened = false, defaultPad = 0f) {
+        val expander = ExpanderTab("Advanced Settings", startsOutOpened = defaultExpanded, defaultPad = 0f,
+            persistenceID = if (defaultExpanded) "LobbyMapAdvanced" else null) {
             addAdvancedControls(it)
         }
         add(expander).padTop(10f).colspan(2).growX().row()

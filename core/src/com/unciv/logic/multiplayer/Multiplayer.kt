@@ -165,7 +165,13 @@ class Multiplayer {
         playerCiv.playerId = ""
 
         //call next turn so turn gets simulated by AI
-        if (gameInfo.currentPlayer == playerCivName) gameInfo.nextTurn()
+        // (UncivGC 修复: 若 resign 后没有其他真人玩家 (只有观战者/纯AI), 不推进回合 —
+        //  否则 nextTurn 会在全员 AI 时无限模拟死循环)
+        val hasOtherHumanPlayer = gameInfo.civilizations.any {
+            it.playerType == PlayerType.Human && it.playerId.isNotEmpty()
+                && it.civName != playerCivName && !it.isSpectator()
+        }
+        if (gameInfo.currentPlayer == playerCivName && hasOtherHumanPlayer) gameInfo.nextTurn()
 
         //Add notification so everyone knows what happened
         //call for every civ cause AI players are skipped anyway

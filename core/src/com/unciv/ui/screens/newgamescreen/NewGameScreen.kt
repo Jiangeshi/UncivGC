@@ -50,15 +50,21 @@ import java.net.URI
 import kotlin.math.floor
 import com.unciv.ui.components.widgets.AutoScrollPane as ScrollPane
 
-class NewGameScreen(
-    defaultGameSetupInfo: GameSetupInfo? = null
+open class NewGameScreen(
+    defaultGameSetupInfo: GameSetupInfo? = null,
+    /** UncivGC 联机大厅: 隐藏「Online Multiplayer」选项 */
+    val showOnlineMultiplayer: Boolean = true,
+    /** UncivGC 联机大厅模式: 玩家表隐藏加减按钮/不清理playerId */
+    val lobbyMode: Boolean = false,
+    /** 大厅模式: 允许编辑文明的玩家判定 (一般只有自己) */
+    val lobbyCanEdit: ((Player) -> Boolean)? = null,
 ): IPreviousScreen, PickerScreen(), RecreateOnResize {
 
     override val gameSetupInfo = defaultGameSetupInfo ?: GameSetupInfo.fromSettings()
     override val ruleset = Ruleset()  // updateRuleset will clear and add
-    private val newGameOptionsTable: GameOptionsTable
+    protected val newGameOptionsTable: GameOptionsTable
     internal val playerPickerTable: PlayerPickerTable
-    private val mapOptionsTable: MapOptionsTable
+    protected val mapOptionsTable: MapOptionsTable
     private var mapOptionsTableInitialized = false
 
     init {
@@ -75,14 +81,18 @@ class NewGameScreen(
         rightSideButton.enable()  // now because PlayerPickerTable init might disable it again
         playerPickerTable = PlayerPickerTable(
             this, gameSetupInfo.gameParameters,
-            if (isPortrait) stage.width - 20f else 0f
+            if (isPortrait) stage.width - 20f else 0f,
+            lobbyMode = lobbyMode,
+            lobbyCanEdit = lobbyCanEdit,
         )
         newGameOptionsTable = GameOptionsTable(
             this, isPortrait,
             updatePlayerPickerTable = { desiredCiv -> playerPickerTable.update(desiredCiv) },
-            updatePlayerPickerRandomLabel = { playerPickerTable.updateRandomNumberLabel() }
+            updatePlayerPickerRandomLabel = { playerPickerTable.updateRandomNumberLabel() },
+            showOnlineMultiplayer = showOnlineMultiplayer,
+            advancedOpenByDefault = lobbyMode,
         )
-        mapOptionsTable = MapOptionsTable(this)
+        mapOptionsTable = MapOptionsTable(this, lobbyMode = lobbyMode)
         mapOptionsTableInitialized = true
         closeButton.onActivation {
             mapOptionsTable.cancelBackgroundJobs()

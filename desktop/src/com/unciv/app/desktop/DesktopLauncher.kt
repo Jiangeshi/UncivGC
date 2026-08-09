@@ -113,7 +113,7 @@ internal object DesktopLauncher {
         val config = Lwjgl3ApplicationConfiguration()
         config.setWindowIcon("ExtraImages/Icons/Unciv32.png", "ExtraImages/Icons/Unciv128.png")
         if (SharedLibraryLoader.os == Os.MacOsX) updateDockIconForMacOs("ExtraImages/Icons/Unciv128.png")
-        config.setTitle("Unciv")
+        config.setTitle("UncivGC")
         config.setHdpiMode(HdpiMode.Logical)
         config.setWindowSizeLimits(WindowState.minimumWidth, WindowState.minimumHeight, -1, -1)
 
