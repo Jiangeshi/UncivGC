@@ -222,6 +222,8 @@ object LobbyApi {
         val downloadClient = HttpClient(CIO) {
             install(HttpTimeout) {
                 requestTimeoutMillis = 600_000
+                // 关键: 默认 idleTimeout 30s — 慢速下载时 TCP 发送卡住会被误判超时断开
+                idleTimeoutMillis = 600_000
             }
         }
         try {
