@@ -171,10 +171,11 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
             { game.pushScreen(LoadGameScreen()) }
         column1.add(loadGameTable).row()
 
-        // Unciv 共创: 国内模组镜像 (读取游戏下面)
-        val modMirrorTable = getMenuButton("国内模组镜像", "OtherIcons/Mods", KeyboardBinding.ModManager)
-            { game.pushScreen(ModMirrorScreen()) }
-        column1.add(modMirrorTable).row()
+        // Unciv 共创: 设置 (与原版位置对调 — 国内模组镜像移到 Mods 下面)
+        val optionsTable = getMenuButton("Options", "OtherIcons/Options", KeyboardBinding.MainMenuOptions)
+            { openOptionsPopup() }
+        optionsTable.onLongPress { openOptionsPopup(withDebug = true) }
+        column1.add(optionsTable).row()
 
         val multiplayerTable = getMenuButton("Multiplayer", "OtherIcons/Multiplayer", KeyboardBinding.Multiplayer)
             { game.pushScreen(MultiplayerScreen()) }
@@ -193,10 +194,10 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
             { game.pushScreen(ModManagementScreen()) }
         column2.add(modsTable).row()
 
-        val optionsTable = getMenuButton("Options", "OtherIcons/Options", KeyboardBinding.MainMenuOptions)
-            { openOptionsPopup() }
-        optionsTable.onLongPress { openOptionsPopup(withDebug = true) }
-        column2.add(optionsTable).row()
+        // Unciv 共创: 国内模组镜像 (模组下面)
+        val modMirrorTable = getMenuButton("国内模组镜像", "OtherIcons/Mods", KeyboardBinding.ModManager)
+            { game.pushScreen(ModMirrorScreen()) }
+        column2.add(modMirrorTable).row()
 
 
         val table = Table().apply { defaults().pad(10f) }
