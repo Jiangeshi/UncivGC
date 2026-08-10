@@ -172,9 +172,9 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             }.map { it.name }
         }
 
-        fun md5Of(file: java.io.File): String = try {
+        fun md5Of(file: com.badlogic.gdx.files.FileHandle): String = try {
             val md = java.security.MessageDigest.getInstance("MD5")
-            java.io.FileInputStream(file).use { ins ->
+            file.read().use { ins ->
                 val buf = ByteArray(65536)
                 while (true) {
                     val n = ins.read(buf)
@@ -209,9 +209,9 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                         errors.add("[$modName] 下载失败")
                         continue
                     }
-                    // md5 校验 (防传输损坏/坏包)
+                    // md5 校验 (防传输损坏/坏包) — 用 FileHandle 读 (相对路径字符串直接建 java.io.File 在 Android 上会解析到错误位置)
                     if (entry.md5.isNotEmpty()) {
-                        val md5 = md5Of(java.io.File(zipPath))
+                        val md5 = md5Of(Gdx.files.local(zipPath))
                         if (md5 != entry.md5) {
                             Gdx.files.absolute(zipPath).delete()
                             errors.add("[$modName] 校验失败, 请重试")
