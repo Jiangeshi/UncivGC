@@ -416,6 +416,12 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                                 }
                                 break
                             }
+                            // 跳海进行中 (starting/playing): 给成员可见的提示, 然后等新图切图
+                            if (confirmed.status == "starting") {
+                                launchOnGLThread {
+                                    ToastPopup("房主正在跳海，新地图生成中...", UncivGame.Current.worldScreen)
+                                }
+                            }
                             // 跳海: 等待期间新局已开 → 立即切图 (不能 continue 等下一次变化, 会永远等不到)
                             if (confirmed.status == "playing" && !confirmed.gameId.isNullOrEmpty()
                                 && confirmed.gameId != myGameId) {
