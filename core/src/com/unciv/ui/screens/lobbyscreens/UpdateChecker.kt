@@ -46,10 +46,11 @@ object UpdateChecker {
         Concurrency.run("UpdateDownload") {
             val totalMb = if (info.apkSize > 0) String.format("%.0f", info.apkSize / 1048576.0) else "?"
             val path = try {
-                LobbyApi.downloadApk { p ->
+                LobbyApi.downloadApk { received, total ->
                     launchOnGLThread {
-                        val mb = String.format("%.1f", info.apkSize * p / 100.0 / 1048576.0)
-                        loading.reuseWith("正在下载更新 ($mb MB / $totalMb MB)...", false)
+                        val mb = String.format("%.1f", received / 1048576.0)
+                        val pct = if (total > 0) " (${(received * 100 / total)}%)" else ""
+                        loading.reuseWith("正在下载更新 $mb MB / $totalMb MB$pct\n请保持网络连接...", false)
                     }
                 }
             } catch (e: Exception) {

@@ -216,8 +216,9 @@ object LobbyApi {
     }
 
     /** 下载最新 APK → 本地临时文件路径 (流式+进度); 失败 null.
+     *  进度回调传 (received: Long, total: Long) 字节数 — 不依赖百分比计算.
      *  用独立 HttpClient — 不共享长轮询的连接池 (避免下载请求排队等待连接, 进度卡 0%) */
-    suspend fun downloadApk(onProgress: (Int) -> Unit): String? {
+    suspend fun downloadApk(onProgress: (received: Long, total: Long) -> Unit): String? {
         val downloadClient = HttpClient(CIO) {
             install(HttpTimeout) {
                 requestTimeoutMillis = 600_000
@@ -230,6 +231,8 @@ object LobbyApi {
             val temp = com.badlogic.gdx.Gdx.files.local("update-uncivgc.apk")
             val out = java.io.FileOutputStream(temp.file())
             var received = 0L
+            var lastProgress = 0L
+            var lastProgressTime = System.currentTimeMillis()
             try {
                 val channel = response.bodyAsChannel()
                 val buf = ByteArray(64 * 1024)
@@ -238,11 +241,19 @@ object LobbyApi {
                     if (read == -1) break
                     out.write(buf, 0, read)
                     received += read
-                    if (total > 0) onProgress(((received * 100) / total).toInt().coerceIn(0, 99))
+                    lastProgressTime = System.currentTimeMillis()  // 有数据 = 有进展
+                    // 每 512KB 回报一次进度 (避免刷爆 GL 线程)
+                    if (received - lastProgress >= 512 * 1024) {
+                        lastProgress = received
+                        onProgress(received, total)
+                    }
+                    // 无进展超过 5 分钟 → 视为卡死, 中断 (CIO idleTimeout 也会兜底)
+                    if (System.currentTimeMillis() - lastProgressTime > 300_000) return null
                 }
             } finally {
                 out.close()
             }
+            onProgress(received, total)  // 最终完整回报
             // 完整性: 实际收到的字节数与 Content-Length 一致, 否则视为中断
             if (total > 0 && received != total) return null
             return temp.path()
