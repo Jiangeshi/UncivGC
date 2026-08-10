@@ -318,12 +318,22 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                         }
                     }
                 } catch (e: Exception) {
-                    // 房间 404 / 网络异常 → 回大厅并恢复服务器 (主动退出时由菜单处理)
-                    if (!leavingGame && isMember) {
-                        launchOnGLThread {
-                            restoreMultiplayerServer()
-                            UncivGame.Current.replaceCurrentScreen(LobbyScreen())
+                    // 房间解散 (404) → 回大厅并恢复服务器 (主动退出时由菜单处理)
+                    // 网络异常 (断网/切网/超时) → 只重试, 绝不弹回大厅 (掉线≠退出, 游戏继续)
+                    if (!leavingGame) {
+                        val gone = e.message?.contains("404") == true || e.message?.contains("房间不存在") == true
+                        if (gone) {
+                            launchOnGLThread {
+                                restoreMultiplayerServer()
+                                UncivGame.Current.replaceCurrentScreen(LobbyScreen())
+                            }
+                            return@run
                         }
+                    }
+                    try {
+                        Thread.sleep(3000)
+                    } catch (ie: InterruptedException) {
+                        return@run
                     }
                 } finally {
                     gameWatcherRunning = false
@@ -461,6 +471,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         ActorAttachments.get(closeButton).clearActivationActions(ActivationTypes.Tap)
         closeButton.onActivation {
             voluntarilyLeft = true
+            activeRoomId = null  // 明确退出房间: 清除房间 ID, 避免游戏内菜单误操作旧房间
             Concurrency.run("LobbyLeave") {
                 try {
                     LobbyApi.leaveRoom(roomId, nickname, playerId)
