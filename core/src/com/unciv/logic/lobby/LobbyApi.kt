@@ -215,30 +215,38 @@ object LobbyApi {
         null
     }
 
-    /** 下载最新 APK → 本地临时文件路径 (流式+进度); 失败 null */
+    /** 下载最新 APK → 本地临时文件路径 (流式+进度); 失败 null.
+     *  用独立 HttpClient — 不共享长轮询的连接池 (避免下载请求排队等待连接, 进度卡 0%) */
     suspend fun downloadApk(onProgress: (Int) -> Unit): String? {
-        val response = client.get("$SERVER_URL/api/download/apk") {
-            timeout { requestTimeoutMillis = 600_000 }
-        }
-        if (!response.status.isSuccess()) return null
-        val total = response.contentLength() ?: 0L
-        val temp = com.badlogic.gdx.Gdx.files.local("update-uncivgc.apk")
-        val out = java.io.FileOutputStream(temp.file())
-        try {
-            val channel = response.bodyAsChannel()
-            val buf = ByteArray(64 * 1024)
-            var received = 0L
-            while (true) {
-                val read = channel.readAvailable(buf, 0, buf.size)
-                if (read == -1) break
-                out.write(buf, 0, read)
-                received += read
-                if (total > 0) onProgress(((received * 100) / total).toInt().coerceIn(0, 99))
+        val downloadClient = HttpClient(CIO) {
+            install(HttpTimeout) {
+                requestTimeoutMillis = 600_000
             }
-        } finally {
-            out.close()
         }
-        return temp.path()
+        try {
+            val response = downloadClient.get("$SERVER_URL/api/download/apk")
+            if (!response.status.isSuccess()) return null
+            val total = response.contentLength() ?: 0L
+            val temp = com.badlogic.gdx.Gdx.files.local("update-uncivgc.apk")
+            val out = java.io.FileOutputStream(temp.file())
+            try {
+                val channel = response.bodyAsChannel()
+                val buf = ByteArray(64 * 1024)
+                var received = 0L
+                while (true) {
+                    val read = channel.readAvailable(buf, 0, buf.size)
+                    if (read == -1) break
+                    out.write(buf, 0, read)
+                    received += read
+                    if (total > 0) onProgress(((received * 100) / total).toInt().coerceIn(0, 99))
+                }
+            } finally {
+                out.close()
+            }
+            return temp.path()
+        } finally {
+            downloadClient.close()
+        }
     }
 
     /** 从服务器镜像下载模组 zip (流式, 带进度) → 本地临时文件路径; 失败返回 null.

@@ -41,11 +41,15 @@ object UpdateChecker {
 
     private fun downloadAndInstall(info: UpdateInfo, screen: BaseScreen) {
         val loading = Popup(screen)
-        loading.addGoodSizedLabel("正在下载更新 (0%)...")
+        loading.addGoodSizedLabel("正在下载更新 (0 MB)...")
         loading.open()
         Concurrency.run("UpdateDownload") {
+            val totalMb = if (info.apkSize > 0) String.format("%.0f", info.apkSize / 1048576.0) else "?"
             val path = LobbyApi.downloadApk { p ->
-                launchOnGLThread { loading.reuseWith("正在下载更新 ($p%)...", false) }
+                launchOnGLThread {
+                    val mb = String.format("%.1f", info.apkSize * p / 100.0 / 1048576.0)
+                    loading.reuseWith("正在下载更新 ($mb MB / $totalMb MB)...", false)
+                }
             }
             launchOnGLThread {
                 loading.close()
