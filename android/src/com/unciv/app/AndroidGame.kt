@@ -36,7 +36,8 @@ class AndroidGame(private val activity: Activity) : UncivGame() {
         val installer = activity.packageManager.packageInstaller
         val params = android.content.pm.PackageInstaller.SessionParams(
             android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL)
-        val session: android.content.pm.PackageInstaller.Session = installer.createSession(params)
+        val sessionId: Int = installer.createSession(params)
+        val session: android.content.pm.PackageInstaller.Session = installer.openSession(sessionId)
         val out: java.io.OutputStream = session.openWrite("uncivgc_update", 0, apkFile.length())
         val input = java.io.FileInputStream(apkFile)
         val buf = ByteArray(64 * 1024)
@@ -49,8 +50,10 @@ class AndroidGame(private val activity: Activity) : UncivGame() {
         session.fsync(out)
         out.close()
         // 结果回调 (InstallResultReceiver 静态注册)
-        val resultIntent = android.content.Intent(activity, InstallResultReceiver::class.java)
-        session.commit(resultIntent)
+        val resultIntent = android.app.PendingIntent.getBroadcast(
+            activity, 0, android.content.Intent(activity, InstallResultReceiver::class.java),
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE)
+        session.commit(resultIntent.intentSender)
         true
     } catch (e: Exception) {
         false
