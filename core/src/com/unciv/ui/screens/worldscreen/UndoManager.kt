@@ -60,12 +60,19 @@ class UndoManager(private val worldScreen: WorldScreen) {
             if (snapshotsGameId != gid) {
                 snapshots.clear()
                 snapshotsGameId = gid
+                lastSnapshotCurrentPlayer = ""
+            }
+            // 回合切换 (多人: 下载新存档 / 本地过回合) → 旧回合快照全部作废,
+            // 防止撤回回退到别人回合/上一回合的状态 (多人局"等待自己"卡死的根因)
+            if (lastSnapshotCurrentPlayer != gameInfo.currentPlayer) {
+                snapshots.clear()
+                lastSnapshotCurrentPlayer = gameInfo.currentPlayer
             }
             val serialized = UncivFiles.gameInfoToString(gameInfo, updateChecksum = true)
             if (snapshots.peekLast() == serialized) return
             snapshots.addLast(serialized)
             while (snapshots.size > MAX_SNAPSHOTS) snapshots.removeFirst()
-            com.unciv.utils.Log.debug("Undo snapshot #%s (game %s)", snapshots.size, gid)
+            com.unciv.utils.Log.debug("Undo snapshot #%s (game %s, turn %s)", snapshots.size, gid, gameInfo.currentPlayer)
         }
         refreshButton()
     }
@@ -117,5 +124,7 @@ class UndoManager(private val worldScreen: WorldScreen) {
         // 静态栈: 撤回恢复会重建 WorldScreen, 静态保存才能支持连续多级撤回
         private val snapshots = ArrayDeque<String>()
         private var snapshotsGameId = ""
+        // 静态: 撤回重建后 currentPlayer 未变时不清栈 (保留剩余快照支持连续撤回)
+        private var lastSnapshotCurrentPlayer = ""
     }
 }

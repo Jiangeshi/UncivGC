@@ -25,8 +25,8 @@ class UndoButton(private val worldScreen: WorldScreen) : Button(BaseScreen.skin)
     }
 
     fun update() {
-        // 联机局 (含大厅) 撤回会回退到旧快照, 与服务器回合状态可能错位 (出现"等待自己"卡死) — 暂只支持单机
-        isVisible = worldScreen.isPlayersTurn && !worldScreen.gameInfo.gameParameters.isOnlineMultiplayer
+        // 撤回范围限制在本回合内 (快照栈在回合切换时清空) — 单机/联机都安全
+        isVisible = worldScreen.isPlayersTurn
         isDisabled = !worldScreen.undoManager.hasSnapshot
     }
 }
