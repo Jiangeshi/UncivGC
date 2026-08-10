@@ -291,7 +291,8 @@ class LobbyScreen : PickerScreen() {
             try {
                 // 记录房间 ID 和原多人服务器 (观战者退出/恢复也要用)
                 LobbyRoomScreen.activeRoomId = room.id
-                LobbyRoomScreen.activeAmOwner = false
+                // 房主也可能因 auto-join 失效走观战入口 — 要确认房主身份, 不能一律 false (否则跳海/重新开始按钮消失)
+                LobbyRoomScreen.activeAmOwner = LobbyRoomScreen.resolveAmOwner(room)
                 val settings = UncivGame.Current.settings.multiplayer
                 if (settings.getServer() != LobbyRoomScreen.SP_SERVER_URL) {
                     settings.lobbyPreviousServer = settings.getServer()

@@ -113,7 +113,15 @@ class UndoManager(private val worldScreen: WorldScreen) {
         }
         Concurrency.run("UndoRestore") {
             try {
-                UncivGame.Current.loadGame(decoded, AutoPlay(UncivGame.Current.settings.autoPlay))
+                val game = UncivGame.Current.gameInfo ?: return@run
+                if (game.gameParameters.isOnlineMultiplayer) {
+                    // 多人撤回: 恢复快照后与服务器重新对齐 —
+                    // 本回合内服务器存档不变 → 一致则标记最新正常继续; 若服务器已前进 → 跟随服务器
+                    // (防止任何路径下出现"等待自己"卡死)
+                    UncivGame.Current.onlineMultiplayer.downloadGame(decoded)
+                } else {
+                    UncivGame.Current.loadGame(decoded, AutoPlay(UncivGame.Current.settings.autoPlay))
+                }
             } catch (e: Exception) {
                 Concurrency.runOnGLThread {
                     ToastPopup("撤回失败: ${e.message}", worldScreen)

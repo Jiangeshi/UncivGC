@@ -317,11 +317,24 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             doEnterLobbyGame(gameId, room, screen)
         }
 
+        /** 确认自己是否为房主 (列表摘要没有成员明细时拉详情 — 否则房主进游戏后跳海/重新开始按钮会消失) */
+        suspend fun resolveAmOwner(room: LobbyRoom): Boolean {
+            val direct = room.members.firstOrNull { it.playerId == currentPlayerId() }?.isOwner
+            if (direct != null) return direct
+            return try {
+                val detail = LobbyApi.getRoom(room.id)
+                detail.members.firstOrNull { it.playerId == currentPlayerId() }?.isOwner == true
+            } catch (e: Exception) {
+                false
+            }
+        }
+
         private fun doEnterLobbyGame(gameId: String, room: LobbyRoom, screen: BaseScreen?) {
             activeRoomId = room.id
-            activeAmOwner = room.members.firstOrNull { it.playerId == currentPlayerId() }?.isOwner == true
             Concurrency.run("LobbyEnterGame") {
                 try {
+                    // 房主身份: 摘要无成员明细时拉详情 (否则跳海/重新开始按钮消失)
+                    activeAmOwner = resolveAmOwner(room)
                     leavingGame = false
                     // 存档在自己服务器上, 客户端必须切到该服务器才能下载
                     // 记住原多人服务器, 退出大厅局时恢复 (官方多人列表不混入大厅游戏)
