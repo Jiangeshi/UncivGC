@@ -79,7 +79,7 @@ class ModMirrorScreen : PickerScreen() {
         if (closed) return
         modRows.clearChildren()
         if (list.isEmpty()) {
-            modRows.add(if (allEntries.isEmpty()) "镜像里还没有模组" else "没有匹配的模组".toLabel()).pad(20f).row()
+            modRows.add((if (allEntries.isEmpty()) "镜像里还没有模组" else "没有匹配的模组").toLabel()).pad(20f).row()
             return
         }
         val installed = LobbyRoomScreen.installedMods().map { LobbyRoomScreen.normName(it) }.toSet()
