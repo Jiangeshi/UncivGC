@@ -3,10 +3,12 @@ package com.unciv.logic.lobby
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.DefaultRequest
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.timeout
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
@@ -81,7 +83,14 @@ object LobbyApi {
     // TODO: 上架前改为可配置 (设置页)
     const val SERVER_URL = "http://110.40.151.9:8123"
 
+    /** 房间接口鉴权 token (与服务器 LOBBY_TOKEN 一致; 防止陌生客户端建房/进房) */
+    const val LOBBY_TOKEN = "fe645aeabf2862a9d70405643a849bee"
+
     private val client = HttpClient(CIO) {
+        // 所有请求统一带鉴权头 (房间接口必需; 模组下载/健康检查服务器侧不强制)
+        install(DefaultRequest) {
+            header("X-Lobby-Token", LOBBY_TOKEN)
+        }
         install(ContentNegotiation) {
             json(Json { ignoreUnknownKeys = true })
         }
