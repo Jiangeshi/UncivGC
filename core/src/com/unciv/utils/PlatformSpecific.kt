@@ -10,9 +10,6 @@ interface PlatformSpecific {
     /** Android 13+: 申请通知权限 (桌面端无操作) */
     fun requestNotificationPermission() {}
 
-    /** Android 8+: 主动申请「安装未知应用」权限 (无运行时弹窗, 只能拉起系统授权页; 桌面端无操作) */
-    fun requestInstallPermission() {}
-
     /** Install system audio hooks */
     fun installAudioHooks() {}
 
@@ -26,25 +23,4 @@ interface PlatformSpecific {
 
     /** Get system locale, on Android 13+ app-specific locale */
     fun getDefaultLocale(): Locale = Locale.getDefault()
-
-    /** 应用内更新: 打开系统安装界面安装 APK (Android 用 FileProvider; 桌面端返回 false) */
-    fun openApkForInstall(apkPath: String): Boolean = false
-
-    /** 应用内更新: 用系统下载器下载 (Android DownloadManager, 通知栏进度+断点续传; 其他平台返回 -1 = 不支持) */
-    fun enqueueSystemDownload(url: String, fileName: String): Long = -1
-
-    /** 应用内更新: 检查系统下载状态; 下载完成 → 打开安装界面并返回 true; 未完成/失败 → false */
-    fun openSystemDownload(downloadId: Long): Boolean = false
-
-    /** 应用内更新: 查询系统下载状态: 1=成功, 0=下载中, 2=失败, 3=不存在/不支持 */
-    fun systemDownloadStatus(downloadId: Long): Int = 3
-
-    /** 应用内更新: 是否允许安装未知应用 (Android 8+; 其他平台默认允许) */
-    fun canInstallPackages(): Boolean = true
-
-    /** 应用内更新: 打开系统设置里的「安装未知应用」授权页 */
-    fun openInstallSettings() {}
-
-    /** App 从后台恢复时回调 (Android 从设置页返回; 用于权限开启后自动重试安装) */
-    fun onAppResume() {}
 }
