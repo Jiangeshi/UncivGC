@@ -759,7 +759,11 @@ class WorldScreen(
     }
 
     private fun updateMultiplayerStatusButton() {
-        if (gameInfo.gameParameters.isOnlineMultiplayer || game.settings.multiplayer.statusButtonInSinglePlayer) {
+        // UncivGC 联机大厅: 大厅局不显示多人状态按钮 (等待/回合提示由大厅自己的一套逻辑负责)
+        val isLobbyGame = gameInfo.gameParameters.multiplayerServerUrl == com.unciv.ui.screens.lobbyscreens.LobbyRoomScreen.SP_SERVER_URL
+        val shouldShow = !isLobbyGame &&
+            (gameInfo.gameParameters.isOnlineMultiplayer || game.settings.multiplayer.statusButtonInSinglePlayer)
+        if (shouldShow) {
             if (statusButtons.multiplayerStatusButton != null) return
             statusButtons.multiplayerStatusButton = MultiplayerStatusButton(this,
                 game.onlineMultiplayer.multiplayerFiles.getGameByGameId(gameInfo.gameId))

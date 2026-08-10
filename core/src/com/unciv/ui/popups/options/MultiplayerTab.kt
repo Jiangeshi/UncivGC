@@ -36,13 +36,10 @@ internal class MultiplayerTab(
     private val mpServer by game.onlineMultiplayer::multiplayerServer
 
     override fun lateInitialize() {
-        // UncivGC 联机大厅: 房间界面不显示「单机游戏中启用多人状态按钮」选项 (大厅已集成联机, 该选项无意义)
-        if (optionsPopup.game.screen !is com.unciv.ui.screens.lobbyscreens.LobbyRoomScreen) {
-            addCheckbox(
-                "Enable multiplayer status button in singleplayer games",
-                mpSettings::statusButtonInSinglePlayer, updateWorld = true
-            )
-        }
+        addCheckbox(
+            "Enable multiplayer status button in singleplayer games",
+            mpSettings::statusButtonInSinglePlayer, updateWorld = true
+        )
 
         addSeparator()
 
