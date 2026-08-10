@@ -1,14 +1,11 @@
-package com.unciv.app.desktop
+package com.unciv.logic.files
 
 import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.tools.texturepacker.TexturePacker
 import com.badlogic.gdx.utils.Json
-import com.unciv.app.desktop.ImagePacker.packImages
 import com.unciv.utils.Log
 import com.unciv.utils.debug
 import java.io.File
-import java.nio.file.Files
-import java.nio.file.attribute.BasicFileAttributes
 
 /**
  * Entry point: _ImagePacker.[packImages]`()`_
@@ -23,7 +20,7 @@ import java.nio.file.attribute.BasicFileAttributes
  *
  * [TexturePacker] documentation is [here](https://github.com/libgdx/libgdx/wiki/Texture-packer)
  */
-internal object ImagePacker {
+object ImagePacker {
     private const val builtinImageSourcePath = ".."
     private const val builtinAtlasDestinationPath = "."
     private const val modsBasePath = "mods"
@@ -128,16 +125,15 @@ internal object ImagePacker {
             else -> emptySequence()
         }
 
-        // Check if outdated
+        // Check if outdated (Android 兼容: 只用 lastModified, 不用 java.nio.file BasicFileAttributes)
         val atlasFile = File(output, "$packFileName.atlas")
         if (atlasFile.exists() && File(output, "$packFileName.png").exists()) {
             val atlasModTime = atlasFile.lastModified()
-            if (File(input).listTree().none {
-                val attr: BasicFileAttributes = Files.readAttributes(it.toPath(), BasicFileAttributes::class.java)
-                val createdAt: Long = attr.creationTime().toMillis()
-                    (it.extension in imageExtensions || it.name == "TexturePacker.settings")
-                        && (it.lastModified() > atlasModTime || createdAt > atlasModTime)
-            }) return
+            val outdated = File(input).listTree().any {
+                (it.extension in imageExtensions || it.name == "TexturePacker.settings")
+                    && it.lastModified() > atlasModTime
+            }
+            if (!outdated) return
         }
 
         // An image folder can optionally have a TexturePacker settings file

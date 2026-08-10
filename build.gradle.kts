@@ -184,6 +184,11 @@ project(":core") {
         "implementation"(rootProject.libs.coroutines.core)
         "implementation"(rootProject.libs.kotlin.reflect)
 
+        // 模组 Images 图集打包 (Android 也需要 — 手机上自动为模组生成 game.atlas/game.png)
+        "implementation"(rootProject.libs.gdx.tools) {
+            exclude("com.badlogicgames.gdx", "gdx-backend-lwjgl")
+        }
+
         "implementation"(rootProject.libs.purity.annotations)
 
         "api"(rootProject.libs.bundles.ktor.client)

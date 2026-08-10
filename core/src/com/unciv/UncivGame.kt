@@ -7,6 +7,7 @@ import com.unciv.logic.GameInfo
 import com.unciv.logic.UncivShowableException
 import com.unciv.logic.Version
 import com.unciv.logic.civilization.PlayerType
+import com.unciv.logic.files.ImagePacker
 import com.unciv.logic.files.UncivFiles
 import com.unciv.logic.multiplayer.Multiplayer
 import com.unciv.models.metadata.GameSettings
@@ -96,6 +97,20 @@ open class UncivGame(val isConsoleMode: Boolean = false) : Game(), PlatformSpeci
             // Delete temporary files created when downloading mods
             val tempFiles = files.getLocalFile("mods").list().filter { !it.isDirectory && it.name().startsWith("temp-") }
             for (file in tempFiles) file.delete()
+        }
+        // UncivGC: 非桌面端启动时后台为模组打包 Images 图集 (增量: 只有 Images 比 atlas 新才打)
+        // 桌面端在 DesktopLauncher 启动前已同步打包, 跳过避免重复
+        if (Gdx.app.type != Application.ApplicationType.Desktop) {
+            Concurrency.runOnNonDaemonThreadPool("ModImagePacker") {
+                try {
+                    val modsDir = java.io.File(files.getModsFolder().file().absolutePath)
+                    ImagePacker.packImagesPerMod(modsDir.path, modsDir.path)
+                } catch (e: Exception) {
+                    com.unciv.utils.Log.debug("Android 模组图集打包失败: ${e.message}")
+                }
+                // 打包可能改了 atlas — 重新加载图集 (幂等; 若模组图之前因缺 atlas 没显示, 这里补上)
+                launchOnGLThread { ImageGetter.reloadImages() }
+            }
         }
 
         // If this takes too long players, especially with older phones, get ANR problems.
@@ -483,7 +498,7 @@ open class UncivGame(val isConsoleMode: Boolean = false) : Game(), PlatformSpeci
         //endregion
 
         /** UncivGC 构建版本 (应用内更新检查用, 与服务器 apk/version.json 的 version 对比; 发新版时同步改) */
-        const val UGC_VERSION = "4.21.6-ucgc-b2"
+        const val UGC_VERSION = "4.21.6-ucgc-b3"
 
         /** Global reference to the one Gdx.Game instance created by the platform launchers - do not use without checking [isCurrentInitialized] first. */
         // Set by Gdx Game.create callback, or the special cases ConsoleLauncher and unit tests make do with out Gdx and set this themselves.
