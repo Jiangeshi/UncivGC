@@ -14,6 +14,7 @@ import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.ContentType
 import io.ktor.http.contentLength
 import io.ktor.http.contentType
+import io.ktor.http.encodeURLPathPart
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.utils.io.readAvailable
@@ -187,9 +188,10 @@ object LobbyApi {
         })
 
     /** 从服务器镜像下载模组 zip (流式, 带进度) → 本地临时文件路径; 失败返回 null.
-     *  大模组下载单独放宽超时 (全局 35s 对几十 MB 的 zip 不够) */
+     *  大模组下载单独放宽超时 (全局 35s 对几十 MB 的 zip 不够);
+     *  模组名必须 URL 编码 (含空格的模组名, 如 "UCCC Mod", 裸空格会被服务器当坏请求拒掉) */
     suspend fun downloadModFromMirror(modName: String, onProgress: (Int) -> Unit): String? {
-        val response = client.get("$SERVER_URL/api/mods/$modName") {
+        val response = client.get("$SERVER_URL/api/mods/${modName.encodeURLPathPart()}") {
             timeout { requestTimeoutMillis = 300_000 }
         }
         if (!response.status.isSuccess()) return null

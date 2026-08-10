@@ -65,9 +65,12 @@ class ModMirrorScreen : PickerScreen() {
         for (entry in list) {
             val row = Table()
             row.defaults().pad(5f)
-            row.add(entry.name.toLabel(fontSize = 20)).width(280f).left()
-            row.add(sizeText(entry).toLabel()).width(80f)
-            row.add(versionText(entry, state).toLabel(fontSize = 14)).width(190f)
+            // 两行布局: 第一行显示名 (连字符→空格), 第二行灰色小字 (大小/版本/状态) — 避免名称与大小重叠
+            val info = Table()
+            info.defaults().pad(2f)
+            info.add(displayName(entry.name).toLabel(fontSize = 20)).left().row()
+            info.add(detailText(entry, state).toLabel(fontColor = com.badlogic.gdx.graphics.Color.GRAY, fontSize = 14)).left().row()
+            row.add(info).expandX().left()
             val isInstalled = LobbyRoomScreen.normName(entry.name) in installed
             val hasUpdate = isInstalled && state[entry.name] != null && state[entry.name] != entry.version
             val button = when {
@@ -81,16 +84,18 @@ class ModMirrorScreen : PickerScreen() {
         }
     }
 
-    private fun sizeText(entry: ModMirrorEntry): String =
-        if (entry.size > 0) String.format("%.1f MB", entry.size / 1048576.0) else ""
+    /** 显示名: 连字符替换为空格 (Leader-Mission-2-Rising-Power → Leader Mission 2 Rising Power) */
+    private fun displayName(name: String) = name.replace("-", " ")
 
-    private fun versionText(entry: ModMirrorEntry, state: Map<String, String>): String {
+    private fun detailText(entry: ModMirrorEntry, state: Map<String, String>): String {
+        val size = if (entry.size > 0) String.format("%.1f MB", entry.size / 1048576.0) else ""
         val local = state[entry.name]
-        return when {
+        val status = when {
             local == null -> "未安装"
             local == entry.version -> "已是最新"
-            else -> "本地 $local → 新版"
+            else -> "本地 ${local.take(10)} → 有新版本"
         }
+        return listOf(size, status).filter { it.isNotEmpty() }.joinToString(" · ")
     }
 
     private fun downloadOrUpdate(entry: ModMirrorEntry, isUpdate: Boolean) {
