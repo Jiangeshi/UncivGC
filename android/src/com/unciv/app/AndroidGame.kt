@@ -29,10 +29,12 @@ class AndroidGame(private val activity: Activity) : UncivGame() {
     /** 应用内更新: 最近一次系统下载的目标文件 (FileProvider 分享安装用) */
     private var lastDownloadFile: java.io.File? = null
 
-    /** 应用内更新: PackageInstaller 系统级安装 (应用商店同款 API, 比 ACTION_VIEW 兼容性好, 国产 ROM 也弹确认界面); 返回是否成功提交 */
+    /** 应用内更新: PackageInstaller 系统级安装 (应用商店同款 API, 国产 ROM 兼容最好); 记录 APK 路径供失败时兜底 */
     override fun openApkForInstall(apkPath: String): Boolean = try {
         val apkFile = java.io.File(apkPath)
         if (!apkFile.exists() || apkFile.length() == 0L) return false
+        activity.getSharedPreferences("uncivgc_update", android.content.Context.MODE_PRIVATE)
+            .edit().putString("last_apk_path", apkFile.absolutePath).apply()
         val installer = activity.packageManager.packageInstaller
         val params = android.content.pm.PackageInstaller.SessionParams(
             android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL)
