@@ -270,27 +270,45 @@ object LobbyApi {
      *  大模组下载单独放宽超时 (全局 35s 对几十 MB 的 zip 不够);
      *  模组名必须 URL 编码 (含空格的模组名, 如 "UCCC Mod", 裸空格会被服务器当坏请求拒掉) */
     suspend fun downloadModFromMirror(modName: String, onProgress: (Int) -> Unit): String? {
-        val response = client.get("$SERVER_URL/api/mods/${modName.encodeURLPathPart()}") {
-            timeout { requestTimeoutMillis = 300_000 }
-        }
-        if (!response.status.isSuccess()) return null
-        val total = response.contentLength() ?: 0L
-        val temp = com.badlogic.gdx.Gdx.files.local("temp-mod-$modName.zip")
-        val out = java.io.FileOutputStream(temp.file())
-        try {
-            val channel = response.bodyAsChannel()
-            val buf = ByteArray(8192)
+        // java.net.HttpURLConnection — 与 curl 同级, 慢速网络稳定 (Ktor CIO 在到服务器的慢速传输中反复断连)
+        var conn: java.net.HttpURLConnection? = null
+        var out: java.io.FileOutputStream? = null
+        return try {
+            conn = java.net.URL("$SERVER_URL/api/mods/${modName.encodeURLPathPart()}")
+                .openConnection() as java.net.HttpURLConnection
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 300_000
+            conn.instanceFollowRedirects = true
+            if (conn.responseCode !in 200..299) return null
+            val total = conn.contentLength.toLong()
+            val temp = com.badlogic.gdx.Gdx.files.local("temp-mod-$modName.zip")
+            out = java.io.FileOutputStream(temp.file())
+            val input = conn.inputStream
+            val buf = ByteArray(64 * 1024)
             var received = 0L
             while (true) {
-                val read = channel.readAvailable(buf, 0, buf.size)
+                val read = input.read(buf)
                 if (read == -1) break
                 out.write(buf, 0, read)
                 received += read
                 if (total > 0) onProgress(((received * 100) / total).toInt().coerceIn(0, 99))
             }
+            if (total > 0 && received != total) null else temp.path()
+        } catch (e: Exception) {
+            try {
+                com.badlogic.gdx.Gdx.files.local("temp-mod-$modName.zip").delete()
+            } catch (ignored: Exception) {
+            }
+            null
         } finally {
-            out.close()
+            try {
+                out?.close()
+            } catch (ignored: Exception) {
+            }
+            try {
+                conn?.disconnect()
+            } catch (ignored: Exception) {
+            }
         }
-        return temp.path()
     }
 }
