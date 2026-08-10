@@ -365,19 +365,9 @@ class GameStarter private constructor(
             .map { it.value }
             .filter { it.isMajorCiv && it in usedCivNations }
 
-        // UncivGC 允许相同文明: civID 必须全局唯一 (civMap/单位归属/存档加载都按 civID 匹配),
-        // 同文明多人时给后续玩家追加序号 (如 China2), 显示名 civName 不受影响
-        val usedCivIds = mutableSetOf<String>()
-
         for (player in chosenPlayers) {
             val civ = Civilization(player.chosenNation)
             if (civ.isMajorCiv() || civ.isSpectator()) {
-                if (civ.civID in usedCivIds) {
-                    var suffix = 2
-                    while ((civ.civID + suffix) in usedCivIds) suffix++
-                    civ.civID += suffix
-                }
-                usedCivIds.add(civ.civID)
                 civ.playerType = player.playerType
                 civ.playerId = player.playerId
                 civ.playerMinutesBeforeForceResign = newGameParameters.minutesUntilForceResign

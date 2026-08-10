@@ -271,7 +271,7 @@ object StrategicBonusResourcePlacementLogic {
 
         if (modernOptions.any())
             for (cityStateLocation in tileMap.startingLocationsByNation
-                .filterKeys { ruleset.nations[it]?.isCityState == true }.values.map { it.first() }) {
+                .filterKeys { ruleset.nations[it]!!.isCityState }.values.map { it.first() }) {
                 val resourceToPlace = modernOptions.random(rng)
                 totalPlaced[resourceToPlace] =
                     totalPlaced[resourceToPlace]!! + MapRegionResources.tryAddingResourceToTiles(
