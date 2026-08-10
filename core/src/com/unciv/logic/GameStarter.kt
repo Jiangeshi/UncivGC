@@ -309,7 +309,13 @@ class GameStarter private constructor(
             ).mapNotNull {
                 // Resolve random players
                 when {
-                    it.chosenCiv != Constants.random -> Player(ruleset.nations[it.chosenCiv]!!, it.playerType, it.playerId)
+                    it.chosenCiv != Constants.random -> Player(
+                        ruleset.nations[it.chosenCiv]
+                            // UncivGC 容错: 阵容里的文明不在当前规则集 (如 LM2 局选其它模组文明) → 回退随机, 而不是崩溃
+                            ?: (presetRandomNationsPool.removeLastOrNull()
+                                ?: randomNationsPool.removeLastOrNull()
+                                ?: ruleset.nations.values.firstOrNull { it.isMajorCiv })!!,
+                        it.playerType, it.playerId)
                     presetRandomNationsPool.isNotEmpty() -> Player(presetRandomNationsPool.removeLast(), it.playerType, it.playerId)
                     randomNationsPool.isNotEmpty() -> Player(randomNationsPool.removeLast(), it.playerType, it.playerId)
                     else -> null
