@@ -412,6 +412,19 @@ open class UncivGame(val isConsoleMode: Boolean = false) : Game(), PlatformSpeci
     override fun resume() {
         super.resume()
         if (!isInitialized) return // The stuff from Create() is still happening, so the main screen will load eventually
+        // UncivGC: 从「安装未知应用」设置页返回后 — 权限已开且上次安装失败 → 自动重试安装
+        if (Gdx.app.type == Application.ApplicationType.Android) {
+            try {
+                val activity = (Gdx.app as com.badlogic.gdx.backends.android.AndroidApplication).application
+                val prefs = activity.getSharedPreferences("uncivgc_update", android.content.Context.MODE_PRIVATE)
+                if (prefs.getBoolean("install_failed", false) && canInstallPackages()) {
+                    prefs.edit().putBoolean("install_failed", false).apply()
+                    val path = prefs.getString("last_apk_path", null)
+                    if (path != null) openApkForInstall(path)
+                }
+            } catch (ignored: Exception) {
+            }
+        }
         musicController.resumeFromShutdown()
 
         // This is also needed in resume to open links and notifications
