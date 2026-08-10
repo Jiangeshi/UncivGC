@@ -482,6 +482,9 @@ open class UncivGame(val isConsoleMode: Boolean = false) : Game(), PlatformSpeci
         val VERSION = Version("4.21.6", 1242)
         //endregion
 
+        /** UncivGC 构建版本 (应用内更新检查用, 与服务器 apk/version.json 的 version 对比; 发新版时同步改) */
+        const val UGC_VERSION = "4.21.6-ucgc-b1"
+
         /** Global reference to the one Gdx.Game instance created by the platform launchers - do not use without checking [isCurrentInitialized] first. */
         // Set by Gdx Game.create callback, or the special cases ConsoleLauncher and unit tests make do with out Gdx and set this themselves.
         lateinit var Current: UncivGame

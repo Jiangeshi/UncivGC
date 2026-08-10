@@ -177,6 +177,9 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
         optionsTable.onLongPress { openOptionsPopup(withDebug = true) }
         column1.add(optionsTable).row()
 
+        // UncivGC: 应用内更新检查 (每进程一次, 后台检查)
+        com.unciv.ui.screens.lobbyscreens.UpdateChecker.checkAndPrompt(this)
+
         val multiplayerTable = getMenuButton("Multiplayer", "OtherIcons/Multiplayer", KeyboardBinding.Multiplayer)
             { game.pushScreen(MultiplayerScreen()) }
         column2.add(multiplayerTable).row()

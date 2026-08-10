@@ -28,6 +28,14 @@ import kotlinx.serialization.json.JsonElement
 data class ModMirrorEntry(val name: String = "", val size: Long = 0, val updatedAt: Double = 0.0, val md5: String = "", val version: String = "")
 
 @Serializable
+data class UpdateInfo(
+    val version: String = "",
+    val notes: String = "",
+    val apkSize: Long = 0,
+    val apkMd5: String = "",
+)
+
+@Serializable
 data class LobbyMember(
     val nickname: String,
     val playerId: String = "",
@@ -199,6 +207,39 @@ object LobbyApi {
             contentType(ContentType.Application.Json)
             setBody(ModsRequest(nickname, playerId ?: "", missingMods))
         })
+
+    /** 应用更新检查: 服务器 version.json; 失败返回 null (静默跳过) */
+    suspend fun checkUpdate(): UpdateInfo? = try {
+        parse<UpdateInfo>(client.get("$SERVER_URL/api/version"))
+    } catch (e: Exception) {
+        null
+    }
+
+    /** 下载最新 APK → 本地临时文件路径 (流式+进度); 失败 null */
+    suspend fun downloadApk(onProgress: (Int) -> Unit): String? {
+        val response = client.get("$SERVER_URL/api/download/apk") {
+            timeout { requestTimeoutMillis = 600_000 }
+        }
+        if (!response.status.isSuccess()) return null
+        val total = response.contentLength() ?: 0L
+        val temp = com.badlogic.gdx.Gdx.files.local("update-uncivgc.apk")
+        val out = java.io.FileOutputStream(temp.file())
+        try {
+            val channel = response.bodyAsChannel()
+            val buf = ByteArray(64 * 1024)
+            var received = 0L
+            while (true) {
+                val read = channel.readAvailable(buf, 0, buf.size)
+                if (read == -1) break
+                out.write(buf, 0, read)
+                received += read
+                if (total > 0) onProgress(((received * 100) / total).toInt().coerceIn(0, 99))
+            }
+        } finally {
+            out.close()
+        }
+        return temp.path()
+    }
 
     /** 从服务器镜像下载模组 zip (流式, 带进度) → 本地临时文件路径; 失败返回 null.
      *  大模组下载单独放宽超时 (全局 35s 对几十 MB 的 zip 不够);

@@ -26,6 +26,23 @@ import java.util.Locale
 
 class AndroidGame(private val activity: Activity) : UncivGame() {
 
+    /** 应用内更新: FileProvider 共享 APK → 系统安装界面 (Android 7+ 禁止 file:// URI) */
+    override fun openApkForInstall(apkPath: String) {
+        try {
+            val apkFile = java.io.File(apkPath)
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                activity, "${activity.packageName}.fileprovider", apkFile)
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            activity.startActivity(intent)
+        } catch (e: Exception) {
+            UncivGame.Current.settings.save()
+        }
+    }
+
     /** Android 13+ (API 33): 运行时申请通知权限 — U 原本从不申请, 导致通知被系统静默屏蔽 */
     override fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT < 33) return  // Android 12 及以下无需运行时权限
