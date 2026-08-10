@@ -22,7 +22,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 
 @Serializable
-data class ModMirrorEntry(val name: String = "", val size: Long = 0, val updatedAt: Double = 0.0)
+data class ModMirrorEntry(val name: String = "", val size: Long = 0, val updatedAt: Double = 0.0, val md5: String = "", val version: String = "")
 
 @Serializable
 data class LobbyMember(
@@ -186,9 +186,12 @@ object LobbyApi {
             setBody(ModsRequest(nickname, playerId ?: "", missingMods))
         })
 
-    /** 从服务器镜像下载模组 zip (流式, 带进度) → 本地临时文件路径; 失败返回 null */
+    /** 从服务器镜像下载模组 zip (流式, 带进度) → 本地临时文件路径; 失败返回 null.
+     *  大模组下载单独放宽超时 (全局 35s 对几十 MB 的 zip 不够) */
     suspend fun downloadModFromMirror(modName: String, onProgress: (Int) -> Unit): String? {
-        val response = client.get("$SERVER_URL/api/mods/$modName")
+        val response = client.get("$SERVER_URL/api/mods/$modName") {
+            timeout { requestTimeoutMillis = 300_000 }
+        }
         if (!response.status.isSuccess()) return null
         val total = response.contentLength() ?: 0L
         val temp = com.badlogic.gdx.Gdx.files.local("temp-mod-$modName.zip")

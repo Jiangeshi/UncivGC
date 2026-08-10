@@ -13,6 +13,7 @@ import com.unciv.logic.github.GithubAPI.downloadAndExtract
 import com.unciv.logic.github.Zip
 import com.unciv.logic.lobby.LobbyApi
 import com.unciv.logic.lobby.LobbyRoom
+import com.unciv.logic.lobby.ModMirrorEntry
 import com.unciv.logic.map.MapShape
 import com.unciv.logic.map.MapSize
 import com.unciv.logic.multiplayer.storage.UncivServerFileStorage
@@ -40,6 +41,7 @@ import com.unciv.ui.screens.lobbyscreens.LobbyScreen
 import com.unciv.ui.screens.newgamescreen.NewGameScreen
 import com.unciv.utils.Concurrency
 import com.unciv.utils.launchOnGLThread
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -75,6 +77,8 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         var activeRoomId: String? = null
         /** 已提示过缺失的模组集合指纹 (跨实例共享, 避免重建界面后重复弹窗) */
         var promptedMissingMods = ""
+        /** 已提示过的新版模组集合指纹 (跨实例共享, 避免重复弹窗) */
+        var promptedOutdatedMods = ""
         /** 当前用户是否房主 (游戏内菜单「跳海」用, 随同步更新) */
         var activeAmOwner = false
         /** 是否正在通过菜单主动退出 (监视器不重复导航) */
@@ -126,43 +130,136 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             return missing.distinct()
         }
 
+        /** 名字归一化 (小写+去非字母数字): 镜像清单匹配用 (空格/连字符/大小写差异) */
+        fun normName(s: String) = s.lowercase().filter { it.isLetterOrDigit() }
+
+        /** 本地模组版本状态文件 (镜像安装/更新时记录, 用于检测新版) */
+        private fun mirrorStateFile() = UncivGame.Current.files.getLocalFile("mirror_mod_state.json")
+
+        fun loadMirrorState(): Map<String, String> = try {
+            val f = mirrorStateFile()
+            if (f.exists()) {
+                (Json.parseToJsonElement(f.readString()) as? JsonObject)
+                    ?.mapValues { it.value.jsonPrimitive.contentOrNull ?: "" } ?: emptyMap()
+            } else emptyMap()
+        } catch (e: Exception) {
+            emptyMap()
+        }
+
+        private fun saveMirrorState(state: Map<String, String>) = try {
+            val json = buildJsonObject { state.forEach { (k, v) -> put(k, JsonPrimitive(v)) } }
+            mirrorStateFile().writeString(json.toString(), false)
+        } catch (e: Exception) {
+        }
+
+        /** 房间需要的全部模组 (mods + 非标准基础规则集, 如 LM2) */
+        fun requiredMods(settings: Map<String, JsonElement>): List<String> {
+            val gp = settings["gp"] as? JsonObject ?: return emptyList()
+            val standardBases = setOf("Civ V - Vanilla", "Civ V - Gods & Kings")
+            val mods: List<String> = parseMods(settings)
+            val base: String? = gp["baseRuleset"]?.jsonPrimitive?.contentOrNull
+            val extra: List<String> = base?.takeIf { it !in standardBases }?.let { listOf(it) } ?: emptyList()
+            return (mods + extra).distinct()
+        }
+
+        /** 已装但镜像里已有新版的模组 (按本地镜像版本状态对比; 没有状态记录的旧装模组不提示) */
+        fun outdatedMirrorMods(settings: Map<String, JsonElement>, manifest: List<ModMirrorEntry>): List<String> {
+            val needed = requiredMods(settings).map { normName(it) }.toSet()
+            val state = loadMirrorState()
+            return manifest.filter { e ->
+                normName(e.name) in needed && e.version.isNotEmpty() &&
+                    state[e.name] != null && state[e.name] != e.version
+            }.map { it.name }
+        }
+
+        fun md5Of(file: java.io.File): String = try {
+            val md = java.security.MessageDigest.getInstance("MD5")
+            java.io.FileInputStream(file).use { ins ->
+                val buf = ByteArray(65536)
+                while (true) {
+                    val n = ins.read(buf)
+                    if (n < 0) break
+                    md.update(buf, 0, n)
+                }
+            }
+            md.digest().joinToString("") { "%02x".format(it) }
+        } catch (e: Exception) {
+            ""
+        }
+
+        /** 从镜像下载并安装模组 (覆盖已有目录 + md5 校验 + 记录版本状态). 返回失败列表.
+         *  注意: suspend — 需在协程中调用; onProgress 回调由调用方负责切回 GL 线程 */
+        suspend fun installFromMirror(entries: List<ModMirrorEntry>, mods: List<String>, screen: BaseScreen?,
+                                      onProgress: (String, Int) -> Unit): List<String> {
+            val errors = mutableListOf<String>()
+            val byNorm = entries.associateBy { normName(it.name) }
+            val state = loadMirrorState().toMutableMap()
+            val modsFolder = UncivGame.Current.files.getModsFolder()
+            for (modName in mods) {
+                val entry = byNorm[normName(modName)]
+                if (entry == null) {
+                    errors.add("[$modName] 镜像中没有")
+                    continue
+                }
+                try {
+                    // 用镜像里的规范名请求 (服务器文件按镜像名命名)
+                    val zipPath = LobbyApi.downloadModFromMirror(entry.name) { p ->
+                        onProgress(modName, p)
+                    } ?: run {
+                        errors.add("[$modName] 下载失败")
+                        continue
+                    }
+                    // md5 校验 (防传输损坏/坏包)
+                    if (entry.md5.isNotEmpty()) {
+                        val md5 = md5Of(java.io.File(zipPath))
+                        if (md5 != entry.md5) {
+                            Gdx.files.absolute(zipPath).delete()
+                            errors.add("[$modName] 校验失败, 请重试")
+                            continue
+                        }
+                    }
+                    // 覆盖安装: 先删旧目录再解压 (避免旧文件残留)
+                    val old = modsFolder.child(entry.name)
+                    if (old.exists()) old.deleteDirectory()
+                    Zip.extractFolder(Gdx.files.absolute(zipPath), modsFolder)
+                    Gdx.files.absolute(zipPath).delete()
+                    state[entry.name] = entry.version
+                } catch (e: Exception) {
+                    errors.add("[$modName] ${e.message ?: "异常"}")
+                }
+            }
+            saveMirrorState(state)
+            return errors
+        }
+
         /** 通过 GitHub 下载缺失模组 (搜索 + 带进度条), 完成后回调 */
         fun downloadMissingMods(mods: List<String>, screen: BaseScreen?, onDone: () -> Unit) {
             if (screen == null) return
             val popup = Popup(screen)
-            popup.addGoodSizedLabel("正在从 GitHub 下载模组...").row()
+            popup.addGoodSizedLabel("正在下载模组...").row()
             val progressLabel = "0%".toLabel()
             popup.add(progressLabel).row()
             popup.open()
             Concurrency.runOnNonDaemonThreadPool("LobbyDownloadMods") {
                 val errors = mutableListOf<String>()
                 // 镜像清单 (服务器上有备份的模组优先从服务器下载, 国内快); 名字归一化匹配 (空格/连字符)
-                fun normName(s: String) = s.lowercase().filter { it.isLetterOrDigit() }
-                val mirrorMods = try {
-                    LobbyApi.modMirrorManifest().map { normName(it.name) }.toSet()
+                val mirrorEntries = try {
+                    LobbyApi.modMirrorManifest()
                 } catch (e: Exception) {
-                    emptySet()
+                    emptyList()
                 }
+                val mirrorMods = mirrorEntries.map { normName(it.name) }.toSet()
                 try {
                     val cachedRepos = UncivGame.Current.files.loadModCache().mapNotNull { it.repo }
                     val cachedByName = cachedRepos.associateBy { it.name }
                     for (modName in mods) {
-                        // 1. 优先从我们的服务器镜像下载
+                        // 1. 优先从我们的服务器镜像下载 (国内快)
                         if (normName(modName) in mirrorMods) {
-                            var mirrorOk = false
-                            try {
-                                val zipPath = LobbyApi.downloadModFromMirror(modName) { p ->
-                                    launchOnGLThread { progressLabel.setText("[$modName] $p% (服务器)") }
-                                }
-                                if (zipPath != null) {
-                                    Zip.extractFolder(Gdx.files.absolute(zipPath), UncivGame.Current.files.getModsFolder())
-                                    Gdx.files.absolute(zipPath).delete()
-                                    mirrorOk = true
-                                }
-                            } catch (e: Exception) {
-                                mirrorOk = false
+                            val errs = installFromMirror(mirrorEntries, listOf(modName), screen) { m, p ->
+                                launchOnGLThread { progressLabel.setText("[$m] $p% (服务器)") }
                             }
-                            if (mirrorOk) continue
+                            if (errs.isEmpty()) continue
+                            errors.addAll(errs)
                             errors.add("[$modName] 服务器镜像下载失败, 尝试 GitHub...")
                         }
                         // 2. GitHub 回退 (U 自带机制)
@@ -432,6 +529,8 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
     private var voluntarilyLeft = false
     private var lastRoomVersion = -1
     private var currentRoom: LobbyRoom? = null
+    /** 已做过模组新版检查的房间设置指纹 (设置变了才重新检查) */
+    private var lastUpdateCheckedSettings = ""
 
     /** 最近一次应用/推送的服务端设置指纹 (实例级 — 屏幕重建后重新同步, 避免跨实例/跨房间串扰) */
     @Volatile
@@ -725,12 +824,12 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         newGameOptionsTable.touchable = if (isOwner) Touchable.enabled else Touchable.disabled
         mapOptionsTable.touchable = if (isOwner) Touchable.enabled else Touchable.disabled
 
-        // ---- 模组检查: 房主选的模组本地缺了 → 提示通过 GitHub 下载 (同组缺失只提示一次) ----
+        // ---- 模组检查: 房主选的模组本地缺了 → 提示下载 (同组缺失只提示一次) ----
         val missing = missingModsOf(room.settings)
         val missingFp = missing.joinToString(",")
         if (missing.isNotEmpty() && missingFp != promptedMissingMods) {
             promptedMissingMods = missingFp
-            ConfirmPopup(this, "缺少模组: ${missing.joinToString("、")}\n是否通过 GitHub 下载？", "下载") {
+            ConfirmPopup(this, "缺少模组: ${missing.joinToString("、")}\n是否下载？", "下载") {
                 downloadMissingMods(missing, this) {
                     // 下载完原位应用设置 (不重建屏幕, 消闪烁)
                     applyServerSettings(gameSetupInfo, room.settings)
@@ -739,6 +838,49 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                     mapOptionsTable.refreshFromMapParameters()
                 }
             }.open()
+        } else if (missing.isEmpty() && room.settings.isNotEmpty()) {
+            // ---- 模组更新检查: 已装的模组镜像里有新版 → 提示从国内镜像更新 (每套设置只提示一次) ----
+            val settingsFp = room.settings.toString()
+            if (settingsFp != lastUpdateCheckedSettings) {
+                lastUpdateCheckedSettings = settingsFp
+                Concurrency.run("LobbyCheckUpdates") {
+                    try {
+                        val manifest = LobbyApi.modMirrorManifest()
+                        val outdated = outdatedMirrorMods(room.settings, manifest)
+                        if (outdated.isNotEmpty()) {
+                            val outdatedFp = outdated.joinToString(",")
+                            if (outdatedFp != promptedOutdatedMods) {
+                                promptedOutdatedMods = outdatedFp
+                                launchOnGLThread {
+                                    if (!closed) {
+                                        ConfirmPopup(this@LobbyRoomScreen,
+                                            "模组有新版: ${outdated.joinToString("、")}\n是否从国内镜像更新？", "更新") {
+                                            val loading = Popup(this@LobbyRoomScreen)
+                                            loading.addGoodSizedLabel("正在更新...")
+                                            loading.open()
+                                            Concurrency.runOnNonDaemonThreadPool("LobbyUpdateMods") {
+                                                val errs = installFromMirror(manifest, outdated, this@LobbyRoomScreen) { m, p ->
+                                                    launchOnGLThread { loading.reuseWith("[$m] $p%", false) }
+                                                }
+                                                launchOnGLThread {
+                                                    loading.close()
+                                                    if (errs.isNotEmpty()) {
+                                                        ToastPopup(errs.joinToString("\n"), this@LobbyRoomScreen)
+                                                    } else {
+                                                        ToastPopup("模组更新完成", this@LobbyRoomScreen)
+                                                    }
+                                                }
+                                            }
+                                        }.open()
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // 网络失败静默, 下轮设置变化再试
+                    }
+                }
+            }
         }
     }
 
