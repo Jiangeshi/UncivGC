@@ -213,7 +213,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                     if (entry.md5.isNotEmpty()) {
                         val md5 = md5Of(Gdx.files.local(zipPath))
                         if (md5 != entry.md5) {
-                            Gdx.files.absolute(zipPath).delete()
+                            Gdx.files.local(zipPath).delete()
                             errors.add("[$modName] 校验失败, 请重试")
                             continue
                         }
@@ -221,8 +221,9 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                     // 覆盖安装: 先删旧目录再解压 (避免旧文件残留)
                     val old = modsFolder.child(entry.name)
                     if (old.exists()) old.deleteDirectory()
-                    Zip.extractFolder(Gdx.files.absolute(zipPath), modsFolder)
-                    Gdx.files.absolute(zipPath).delete()
+                    val zipHandle = Gdx.files.local(zipPath)
+                    Zip.extractFolder(zipHandle, modsFolder)
+                    zipHandle.delete()
                     state[entry.name] = entry.version
                 } catch (e: Exception) {
                     errors.add("[$modName] ${e.message ?: "异常"}")
