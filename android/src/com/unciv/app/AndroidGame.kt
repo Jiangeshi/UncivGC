@@ -43,6 +43,43 @@ class AndroidGame(private val activity: Activity) : UncivGame() {
         }
     }
 
+    /** 应用内更新: 系统 DownloadManager 下载 (通知栏进度, 断点续传, 慢速网络稳定) */
+    override fun enqueueSystemDownload(url: String, fileName: String): Long = try {
+        val dm = activity.getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+        val request = android.app.DownloadManager.Request(android.net.Uri.parse(url)).apply {
+            setTitle("UncivGC 更新")
+            setDescription(fileName)
+            setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            setDestinationInExternalFilesDir(activity, android.os.Environment.DIRECTORY_DOWNLOADS, fileName)
+        }
+        dm.enqueue(request)
+    } catch (e: Exception) {
+        -1L
+    }
+
+    /** 应用内更新: 下载完成 → 打开安装界面; 未完成/失败 → false */
+    override fun openSystemDownload(downloadId: Long): Boolean = try {
+        val dm = activity.getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+        val cursor = dm.query(android.app.DownloadManager.Query().setFilterById(downloadId))
+        if (!cursor.moveToFirst()) {
+            cursor.close()
+            return false
+        }
+        val status = cursor.getInt(cursor.getColumnIndexOrThrow(android.app.DownloadManager.COLUMN_STATUS))
+        cursor.close()
+        if (status != android.app.DownloadManager.STATUS_SUCCESSFUL) return false
+        val uri = dm.getUriForDownloadedFile(downloadId) ?: return false
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        activity.startActivity(intent)
+        true
+    } catch (e: Exception) {
+        false
+    }
+
     /** Android 13+ (API 33): 运行时申请通知权限 — U 原本从不申请, 导致通知被系统静默屏蔽 */
     override fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT < 33) return  // Android 12 及以下无需运行时权限

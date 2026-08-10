@@ -40,6 +40,31 @@ object UpdateChecker {
     }
 
     private fun downloadAndInstall(info: UpdateInfo, screen: BaseScreen) {
+        // 优先: Android 系统下载器 (通知栏进度, 断点续传, 慢速网络稳定); 返回 -1 的平台 (桌面) 回退到 Ktor 下载
+        val downloadId = UncivGame.Current.enqueueSystemDownload(
+            "${LobbyApi.SERVER_URL}/api/download/apk", "UncivGC-${info.version}.apk")
+        if (downloadId >= 0) {
+            val loading = Popup(screen)
+            loading.addGoodSizedLabel("已开始下载更新\n请下拉通知栏查看下载进度\n下载完成后将自动打开安装...")
+            loading.open()
+            Concurrency.run("UpdateDownload") {
+                val deadline = System.currentTimeMillis() + 10 * 60_000
+                while (System.currentTimeMillis() < deadline) {
+                    Thread.sleep(2000)
+                    val installed = com.unciv.utils.withGLContext { UncivGame.Current.openSystemDownload(downloadId) }
+                    if (installed) {
+                        com.unciv.utils.withGLContext { loading.close() }
+                        return@run
+                    }
+                }
+                com.unciv.utils.withGLContext {
+                    loading.close()
+                    ToastPopup("下载超时，请重试", screen)
+                }
+            }
+            return
+        }
+        // 桌面端: Ktor 下载 + 进度弹窗
         val loading = Popup(screen)
         loading.addGoodSizedLabel("正在下载更新 (0 MB)...")
         loading.open()
