@@ -34,6 +34,8 @@ class LobbyScreen : PickerScreen() {
     private val nicknameLabel = "".toLabel()
     private var lastListFingerprint = ""
     private var autoJoinDone = false
+    /** 自动回房/回游戏节流 (防止每 3 秒重复导航) */
+    private var lastAutoRejoinMs = 0L
 
     private val nickname: String
         get() = UncivGame.Current.settings.lobbyNickname.ifBlank { "玩家" }
@@ -104,7 +106,25 @@ class LobbyScreen : PickerScreen() {
             while (!closed) {
                 try {
                     val rooms = LobbyApi.listRooms()
-                    launchOnGLThread { updateList(rooms) }
+                    // 已在房间/游戏但落在列表页 (初始 auto-join 失败/网络抖动/其他设备) → 自动拉回 (带节流, 避免反复导航)
+                    val myRoom = rooms.firstOrNull { room -> room.memberIds.any { it == playerId } }
+                    if (myRoom != null && game.screen == this@LobbyScreen) {
+                        val now = System.currentTimeMillis()
+                        if (now - lastAutoRejoinMs > 8000) {
+                            lastAutoRejoinMs = now
+                            launchOnGLThread {
+                                if (!closed && game.screen == this@LobbyScreen) {
+                                    if (myRoom.status == "playing" && !myRoom.gameId.isNullOrEmpty()) {
+                                        LobbyRoomScreen.enterLobbyGame(myRoom.gameId!!, myRoom, this@LobbyScreen)
+                                    } else {
+                                        game.pushScreen(LobbyRoomScreen(myRoom.id, myRoom.name))
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        launchOnGLThread { updateList(rooms) }
+                    }
                 } catch (e: Exception) {
                     // 网络失败静默, 下一轮再试
                 }
