@@ -32,8 +32,6 @@ class GameParameters : IsPartOfGameInfoSerialization { // Default values are the
     var espionageEnabled = false
     var noStartBias = false
     var shufflePlayerOrder = false
-    /** UncivGC: 允许相同文明 (多人/单机可同时选同一文明, 高级设置开关) */
-    var allowSameCiv = false
 
     var victoryTypes: ArrayList<String> = arrayListOf()
     var startingEra = "Ancient era"

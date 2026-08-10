@@ -138,7 +138,6 @@ class GameOptionsTable(
             it.addNuclearWeaponsCheckbox()
             it.addEnableEspionageCheckbox()
             it.addNoStartBiasCheckbox()
-            it.addAllowSameCivCheckbox()
             it.addRandomPlayersCheckbox()
             it.addRandomCityStatesCheckbox()
             it.addRandomNationsPoolCheckbox()
@@ -181,11 +180,6 @@ class GameOptionsTable(
     private fun Table.addNoCityRazingCheckbox() =
             addCheckbox("No City Razing", gameParameters.noCityRazing)
             { gameParameters.noCityRazing = it }
-
-    /** UncivGC: 允许相同文明 (选文明列表不再过滤已选文明) */
-    private fun Table.addAllowSameCivCheckbox() =
-            addCheckbox("Allow same civilization", gameParameters.allowSameCiv)
-            { gameParameters.allowSameCiv = it }
 
     private fun Table.addNoBarbariansCheckbox() =
             addCheckbox("No Barbarians", gameParameters.noBarbarians)
