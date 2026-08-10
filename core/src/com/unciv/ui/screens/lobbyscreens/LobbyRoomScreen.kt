@@ -419,15 +419,23 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                             // 跳海: 等待期间新局已开 → 立即切图 (不能 continue 等下一次变化, 会永远等不到)
                             if (confirmed.status == "playing" && !confirmed.gameId.isNullOrEmpty()
                                 && confirmed.gameId != myGameId) {
-                                myGameId = confirmed.gameId!!
-                                UncivGame.Current.onlineMultiplayer.downloadGame(myGameId)
+                                val newGameId = confirmed.gameId!!
+                                try {
+                                    UncivGame.Current.onlineMultiplayer.downloadGame(newGameId)
+                                    myGameId = newGameId  // 下载成功才更新 — 失败则循环重试, 否则永远不再切图
+                                } catch (e: Exception) {
+                                }
                             }
                             continue
                         }
                         // 跳海: 新局已开始 → 自动切图
                         if (room.status == "playing" && !room.gameId.isNullOrEmpty() && room.gameId != myGameId) {
-                            myGameId = room.gameId!!
-                            UncivGame.Current.onlineMultiplayer.downloadGame(myGameId)
+                            val newGameId = room.gameId!!
+                            try {
+                                UncivGame.Current.onlineMultiplayer.downloadGame(newGameId)
+                                myGameId = newGameId  // 下载成功才更新 (失败则下一轮重试, 否则跳海后永远卡在旧图)
+                            } catch (e: Exception) {
+                            }
                         }
                     }
                 } catch (e: Exception) {
