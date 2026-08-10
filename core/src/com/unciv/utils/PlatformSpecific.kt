@@ -41,4 +41,7 @@ interface PlatformSpecific {
 
     /** 应用内更新: 打开系统设置里的「安装未知应用」授权页 */
     fun openInstallSettings() {}
+
+    /** App 从后台恢复时回调 (Android 从设置页返回; 用于权限开启后自动重试安装) */
+    fun onAppResume() {}
 }

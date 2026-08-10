@@ -149,6 +149,19 @@ class AndroidGame(private val activity: Activity) : UncivGame() {
         }
     }
 
+    /** 从设置页返回后: 权限已开且上次安装失败 → 自动重试安装 */
+    override fun onAppResume() {
+        try {
+            val prefs = activity.getSharedPreferences("uncivgc_update", android.content.Context.MODE_PRIVATE)
+            if (prefs.getBoolean("install_failed", false) && canInstallPackages()) {
+                prefs.edit().putBoolean("install_failed", false).apply()
+                val path = prefs.getString("last_apk_path", null)
+                if (path != null) openApkForInstall(path)
+            }
+        } catch (ignored: Exception) {
+        }
+    }
+
     /** Android 13+ (API 33): 运行时申请通知权限 — U 原本从不申请, 导致通知被系统静默屏蔽 */
     override fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT < 33) return  // Android 12 及以下无需运行时权限
