@@ -105,7 +105,7 @@ open class UncivGame(val isConsoleMode: Boolean = false) : Game(), PlatformSpeci
                 try {
                     val modsDir = java.io.File(files.getModsFolder().file().absolutePath)
                     ImagePacker.packImagesPerMod(modsDir.path, modsDir.path)
-                } catch (e: Exception) {
+                } catch (e: Throwable) {  // Error 也要兜 (如 NoClassDefFoundError), 不能崩启动
                     com.unciv.utils.Log.debug("Android 模组图集打包失败: ${e.message}")
                 }
                 // 打包可能改了 atlas — 重新加载图集 (幂等; 若模组图之前因缺 atlas 没显示, 这里补上)

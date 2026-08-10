@@ -1,5 +1,7 @@
 package com.unciv.logic.files
 
+import com.badlogic.gdx.Application
+import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Texture
 import com.badlogic.gdx.tools.texturepacker.TexturePacker
 import com.badlogic.gdx.utils.Json
@@ -101,16 +103,24 @@ object ImagePacker {
     }
 
     // Scan multiple image folders and generate an atlas for each - if outdated
-    fun packImagesPerMod(input: String, output: String, defaultSettings: TexturePacker.Settings = getDefaultSettings()) {
+    fun packImagesPerMod(input: String, output: String, defaultSettings: TexturePacker.Settings? = null) {
         val baseDir = File(input)
         if (!File(baseDir, imagesPathBase).exists() && !File(baseDir, existCheck2).exists()) return  // So we don't run this from within a fat JAR
         val atlasList = mutableListOf<String>()
+        val isDesktop = Gdx.app != null && Gdx.app.type == Application.ApplicationType.Desktop
         for ((file, packFileName) in imageFolders(baseDir)) {
             atlasList += packFileName
-            defaultSettings.filterMag = if (file.endsWith(suffixUsingLinear))
-                Texture.TextureFilter.Linear
-            else Texture.TextureFilter.MipMapLinearLinear
-            packImagesIfOutdated(defaultSettings, file, output, packFileName)
+            if (isDesktop) {
+                // 桌面: 用 libgdx TexturePacker (java.awt 依赖, Android 不可用)
+                val settings = defaultSettings ?: getDefaultSettings()
+                settings.filterMag = if (file.endsWith(suffixUsingLinear))
+                    Texture.TextureFilter.Linear
+                else Texture.TextureFilter.MipMapLinearLinear
+                packImagesIfOutdated(settings, file, output, packFileName)
+            } else {
+                // Android: 用 PixmapPacker (gdx 核心, 无 AWT 依赖)
+                SimpleImagePacker.packIfOutdated(file, output, packFileName)
+            }
         }
         val listFile = File(output, atlasListFileName)
         if (atlasList.isEmpty()) listFile.delete()
