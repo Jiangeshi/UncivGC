@@ -205,6 +205,9 @@ class GameSettings {
     /** used to migrate from older versions of the settings */
     var version: Int? = null
 
+    /** UncivGC: 应用更新 — 系统下载器的下载任务 id (未安装完成前持久保存, 重开 App 接续处理) */
+    var pendingApkDownloadId: Long = -1
+
     init {
         // 26 = Android Oreo. Versions below may display permanent icon in notification bar.
         if (Gdx.app?.type == ApplicationType.Android && Gdx.app.version < 26) {

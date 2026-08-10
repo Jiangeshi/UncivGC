@@ -80,6 +80,46 @@ class AndroidGame(private val activity: Activity) : UncivGame() {
         false
     }
 
+    /** 应用内更新: 查询系统下载状态: 1=成功, 0=下载中, 2=失败, 3=不存在 */
+    override fun systemDownloadStatus(downloadId: Long): Int = try {
+        val dm = activity.getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+        val cursor = dm.query(android.app.DownloadManager.Query().setFilterById(downloadId))
+        if (!cursor.moveToFirst()) {
+            cursor.close()
+            return 3
+        }
+        val status = cursor.getInt(cursor.getColumnIndexOrThrow(android.app.DownloadManager.COLUMN_STATUS))
+        cursor.close()
+        when (status) {
+            android.app.DownloadManager.STATUS_SUCCESSFUL -> 1
+            android.app.DownloadManager.STATUS_FAILED -> 2
+            else -> 0
+        }
+    } catch (e: Exception) {
+        3
+    }
+
+    /** 应用内更新: Android 8+ 检查「安装未知应用」授权 (华为等 ROM 默认拦截, 不授权则安装界面弹不出) */
+    override fun canInstallPackages(): Boolean = try {
+        if (Build.VERSION.SDK_INT < 26) true
+        else activity.packageManager.canRequestPackageInstalls()
+    } catch (e: Exception) {
+        true
+    }
+
+    /** 应用内更新: 打开「安装未知应用」授权设置页 */
+    override fun openInstallSettings() {
+        try {
+            if (Build.VERSION.SDK_INT < 26) return
+            val intent = android.content.Intent(
+                android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                android.net.Uri.parse("package:${activity.packageName}")
+            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            activity.startActivity(intent)
+        } catch (e: Exception) {
+        }
+    }
+
     /** Android 13+ (API 33): 运行时申请通知权限 — U 原本从不申请, 导致通知被系统静默屏蔽 */
     override fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT < 33) return  // Android 12 及以下无需运行时权限
