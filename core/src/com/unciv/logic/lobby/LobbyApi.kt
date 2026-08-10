@@ -76,7 +76,7 @@ data class KickRequest(val nickname: String, val playerId: String, val target: S
 @Serializable
 data class StartRequest(val nickname: String, val playerId: String)
 @Serializable
-data class RestartRequest(val nickname: String, val playerId: String)
+data class RestartRequest(val nickname: String, val playerId: String, val randomizeSeed: Boolean = false)
 @Serializable
 data class ModsRequest(val nickname: String, val playerId: String, val missingMods: List<String> = emptyList())
 @Serializable
@@ -168,11 +168,11 @@ object LobbyApi {
             timeout { requestTimeoutMillis = 180_000 }
         })
 
-    /** 跳海: 删旧存档, 房间重置为等待 (全员自动准备), 随后调用 startGame 直接开新图 */
-    suspend fun restartRoom(roomId: String, nickname: String, playerId: String? = null): ApiResult =
+    /** 跳海/重新开始: 删旧存档, 房间重置为等待 (全员自动准备); randomizeSeed=true (跳海) → 随机新图 */
+    suspend fun restartRoom(roomId: String, nickname: String, playerId: String? = null, randomizeSeed: Boolean = false): ApiResult =
         parse(client.post("$SERVER_URL/api/rooms/$roomId/restart") {
             contentType(ContentType.Application.Json)
-            setBody(RestartRequest(nickname, playerId ?: ""))
+            setBody(RestartRequest(nickname, playerId ?: "", randomizeSeed))
             timeout { requestTimeoutMillis = 60_000 }
         })
 

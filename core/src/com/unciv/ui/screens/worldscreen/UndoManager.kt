@@ -102,7 +102,11 @@ class UndoManager(private val worldScreen: WorldScreen) {
         refreshButton()
         val target = snapshot ?: return
         val decoded = try {
-            UncivFiles.gameInfoFromString(target)
+            UncivFiles.gameInfoFromString(target).also {
+                // 撤回恢复的是本回合内未上传的状态, 本地即最新 (服务器存档在自己回合内不变) —
+                // 不置 true 会被 WorldScreen 判定"不是最新状态" → isPlayersTurn=false → 出现"等待自己"卡死
+                it.isUpToDate = true
+            }
         } catch (e: Exception) {
             undo()  // 快照损坏 → 跳过, 继续回退更早的
             return

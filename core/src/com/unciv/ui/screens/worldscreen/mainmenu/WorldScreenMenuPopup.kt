@@ -152,8 +152,8 @@ class WorldScreenMenuPopup(
         ConfirmPopup(worldScreen, "保存本局全部设置，直接开新图？旧存档将删除。", "跳海") {
             Concurrency.run("LobbyRestartGame") {
                 try {
-                    // 1. 重置房间: 删旧存档, 保留成员/文明/设置, 全员自动准备
-                    val res = LobbyApi.restartRoom(roomId, LobbyRoomScreen.currentNickname(), LobbyRoomScreen.currentPlayerId())
+                    // 1. 重置房间: 删旧存档, 保留成员/文明/设置, 全员自动准备; 跳海要随机新图 → 重置种子
+                    val res = LobbyApi.restartRoom(roomId, LobbyRoomScreen.currentNickname(), LobbyRoomScreen.currentPlayerId(), randomizeSeed = true)
                     if (!res.ok) throw Exception(res.msg)
                     // 2. 直接开始新图 (全员已自动准备)
                     val start = LobbyApi.startGame(roomId, LobbyRoomScreen.currentNickname(), LobbyRoomScreen.currentPlayerId())
