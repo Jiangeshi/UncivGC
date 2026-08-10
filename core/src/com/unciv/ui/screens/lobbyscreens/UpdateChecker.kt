@@ -81,14 +81,14 @@ object UpdateChecker {
             } catch (e: Exception) {
                 null  // 兜底: 任何异常都按下载失败处理, 不崩溃
             }
+            // md5 校验放后台线程 (27MB 哈希计算不卡 GL 线程)
+            val md5 = if (path != null) LobbyRoomScreen.md5Of(Gdx.files.local(path)) else null
             launchOnGLThread {
                 loading.close()
                 if (path == null) {
                     ToastPopup("下载失败，请稍后重试", screen)
                     return@launchOnGLThread
                 }
-                // md5 校验 (防传输损坏)
-                val md5 = LobbyRoomScreen.md5Of(Gdx.files.local(path))
                 if (info.apkMd5.isNotEmpty() && md5 != info.apkMd5) {
                     Gdx.files.local(path).delete()
                     ToastPopup("下载校验失败，请重试", screen)
