@@ -8,8 +8,10 @@ import com.unciv.models.ruleset.RulesetCache
 import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.components.extensions.toTextButton
 import com.unciv.ui.components.input.onActivation
+import com.unciv.ui.components.input.onChange
 import com.unciv.ui.components.input.onClick
 import com.unciv.ui.components.widgets.AutoScrollPane
+import com.unciv.ui.components.widgets.UncivTextField
 import com.unciv.ui.popups.Popup
 import com.unciv.ui.popups.ToastPopup
 import com.unciv.ui.screens.pickerscreens.PickerScreen
@@ -25,10 +27,14 @@ class ModMirrorScreen : PickerScreen() {
 
     private var closed = false
     private val modRows = Table()
+    private var allEntries: List<ModMirrorEntry> = emptyList()
+    private val searchField = UncivTextField("搜索模组")
 
     init {
         setDefaultCloseAction()
 
+        topTable.add(searchField).width(stage.width * 0.55f).padBottom(8f).row()
+        searchField.onChange { applyFilter() }
         scrollPane.setScrollingDisabled(false, true)
         topTable.add(AutoScrollPane(modRows)).fill().row()
 
@@ -43,7 +49,10 @@ class ModMirrorScreen : PickerScreen() {
         Concurrency.run("MirrorRefresh") {
             try {
                 val list = LobbyApi.modMirrorManifest()
-                launchOnGLThread { updateList(list) }
+                launchOnGLThread {
+                    allEntries = list
+                    applyFilter()
+                }
             } catch (e: Exception) {
                 launchOnGLThread {
                     if (closed) return@launchOnGLThread
@@ -54,11 +63,23 @@ class ModMirrorScreen : PickerScreen() {
         }
     }
 
-    private fun updateList(list: List<ModMirrorEntry>) {
+    /** 按搜索框过滤并渲染列表 (支持名称直接匹配 + 归一化匹配, 搜 "lm2" 也能命中) */
+    private fun applyFilter() {
+        if (closed) return
+        val q = searchField.text.trim().lowercase()
+        val normQ = q.filter { it.isLetterOrDigit() }
+        val filtered = allEntries.filter { e ->
+            q.isEmpty() || e.name.lowercase().contains(q) ||
+                LobbyRoomScreen.normName(e.name).contains(normQ)
+        }
+        renderList(filtered)
+    }
+
+    private fun renderList(list: List<ModMirrorEntry>) {
         if (closed) return
         modRows.clearChildren()
         if (list.isEmpty()) {
-            modRows.add("镜像里还没有模组".toLabel()).pad(20f).row()
+            modRows.add(if (allEntries.isEmpty()) "镜像里还没有模组" else "没有匹配的模组".toLabel()).pad(20f).row()
             return
         }
         val installed = LobbyRoomScreen.installedMods().map { LobbyRoomScreen.normName(it) }.toSet()
