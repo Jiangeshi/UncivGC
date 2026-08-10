@@ -243,7 +243,16 @@ object LobbyApi {
             } finally {
                 out.close()
             }
+            // 完整性: 实际收到的字节数与 Content-Length 一致, 否则视为中断
+            if (total > 0 && received != total) return null
             return temp.path()
+        } catch (e: Exception) {
+            // 下载中断 (网络/服务器断开) → 返回 null, 调用方提示重试, 不崩溃
+            try {
+                com.badlogic.gdx.Gdx.files.local("update-uncivgc.apk").delete()
+            } catch (ignored: Exception) {
+            }
+            return null
         } finally {
             downloadClient.close()
         }
