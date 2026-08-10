@@ -78,7 +78,7 @@ class LobbyScreen : PickerScreen() {
         Concurrency.run("LobbyAutoJoin") {
             try {
                 val rooms = LobbyApi.listRooms()
-                val myRoom = rooms.firstOrNull { room -> room.members.any { it.playerId == playerId } }
+                val myRoom = rooms.firstOrNull { room -> room.memberIds.any { it == playerId } }
                 launchOnGLThread {
                     autoJoinDone = true
                     rightSideButton.enable()
@@ -214,11 +214,10 @@ class LobbyScreen : PickerScreen() {
         }
     }
 
-    /** 房间的规则集+模组显示文本 */
+    /** 房间的规则集+模组显示文本 (列表摘要字段) */
     private fun lobbyModsText(room: LobbyRoom): String {
-        val gp = room.settings["gp"] as? JsonObject ?: return ""
-        val base = gp["baseRuleset"]?.jsonPrimitive?.contentOrNull ?: return ""
-        val mods = (gp["mods"] as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
+        val base = room.baseRuleset ?: return ""
+        val mods = room.mods
         return if (mods.isEmpty()) "规则集: $base" else "规则集: $base  模组: ${mods.joinToString("、")}"
     }
 
@@ -293,7 +292,7 @@ class LobbyScreen : PickerScreen() {
             try {
                 val rooms = LobbyApi.listRooms()
                 // 已在房间但落在列表页 (如返回键退房失败/其他设备建房) → 自动拉回房间/游戏
-                val myRoom = rooms.firstOrNull { room -> room.members.any { it.playerId == playerId } }
+                val myRoom = rooms.firstOrNull { room -> room.memberIds.any { it == playerId } }
                 launchOnGLThread {
                     if (!closed && myRoom != null && game.screen !is LobbyRoomScreen) {
                         if (myRoom.status == "playing" && !myRoom.gameId.isNullOrEmpty()) {

@@ -49,6 +49,10 @@ data class LobbyRoom(
     val owner: String? = null,
     val settings: Map<String, JsonElement> = emptyMap(),
     val members: List<LobbyMember> = emptyList(),
+    // 列表摘要字段 (列表接口不返回完整 settings/members, 见 lobby_server.room_summary)
+    val memberIds: List<String> = emptyList(),
+    val baseRuleset: String? = null,
+    val mods: List<String> = emptyList(),
 )
 
 @Serializable
