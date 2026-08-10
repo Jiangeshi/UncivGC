@@ -99,7 +99,7 @@ object SimpleImagePacker {
         sb.append("format: RGBA8888\n")
         sb.append("filter: Linear,Linear\n")
         sb.append("repeat: none\n")
-        val rects = sortedMapOf<String, com.badlogic.gdx.math.Rectangle>()
+        val rects = sortedMapOf<String, com.badlogic.gdx.graphics.g2d.PixmapPacker.PixmapPackerRectangle>()
         page.rects.forEach { entry -> rects[entry.key] = entry.value }
         for ((name, rect) in rects) {
             sb.append(name).append('\n')
