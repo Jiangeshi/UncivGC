@@ -342,7 +342,7 @@ object LuxuryResourcePlacementLogic {
     ) {
         val rng = GameContext(gameInfo = tileMap.gameInfo).stateBasedRandom("LuxuryResourcePlacementLogic.placeLuxuriesAtMinorCivStartLocations")
         for (startLocation in tileMap.startingLocationsByNation
-            .filterKeys { ruleset.nations[it]!!.isCityState }.map { it.value.first() }) {
+            .filterKeys { ruleset.nations[it]?.isCityState == true }.map { it.value.first() }) {
             val region = regions.firstOrNull { startLocation in it.tiles }
             val tilesToCheck = startLocation.getTilesInDistanceRange(1..2)
             // 75% probability that we first attempt to place a "city state" luxury, then a random or regional one
