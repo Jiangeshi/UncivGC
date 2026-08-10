@@ -29,17 +29,28 @@ class AndroidGame(private val activity: Activity) : UncivGame() {
     /** 应用内更新: 最近一次系统下载的目标文件 (FileProvider 分享安装用) */
     private var lastDownloadFile: java.io.File? = null
 
-    /** 应用内更新: FileProvider 共享 APK → 系统安装界面 (Android 7+ 禁止 file:// URI); 返回是否成功打开 */
+    /** 应用内更新: PackageInstaller 系统级安装 (应用商店同款 API, 比 ACTION_VIEW 兼容性好, 国产 ROM 也弹确认界面); 返回是否成功提交 */
     override fun openApkForInstall(apkPath: String): Boolean = try {
         val apkFile = java.io.File(apkPath)
-        val uri = androidx.core.content.FileProvider.getUriForFile(
-            activity, "${activity.packageName}.fileprovider", apkFile)
-        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-            setDataAndType(uri, "application/vnd.android.package-archive")
-            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (!apkFile.exists() || apkFile.length() == 0L) return false
+        val installer = activity.packageManager.packageInstaller
+        val params = android.content.pm.PackageInstaller.SessionParams(
+            android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+        val session = installer.createSession(params)
+        val out = session.openWrite("uncivgc_update", 0, apkFile.length())
+        val input = java.io.FileInputStream(apkFile)
+        val buf = ByteArray(64 * 1024)
+        while (true) {
+            val n = input.read(buf)
+            if (n < 0) break
+            out.write(buf, 0, n)
         }
-        activity.startActivity(intent)
+        input.close()
+        session.fsync(out)
+        out.close()
+        // 结果回调 (InstallResultReceiver 静态注册)
+        val resultIntent = android.content.Intent(activity, InstallResultReceiver::class.java)
+        session.commit(resultIntent)
         true
     } catch (e: Exception) {
         false

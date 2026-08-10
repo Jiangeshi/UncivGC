@@ -54,6 +54,9 @@
 
         <receiver android:name=".CopyToClipboardReceiver"  android:exported="false" />
 
+        <!-- 应用内更新: PackageInstaller 安装结果回调 -->
+        <receiver android:name=".InstallResultReceiver"  android:exported="false" />
+
         <!-- 应用内更新: FileProvider 共享 APK 给系统安装器 (Android 7+ 禁止 file:// URI) -->
         <provider
             android:name="androidx.core.content.FileProvider"
