@@ -490,6 +490,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             g.maxTurns = gp.i("maxTurns", g.maxTurns)
             g.numberOfCityStates = gp.i("numberOfCityStates", g.numberOfCityStates)
             g.noCityRazing = gp.b("noCityRazing", g.noCityRazing)
+            g.allowSameCiv = gp.b("allowSameCiv", g.allowSameCiv)
 
             if (mp != null) {
                 val m = setup.mapParameters
@@ -905,6 +906,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             put("maxTurns", gp.maxTurns)
             put("numberOfCityStates", gp.numberOfCityStates)
             put("noCityRazing", gp.noCityRazing)
+            put("allowSameCiv", gp.allowSameCiv)
         }
         val mpJson = buildJsonObject {
             put("type", mp.type)

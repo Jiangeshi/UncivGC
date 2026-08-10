@@ -473,7 +473,9 @@ class PlayerPickerTable(
         previousScreen.ruleset.nations.values.asSequence()
             .filter { it.isMajorCiv }
             .filterNot { it.hasUnique(UniqueType.WillNotBeChosenForNewGames) }
-            .filter { it.name == dontSkipNation || gameParameters.players.none { player -> player.chosenCiv == it.name } }
+            // UncivGC: allowSameCiv 开启时不再过滤已选文明 (可多人选同一文明)
+            .filter { it.name == dontSkipNation || gameParameters.allowSameCiv
+                || gameParameters.players.none { player -> player.chosenCiv == it.name } }
 
     /**
      * Returns a list of available friends.
