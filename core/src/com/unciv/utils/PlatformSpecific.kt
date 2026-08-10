@@ -24,8 +24,8 @@ interface PlatformSpecific {
     /** Get system locale, on Android 13+ app-specific locale */
     fun getDefaultLocale(): Locale = Locale.getDefault()
 
-    /** 应用内更新: 打开系统安装界面安装 APK (Android 用 FileProvider; 桌面端无操作) */
-    fun openApkForInstall(apkPath: String) {}
+    /** 应用内更新: 打开系统安装界面安装 APK (Android 用 FileProvider; 桌面端返回 false) */
+    fun openApkForInstall(apkPath: String): Boolean = false
 
     /** 应用内更新: 用系统下载器下载 (Android DownloadManager, 通知栏进度+断点续传; 其他平台返回 -1 = 不支持) */
     fun enqueueSystemDownload(url: String, fileName: String): Long = -1

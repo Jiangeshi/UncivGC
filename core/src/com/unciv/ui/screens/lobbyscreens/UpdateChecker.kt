@@ -13,8 +13,8 @@ import com.unciv.utils.launchOnGLThread
 
 /**
  * UncivGC 应用内更新检查: 启动进主菜单时后台检查服务器 version,
- * 有新版 → 弹窗下载 (进度) → md5 校验 → 系统安装 (FileProvider).
- * 每进程只提示一次, 避免反复弹窗.
+ * 有新版 → 弹窗下载 (App 内 HttpURLConnection, 稳定) → md5 校验 → FileProvider 系统安装.
+ * 任何失败都有明确提示, 不静默.
  */
 object UpdateChecker {
 
@@ -24,30 +24,6 @@ object UpdateChecker {
         if (checkedThisProcess) return
         checkedThisProcess = true
         Concurrency.run("UpdateCheck") {
-            // 1. 接续上次未完成的系统下载 (下载中退出 App / 没装完, 重开也能接上, 不重复下载)
-            val pendingId = UncivGame.Current.settings.pendingApkDownloadId
-            if (pendingId >= 0) {
-                val status = UncivGame.Current.systemDownloadStatus(pendingId)
-                when (status) {
-                    1 -> {  // 下载完成 → 直接打开安装
-                        val installed = com.unciv.utils.withGLContext { UncivGame.Current.openSystemDownload(pendingId) }
-                        if (installed) {
-                            UncivGame.Current.settings.pendingApkDownloadId = -1
-                            UncivGame.Current.settings.save()
-                        }
-                        return@run
-                    }
-                    0 -> {  // 还在下载 → 提示查看通知栏, 不重复下载
-                        launchOnGLThread { ToastPopup("更新正在下载中，请下拉通知栏查看进度", screen) }
-                        return@run
-                    }
-                    else -> {  // 失败/不存在 → 清除, 走正常检查
-                        UncivGame.Current.settings.pendingApkDownloadId = -1
-                        UncivGame.Current.settings.save()
-                    }
-                }
-            }
-            // 2. 正常版本检查
             val info = LobbyApi.checkUpdate() ?: return@run
             val localVersion = com.unciv.UncivGame.UGC_VERSION
             if (info.version.isNotEmpty() && info.version == localVersion) return@run
@@ -64,7 +40,7 @@ object UpdateChecker {
     }
 
     private fun downloadAndInstall(info: UpdateInfo, screen: BaseScreen) {
-        // Android 8+: 先确保「安装未知应用」已授权 — 否则下载完也弹不出安装界面 (华为等 ROM 默认拦截)
+        // Android 8+: 先确保「安装未知应用」已授权 — 否则装不了 (华为等 ROM 默认拦截)
         if (!UncivGame.Current.canInstallPackages()) {
             ConfirmPopup(
                 screen,
@@ -73,38 +49,7 @@ object UpdateChecker {
             ) { UncivGame.Current.openInstallSettings() }.open()
             return
         }
-        // 优先: Android 系统下载器 (通知栏进度, 断点续传, 慢速网络稳定); 返回 -1 的平台 (桌面) 回退到 Ktor 下载
-        val downloadId = UncivGame.Current.enqueueSystemDownload(
-            "${LobbyApi.SERVER_URL}/api/download/apk", "UncivGC-${info.version}.apk")
-        if (downloadId >= 0) {
-            // 记住下载任务 — 中途退出 App 重开后接续处理
-            UncivGame.Current.settings.pendingApkDownloadId = downloadId
-            UncivGame.Current.settings.save()
-            val loading = Popup(screen)
-            loading.addGoodSizedLabel("已开始下载更新\n请下拉通知栏查看下载进度\n下载完成后将自动打开安装...")
-            loading.open()
-            Concurrency.run("UpdateDownload") {
-                val deadline = System.currentTimeMillis() + 10 * 60_000
-                while (System.currentTimeMillis() < deadline) {
-                    Thread.sleep(2000)
-                    val installed = com.unciv.utils.withGLContext { UncivGame.Current.openSystemDownload(downloadId) }
-                    if (installed) {
-                        UncivGame.Current.settings.pendingApkDownloadId = -1
-                        UncivGame.Current.settings.save()
-                        com.unciv.utils.withGLContext { loading.close() }
-                        return@run
-                    }
-                }
-                UncivGame.Current.settings.pendingApkDownloadId = -1
-                UncivGame.Current.settings.save()
-                com.unciv.utils.withGLContext {
-                    loading.close()
-                    ToastPopup("下载超时，请重试", screen)
-                }
-            }
-            return
-        }
-        // 桌面端: Ktor 下载 + 进度弹窗
+        // App 内直接下载 (HttpURLConnection — 与 curl 同级, 慢速网络稳定) + FileProvider 安装
         val loading = Popup(screen)
         loading.addGoodSizedLabel("正在下载更新 (0 MB)...")
         loading.open()
@@ -115,7 +60,7 @@ object UpdateChecker {
                     launchOnGLThread {
                         val mb = String.format("%.1f", received / 1048576.0)
                         val pct = if (total > 0) " (${(received * 100 / total)}%)" else ""
-                        loading.reuseWith("正在下载更新 $mb MB / $totalMb MB$pct\n请保持网络连接...", false)
+                        loading.reuseWith("正在下载更新 $mb MB / $totalMb MB$pct\n请保持 App 在前台...", false)
                     }
                 }
             } catch (e: Exception) {
@@ -126,7 +71,7 @@ object UpdateChecker {
             launchOnGLThread {
                 loading.close()
                 if (path == null) {
-                    ToastPopup("下载失败，请稍后重试", screen)
+                    ToastPopup("下载失败（网络中断或服务器繁忙），请稍后重试", screen)
                     return@launchOnGLThread
                 }
                 if (info.apkMd5.isNotEmpty() && md5 != info.apkMd5) {
@@ -135,7 +80,12 @@ object UpdateChecker {
                     return@launchOnGLThread
                 }
                 ToastPopup("下载完成，正在打开安装...", screen)
-                UncivGame.Current.openApkForInstall(Gdx.files.local(path).file().absolutePath)
+                val opened = UncivGame.Current.openApkForInstall(Gdx.files.local(path).file().absolutePath)
+                if (!opened) {
+                    ToastPopup(
+                        "无法自动打开安装界面\n请手动安装: ${Gdx.files.local(path).file().absolutePath}",
+                        screen)
+                }
             }
         }
     }

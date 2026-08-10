@@ -29,21 +29,20 @@ class AndroidGame(private val activity: Activity) : UncivGame() {
     /** 应用内更新: 最近一次系统下载的目标文件 (FileProvider 分享安装用) */
     private var lastDownloadFile: java.io.File? = null
 
-    /** 应用内更新: FileProvider 共享 APK → 系统安装界面 (Android 7+ 禁止 file:// URI) */
-    override fun openApkForInstall(apkPath: String) {
-        try {
-            val apkFile = java.io.File(apkPath)
-            val uri = androidx.core.content.FileProvider.getUriForFile(
-                activity, "${activity.packageName}.fileprovider", apkFile)
-            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "application/vnd.android.package-archive")
-                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            activity.startActivity(intent)
-        } catch (e: Exception) {
-            UncivGame.Current.settings.save()
+    /** 应用内更新: FileProvider 共享 APK → 系统安装界面 (Android 7+ 禁止 file:// URI); 返回是否成功打开 */
+    override fun openApkForInstall(apkPath: String): Boolean = try {
+        val apkFile = java.io.File(apkPath)
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            activity, "${activity.packageName}.fileprovider", apkFile)
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
         }
+        activity.startActivity(intent)
+        true
+    } catch (e: Exception) {
+        false
     }
 
     /** 应用内更新: 系统 DownloadManager 下载 (通知栏进度, 断点续传, 慢速网络稳定); 记住目标路径供 FileProvider 分享 */
