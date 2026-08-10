@@ -305,7 +305,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             if (missing.isNotEmpty()) {
                 if (screen != null) {
                     Concurrency.runOnGLThread("LobbyModPrompt") {
-                        ConfirmPopup(screen, "缺少模组: ${missing.joinToString("、")}\n是否通过 GitHub 下载？", "下载") {
+                        ConfirmPopup(screen, "缺少模组: ${missing.joinToString("、")}\n是否下载？", "下载") {
                             downloadMissingMods(missing, screen) {
                                 enterLobbyGame(gameId, room, screen)
                             }
@@ -772,20 +772,6 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         gameSetupInfo.gameParameters.players = newPlayers
         playerPickerTable.update()
 
-        // ---- 文明被规则集变更重置 (无效文明→Random) → 自动同步回服务器 (否则生成会用旧文明失败) ----
-        val myMember = room.members.firstOrNull { it.playerId == playerId }
-        if (myMember != null) {
-            val myPlayer = newPlayers.firstOrNull { it.playerId == playerId }
-            if (myPlayer != null && myPlayer.chosenCiv != (myMember.civ ?: "Random")) {
-                Concurrency.run("LobbySyncCivReset") {
-                    try {
-                        LobbyApi.setCiv(roomId, nickname, myPlayer.chosenCiv, playerId)
-                    } catch (e: Exception) {
-                    }
-                }
-            }
-        }
-
         // ---- 按钮状态 ----
         val me = room.members.firstOrNull { it.playerId == playerId }
         val isOwner = me?.isOwner == true
@@ -870,6 +856,8 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                                                     if (errs.isNotEmpty()) {
                                                         ToastPopup(errs.joinToString("\n"), this@LobbyRoomScreen)
                                                     } else {
+                                                        // 重载规则集缓存, 让当前房间立即用上新版模组
+                                                        RulesetCache.loadRulesets()
                                                         ToastPopup("模组更新完成", this@LobbyRoomScreen)
                                                     }
                                                 }
