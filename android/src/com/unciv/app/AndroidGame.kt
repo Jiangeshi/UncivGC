@@ -36,8 +36,8 @@ class AndroidGame(private val activity: Activity) : UncivGame() {
         val installer = activity.packageManager.packageInstaller
         val params = android.content.pm.PackageInstaller.SessionParams(
             android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL)
-        val session = installer.createSession(params)
-        val out = session.openWrite("uncivgc_update", 0, apkFile.length())
+        val session: android.content.pm.PackageInstaller.Session = installer.createSession(params)
+        val out: java.io.OutputStream = session.openWrite("uncivgc_update", 0, apkFile.length())
         val input = java.io.FileInputStream(apkFile)
         val buf = ByteArray(64 * 1024)
         while (true) {
