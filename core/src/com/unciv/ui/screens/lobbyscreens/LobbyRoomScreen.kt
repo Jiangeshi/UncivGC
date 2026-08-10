@@ -218,9 +218,11 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                             continue
                         }
                     }
-                    // 覆盖安装: 先删旧目录再解压 (避免旧文件残留)
-                    val old = modsFolder.child(entry.name)
-                    if (old.exists()) old.deleteDirectory()
+                    // 覆盖安装: 先删同模组的旧目录再解压 (目录名可能因历史版本不同 — 连字符/空格, 按归一化名匹配)
+                    val entryNorm = normName(entry.name)
+                    for (child in modsFolder.list()) {
+                        if (normName(child.name()) == entryNorm) child.deleteDirectory()
+                    }
                     val zipHandle = Gdx.files.local(zipPath)
                     Zip.extractFolder(zipHandle, modsFolder)
                     zipHandle.delete()

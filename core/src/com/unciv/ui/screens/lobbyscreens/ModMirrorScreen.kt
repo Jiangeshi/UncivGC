@@ -4,6 +4,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.unciv.logic.lobby.LobbyApi
 import com.unciv.logic.lobby.ModMirrorEntry
 import com.unciv.models.translations.tr
+import com.unciv.models.ruleset.RulesetCache
 import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.components.extensions.toTextButton
 import com.unciv.ui.components.input.onActivation
@@ -113,6 +114,8 @@ class ModMirrorScreen : PickerScreen() {
                     ToastPopup(errs.joinToString("\n"), this@ModMirrorScreen)
                 } else {
                     ToastPopup("${entry.name} ${if (isUpdate) "更新" else "安装"}完成", this@ModMirrorScreen)
+                    // 立即重新加载规则集缓存, 游戏里马上能选到这个模组 (否则要重启 App)
+                    RulesetCache.loadRulesets()
                 }
                 refresh()
             }
