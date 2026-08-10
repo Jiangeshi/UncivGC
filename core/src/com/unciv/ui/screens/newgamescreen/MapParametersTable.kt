@@ -119,6 +119,13 @@ class MapParametersTable(
         seedTextField.value = mapParameters.seed
     }
 
+    /** UncivGC 大厅: 服务器设置同步后只刷新显示值 (种子/滑块), 不重建表格.
+     *  重建 (update) 会 reseed 随机化种子, 还会打断正在拖动的滑块 / 重置折叠状态 */
+    fun refreshValues() {
+        if (::seedTextField.isInitialized) seedTextField.value = mapParameters.seed
+        for (entry in advancedSliders) entry.key.value = entry.value()
+    }
+
     private fun addMapShapeSelectBox() {
         val mapShapes = MapShape.allValues
         val rng = GameContext().stateBasedRandom("MapParametersTable.addMapShapeSelectBox", System.currentTimeMillis().toInt())
@@ -354,13 +361,13 @@ class MapParametersTable(
     }
 
     private fun addMirrorSelectBox() {
-        if (! forMapEditor)
-            return
-        
-        // only support these, as the rest seem buggy
+        // UncivGC: 单机/联机大厅/地图编辑器都显示镜像 (fork 引擎的 mirror 已解除限制, 全部类型可用)
         val options = listOf(
             MirroringType.none,
-            MirroringType.leftright
+            MirroringType.leftright,
+            MirroringType.topbottom,
+            MirroringType.fourway,
+            MirroringType.aroundCenterTile,
         )
         
         mirrorSelectBox = TranslatedSelectBox(options, mapParameters.mirroring)
@@ -434,8 +441,10 @@ class MapParametersTable(
     }
 
     private fun addAdvancedSettings() {
+        // 大厅模式不持久化折叠状态: 持久化 (persistenceID) 会让用户折叠过一次后,
+        // 每次设置同步重建都保持折叠 → 表现为「高级设置打不开/调不了」
         val expander = ExpanderTab("Advanced Settings", startsOutOpened = defaultExpanded, defaultPad = 0f,
-            persistenceID = if (defaultExpanded) "LobbyMapAdvanced" else null) {
+            persistenceID = null) {
             addAdvancedControls(it)
         }
         add(expander).padTop(10f).colspan(2).growX().row()

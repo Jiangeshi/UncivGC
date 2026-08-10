@@ -7,7 +7,9 @@ import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.civilization.PlayerType
 import com.unciv.logic.civilization.PopupAlert
 import com.unciv.logic.files.MapSaver
+import com.unciv.logic.map.HexCoord
 import com.unciv.logic.map.HexMath
+import com.unciv.logic.map.MirroringType
 import com.unciv.logic.map.TileMap
 import com.unciv.logic.map.mapgenerator.MapGenerator
 import com.unciv.logic.map.tile.Tile
@@ -399,7 +401,9 @@ class GameStarter private constructor(
         val bestCivs = allCivs.filter { (!it.isCityState || it.civID in civNamesWithStartingLocations)
             && !it.isSpectator()}
         val bestLocations = getStartingLocations(bestCivs, landTilesInBigEnoughGroup, startScores)
-        for ((civ, tile) in bestLocations) {
+        // UncivGC: 镜像出生点 — 地图镜像时, 把后放置文明的起点改为先前起点的镜像位置 (地形已镜像, 位置等效)
+        val bestLocationsToUse = mirrorStartingLocations(bestLocations)
+        for ((civ, tile) in bestLocationsToUse) {
             // A nation can have multiple marked starting locations, of which the first pass may have chosen one
             tileMap.removeStartingLocations(civ.civID)
             // Mark the best start locations so we remember them for the second pass
@@ -410,6 +414,41 @@ class GameStarter private constructor(
 
         // no starting units for Barbarians and Spectators
         determineStartingUnitsAndLocations(gameInfo, startingLocations, ruleSet)
+    }
+
+    /** UncivGC: 镜像出生点 — 只镜像主要文明 (城邦保持随机/原位置), 按地图镜像类型把镜像位置分配给后续文明 (四向=4人完美对称).
+     *  位置无效(海洋/界外)时保留随机起点, 不强制 */
+    private fun mirrorStartingLocations(locations: HashMap<Civilization, Tile>): HashMap<Civilization, Tile> {
+        val mirroring = tileMap.mapParameters.mirroring
+        if (mirroring == MirroringType.none) return locations
+        val result = HashMap(locations)
+        val majors = locations.entries.filter { !it.key.isCityState }.sortedBy { it.key.civID }
+        fun mirrorPositions(position: HexCoord): List<HexCoord> = when (mirroring) {
+            MirroringType.leftright -> listOf(HexCoord.of(position.y, position.x))
+            MirroringType.topbottom -> listOf(HexCoord.of(-position.y, -position.x))
+            MirroringType.aroundCenterTile -> listOf(HexCoord.of(-position.x, -position.y))
+            MirroringType.fourway -> listOf(
+                HexCoord.of(position.y, position.x),
+                HexCoord.of(-position.y, -position.x),
+                HexCoord.of(-position.x, -position.y),
+            )
+            else -> emptyList()
+        }
+        var index = 0
+        while (index < majors.size) {
+            val (civ, tile) = majors[index]
+            result[civ] = tile
+            val mirrors = mirrorPositions(tile.position)
+                .mapNotNull { tileMap.getIfTileExistsOrNull(it.x, it.y) }
+                .filter { it.isLand }
+            for (mirrorTile in mirrors) {
+                index++
+                if (index >= majors.size) break
+                result[majors[index].key] = mirrorTile
+            }
+            index++
+        }
+        return result
     }
 
     private fun removeAncientRuinsNearStartingLocation(startingLocation: Tile) {

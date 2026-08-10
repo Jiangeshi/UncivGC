@@ -53,7 +53,7 @@ import com.unciv.ui.components.widgets.AutoScrollPane as ScrollPane
  * @param blockWidth sets a width for the Civ "blocks". If too small a third of the stage is used.
  */
 /** UncivGC 联机大厅: 成员在房间里的状态 (昵称/准备/房主), 由房间界面喂给玩家表 */
-class LobbyPlayerStatus(val nickname: String, val ready: Boolean, val isOwner: Boolean)
+class LobbyPlayerStatus(val nickname: String, val ready: Boolean, val isOwner: Boolean, val missingMods: List<String> = emptyList())
 
 class PlayerPickerTable(
     val previousScreen: IPreviousScreen,
@@ -149,6 +149,27 @@ class PlayerPickerTable(
                     update()
                 }
             playerListTable.add(addPlayerButton).pad(10f)
+        }
+
+        // UncivGC 大厅: 加号只允许房主添加 AI 电脑 (不能加玩家, 玩家由房间成员管理)
+        if (lobbyMode && !locked && lobbyAmOwner?.invoke() == true
+            && gameParameters.players.size < gameBasics.nations.values.count { it.isMajorCiv }) {
+            val addAiButton = "+".toLabel(ImageGetter.CHARCOAL, 30)
+                .apply { this.setAlignment(Align.center) }
+                .surroundWithCircle(50f)
+                .onClick {
+                    val availableCiv = getAvailablePlayerCivs().firstOrNull()
+                    val player = if (noRandom || isRandomNumberOfPlayers) {
+                        if (availableCiv != null) Player(availableCiv) else null
+                    } else Player()  // 随机文明 AI
+                    if (player != null) {
+                        player.playerType = PlayerType.AI
+                        gameParameters.players.add(player)
+                        update()
+                        // 设置自动推送 (aiPlayers 变化由 LobbySettingsSync 检测)
+                    }
+                }
+            playerListTable.add(addAiButton).pad(10f)
         }
 
         // enable start game when at least one human player and they're not alone
@@ -285,36 +306,65 @@ class PlayerPickerTable(
         )
         block.defaults().pad(3f)
 
-        // 行1: 原版文明区 (图标+文明名, 真实图片) + 原版玩家类型按钮 (Human, 按了没反应)
+        // 行1: 原版文明区 (图标+文明名, 真实图片) + 玩家类型按钮 (成员=Human 禁点; AI电脑=移除按钮)
+        val isAI = player.playerType == PlayerType.AI && player.playerId.isEmpty()
+        val amOwner = lobbyAmOwner?.invoke() == true
         val nationTable = getNationTable(player)
         nationTable.onClick {
             if (locked) return@onClick
-            if (!canEdit) return@onClick
+            // 自己可以选文明; 房主可以替 AI 选文明
+            if (!canEdit && !(isAI && amOwner)) return@onClick
             popupNationPicker(player, noRandom)
         }
         block.add(nationTable).left()
-        // 弹性占位: Human 按钮永远贴块右边缘 (否则按钮位置随文明名长度漂移)
+        // 弹性占位: 右侧按钮永远贴块右边缘 (否则按钮位置随文明名长度漂移)
         block.add("".toLabel()).expandX()
-        // 原版同款按钮, 但不挂任何点击行为 (大厅里全是人类玩家, 不需要切换)
-        val playerTypeButton = player.playerType.name.toTextButton()
-        block.add(playerTypeButton).width(100f).pad(5f).right().row()
+        if (isAI) {
+            // AI 电脑: 移除按钮 (房主可删)
+            val removeButton = "-".toLabel(ImageGetter.CHARCOAL, 30)
+                .apply { this.setAlignment(Align.center) }
+                .surroundWithCircle(50f)
+                .onClick {
+                    gameParameters.players.remove(player)
+                    update()
+                    // 设置自动推送 (aiPlayers 变化由 LobbySettingsSync 检测)
+                }
+            block.add(removeButton).pad(5f).row()
+        } else {
+            // 原版同款按钮, 但不挂任何点击行为 (大厅里全是人类玩家, 不需要切换)
+            val playerTypeButton = player.playerType.name.toTextButton()
+            block.add(playerTypeButton).width(100f).pad(5f).right().row()
+        }
 
         // 行2: 玩家昵称 (纯显示) + 踢出 (仅房主看别人的块, 永远贴右对齐)
         val nickRow = Table()
         nickRow.defaults().padRight(6f)
-        val displayName = status?.nickname?.takeIf { it.isNotEmpty() }
-            ?: player.playerId.take(8)
+        val displayName = when {
+            isAI -> "AI 电脑"
+            status?.nickname?.takeIf { it.isNotEmpty() } != null -> status!!.nickname
+            else -> player.playerId.take(8)
+        }
         nickRow.add(("玩家昵称: $displayName" + if (status?.isOwner == true) "（房主）" else "").toLabel())
         nickRow.add("".toLabel()).expandX()
-        if (lobbyAmOwner?.invoke() == true && !canEdit) {
+        // 踢出只对真人成员显示 (AI 有自己的减号移除按钮)
+        if (amOwner && !canEdit && !isAI) {
             val kickButton = "踢出".toTextButton()
             kickButton.onClick { lobbyOnKick?.invoke(player) }
             nickRow.add(kickButton)
         }
         block.add(nickRow).fillX().row()
 
-        // 行3: 准备状态
-        block.add((if (status?.ready == true) "✅ 已准备" else "⏳ 未准备").toLabel()).left().row()
+        // 行3: 准备状态 (+ 缺模组警告) — AI 不显示 (行2 已有 "AI 电脑"); 不用 emoji, 用文字+颜色; 长文字换行防溢出
+        val missingMods = status?.missingMods.orEmpty()
+        if (!isAI) {
+            val statusLabel = when {
+                missingMods.isNotEmpty() -> "缺模组: ${missingMods.joinToString("、")}".toLabel().apply { setFontColor(Color.RED) }
+                status?.ready == true -> "已准备".toLabel().apply { setFontColor(Color.GREEN) }
+                else -> "未准备".toLabel().apply { setFontColor(Color.RED) }
+            }
+            statusLabel.wrap = true
+            block.add(statusLabel).left().fillX().row()
+        }
 
         return block
     }

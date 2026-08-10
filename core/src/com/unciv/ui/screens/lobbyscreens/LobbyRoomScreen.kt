@@ -71,18 +71,12 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         /** UncivGC 自建存档服务器 (与 gen_lobby.py 一致): 存档上传/下载都走这里 */
         const val SP_SERVER_URL = "http://110.40.151.9:30123"
 
-        /** 已应用的服务器设置指纹 (跨实例共享, 避免重建循环) */
-        var lastAppliedSettings = ""
-        /** 房主已推送的设置指纹 (自动推送去重用) */
-        var lastPushedSettings = ""
         /** 当前所在房间 ID (游戏内菜单「退出房间」用) */
         var activeRoomId: String? = null
         /** 已提示过缺失的模组集合指纹 (跨实例共享, 避免重建界面后重复弹窗) */
         var promptedMissingMods = ""
         /** 当前用户是否房主 (游戏内菜单「跳海」用, 随同步更新) */
         var activeAmOwner = false
-        /** 进大厅局前用户配置的多人服务器 (退出时恢复, 避免污染官方多人列表) */
-        var previousServer: String? = null
         /** 是否正在通过菜单主动退出 (监视器不重复导航) */
         var leavingGame = false
         /** 游戏内房间监视器是否在跑 (防止重复启动) */
@@ -142,9 +136,10 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             popup.open()
             Concurrency.runOnNonDaemonThreadPool("LobbyDownloadMods") {
                 val errors = mutableListOf<String>()
-                // 镜像清单 (服务器上有备份的模组优先从服务器下载, 国内快)
+                // 镜像清单 (服务器上有备份的模组优先从服务器下载, 国内快); 名字归一化匹配 (空格/连字符)
+                fun normName(s: String) = s.lowercase().filter { it.isLetterOrDigit() }
                 val mirrorMods = try {
-                    LobbyApi.modMirrorManifest().map { it.name }.toSet()
+                    LobbyApi.modMirrorManifest().map { normName(it.name) }.toSet()
                 } catch (e: Exception) {
                     emptySet()
                 }
@@ -153,7 +148,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                     val cachedByName = cachedRepos.associateBy { it.name }
                     for (modName in mods) {
                         // 1. 优先从我们的服务器镜像下载
-                        if (modName in mirrorMods) {
+                        if (normName(modName) in mirrorMods) {
                             var mirrorOk = false
                             try {
                                 val zipPath = LobbyApi.downloadModFromMirror(modName) { p ->
@@ -232,7 +227,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                     // 记住原多人服务器, 退出大厅局时恢复 (官方多人列表不混入大厅游戏)
                     val settings = UncivGame.Current.settings.multiplayer
                     if (settings.getServer() != SP_SERVER_URL) {
-                        previousServer = settings.getServer()
+                        settings.lobbyPreviousServer = settings.getServer()
                     }
                     settings.setServer(SP_SERVER_URL)
                     // 官方客户端不会自动注册: 先确保存档服务器上有本设备账号 (PUT /auth 幂等, 密码失效可自愈)
@@ -248,12 +243,13 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             }
         }
 
-        /** 恢复进大厅局之前的多人服务器设置 */
+        /** 恢复进大厅局之前的多人服务器设置 (持久化, App 强杀后启动也能恢复) */
         fun restoreMultiplayerServer() {
-            val prev = previousServer ?: return
-            previousServer = null
+            val settings = UncivGame.Current.settings.multiplayer
+            val prev = settings.lobbyPreviousServer ?: return
+            settings.lobbyPreviousServer = null
             try {
-                UncivGame.Current.settings.multiplayer.setServer(prev)
+                settings.setServer(prev)
             } catch (e: Exception) {
             }
         }
@@ -307,6 +303,12 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                                 }
                                 break
                             }
+                            // 跳海: 等待期间新局已开 → 立即切图 (不能 continue 等下一次变化, 会永远等不到)
+                            if (confirmed.status == "playing" && !confirmed.gameId.isNullOrEmpty()
+                                && confirmed.gameId != myGameId) {
+                                myGameId = confirmed.gameId!!
+                                UncivGame.Current.onlineMultiplayer.downloadGame(myGameId)
+                            }
                             continue
                         }
                         // 跳海: 新局已开始 → 自动切图
@@ -349,6 +351,18 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                 val mods = (modsJson as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull }
                 if (mods != null) g.mods = LinkedHashSet(mods)
             }
+            // AI 电脑列表 (房主在房间界面添加, 随设置同步)
+            gp["aiPlayers"]?.let { arr ->
+                val aiCivs = (arr as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: return@let
+                val kept = g.players.filterNot { it.playerType == PlayerType.AI && it.playerId.isEmpty() }
+                val newAIs = aiCivs.map { civ ->
+                    Player().apply {
+                        playerType = PlayerType.AI
+                        chosenCiv = civ
+                    }
+                }
+                g.players = ArrayList(kept + newAIs)
+            }
             g.difficulty = gp.s("difficulty") ?: g.difficulty
             g.speed = gp.s("speed") ?: g.speed
             g.startingEra = gp.s("startingEra") ?: g.startingEra
@@ -376,6 +390,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                     MapSize.Predefined.values().firstOrNull { it.name == sizeName }?.let { m.mapSize = MapSize(it) }
                 }
                 m.mapResources = mp.s("mapResources") ?: m.mapResources
+                m.mirroring = mp.s("mirroring") ?: m.mirroring
                 m.worldWrap = mp.b("worldWrap", m.worldWrap)
                 m.legendaryStart = mp.b("legendaryStart", m.legendaryStart)
                 m.strategicBalance = mp.b("strategicBalance", m.strategicBalance)
@@ -395,11 +410,28 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         }
     }
 
+    /** 设置局部刷新: 只更新设置表格内容, 不重建整个界面 (消闪烁) */
+    private fun refreshSettingsTables() {
+        newGameOptionsTable.update()
+        mapOptionsTable.refreshFromMapParameters()
+        // 成员/文明列由 syncRoom 刷新
+    }
+
     private var closed = false
     private var enteredGame = false
     private var voluntarilyLeft = false
     private var lastRoomVersion = -1
     private var currentRoom: LobbyRoom? = null
+
+    /** 最近一次应用/推送的服务端设置指纹 (实例级 — 屏幕重建后重新同步, 避免跨实例/跨房间串扰) */
+    @Volatile
+    private var lastAppliedSettings = ""
+    /** 最近一次推送的设置指纹 (房主自动推送去重) */
+    @Volatile
+    private var lastPushedSettings = ""
+    /** 是否已从服务器同步过设置 (同步前禁止推送 — 防止屏幕重建后把本地默认值推上去覆盖房间设置) */
+    @Volatile
+    private var serverSynced = false
 
     private val nickname: String
         get() = UncivGame.Current.settings.lobbyNickname.ifBlank { "玩家" }
@@ -459,7 +491,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         // ---- 成员状态喂给玩家表 (昵称/准备/房主) ----
         playerPickerTable.lobbyGetStatus = { p ->
             currentRoom?.members?.firstOrNull { it.playerId == p.playerId }
-                ?.let { LobbyPlayerStatus(it.nickname, it.ready, it.isOwner) }
+                ?.let { LobbyPlayerStatus(it.nickname, it.ready, it.isOwner, it.missingMods) }
         }
 
         // ---- 当前用户是否房主 (踢出按钮显示条件) ----
@@ -476,7 +508,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                 try {
                     val room = currentRoom
                     val me = room?.members?.firstOrNull { it.playerId == playerId }
-                    if (me?.isOwner == true && room?.status == "waiting") {
+                    if (me?.isOwner == true && room?.status == "waiting" && serverSynced) {
                         val payload = buildSettingsPayload()
                         val fp = payload.toString()
                         if (fp != lastPushedSettings) {
@@ -495,6 +527,27 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             }
         }
 
+        // ---- 模组统一性: 上报自己缺哪些模组 (服务器开始前检查); 变更才上报 ----
+        var lastReportedMods = ""
+        Concurrency.run("LobbyModsReport") {
+            while (!closed) {
+                try {
+                    val room = currentRoom
+                    if (room != null && room.status == "waiting") {
+                        val missing = missingModsOf(room.settings)
+                        val fp = missing.joinToString(",")
+                        if (fp != lastReportedMods) {
+                            lastReportedMods = fp
+                            LobbyApi.reportMods(roomId, nickname, playerId, missing)
+                        }
+                    }
+                } catch (e: Exception) {
+                    // 静默重试
+                }
+                Thread.sleep(2000)
+            }
+        }
+
         // ---- 轮询(长轮询): 成员/文明/状态/设置实时同步 + 开始后进入游戏 ----
         Concurrency.run("LobbyRoomPoll") {
             var since = -1
@@ -503,14 +556,59 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                     // 长轮询: 房间一变就立即返回, 25 秒无变化返回 null
                     val room = LobbyApi.waitRoom(roomId, since) ?: continue
                     since = room.version
-                    // 设置同步: 服务器设置变了 → 用新设置重建房间界面
+                    // 设置同步: 服务器设置变了 → 局部刷新设置表格 (规则集/模组变了才整屏重建, 消闪烁)
+                    if (room.settings.isEmpty()) {
+                        // 房间还没有任何设置 (刚创建) — 视为已同步, 房主可以直接推
+                        serverSynced = true
+                    }
                     val settingsStr = room.settings.toString()
                     if (settingsStr != lastAppliedSettings && room.settings.isNotEmpty()) {
                         lastAppliedSettings = settingsStr
-                        launchOnGLThread {
-                            if (!closed) game.replaceCurrentScreen(LobbyRoomScreen(roomId, initialName, room.settings))
+                        serverSynced = true
+                        val gp = room.settings["gp"] as? JsonObject
+                        val rulesetChanged = gp?.s("baseRuleset") != null && gp.s("baseRuleset") != ruleset.name
+                        val newMods = (gp?.get("mods") as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull }?.toSet()
+                        val modsChanged = gp?.get("mods") != null && newMods != gameSetupInfo.gameParameters.mods
+                        if (rulesetChanged || modsChanged) {
+                            // 新设置需要但本地没装的模组 → 先下载再原位应用 (避免加载失败回退 G&K, 看起来"没切换")
+                            val pendingMissing = missingModsOf(room.settings)
+                            if (pendingMissing.isNotEmpty()) {
+                                val missingFp = pendingMissing.joinToString(",")
+                                if (missingFp != promptedMissingMods) {
+                                    promptedMissingMods = missingFp
+                                    launchOnGLThread {
+                                        if (!closed) {
+                                            ConfirmPopup(this@LobbyRoomScreen, "缺少模组: ${pendingMissing.joinToString("、")}\n是否下载？", "下载") {
+                                                downloadMissingMods(pendingMissing, this@LobbyRoomScreen) {
+                                                    // 装好后原位应用新设置 (不重建屏幕)
+                                                    applyServerSettings(gameSetupInfo, room.settings)
+                                                    tryUpdateRuleset(updateUI = true)
+                                                    updateTables()
+                                                    mapOptionsTable.refreshFromMapParameters()
+                                                }
+                                            }.open()
+                                        }
+                                    }
+                                }
+                            } else {
+                                // 模组齐全 → 原位应用 (重载规则集 + 刷新各表, 不重建屏幕)
+                                launchOnGLThread {
+                                    if (!closed) {
+                                        applyServerSettings(gameSetupInfo, room.settings)
+                                        tryUpdateRuleset(updateUI = true)
+                                        updateTables()
+                                        mapOptionsTable.refreshFromMapParameters()
+                                    }
+                                }
+                            }
+                        } else {
+                            launchOnGLThread {
+                                if (!closed) {
+                                    applyServerSettings(gameSetupInfo, room.settings)
+                                    refreshSettingsTables()
+                                }
+                            }
                         }
-                        break
                     }
                     launchOnGLThread { syncRoom(room) }
                     if (room.status == "playing" && !room.gameId.isNullOrEmpty() && !enteredGame) {
@@ -527,7 +625,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                         break
                     }
                 } catch (e: Exception) {
-                    if (e.message?.contains("404") == true) {
+                    if (e.message?.contains("404") == true || e.message?.contains("房间不存在") == true) {
                         launchOnGLThread {
                             ToastPopup("房间已解散", this@LobbyRoomScreen)
                             game.popScreen()
@@ -556,6 +654,8 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             p.chosenCiv = m.civ ?: "Random"
             newPlayers.add(p)
         }
+        // 保留 AI 电脑 (房主在房间界面添加的, 不随成员同步被清掉)
+        newPlayers.addAll(existing.filter { it.playerType == PlayerType.AI && it.playerId.isEmpty() })
         gameSetupInfo.gameParameters.players = newPlayers
         playerPickerTable.update()
 
@@ -581,12 +681,17 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         readyButton.isVisible = room.status == "waiting"
         startLobbyButton.isVisible = room.status == "waiting" || room.status == "starting"
         val allReady = room.members.isNotEmpty() && room.members.all { it.ready }
+        val allModsReady = room.members.all { it.missingMods.isEmpty() }
+        val enoughPlayers = room.members.size >= 2
+        val canStart = allReady && allModsReady && enoughPlayers
         if (isOwner) {
-            // 房主: 全员准备后才能开始
-            startLobbyButton.isDisabled = !allReady
+            // 房主: 至少2人 + 全员准备 + 全员模组齐全后才能开始
+            startLobbyButton.isDisabled = !canStart
             startLobbyButton.setText(
                 when {
                     room.status == "starting" -> "地图生成中..."
+                    !enoughPlayers -> "等待其他玩家加入..."
+                    !allModsReady -> "等待模组就绪..."
                     !allReady -> "等待全员准备..."
                     else -> "开始游戏"
                 }
@@ -597,6 +702,8 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             startLobbyButton.setText(
                 when {
                     room.status == "starting" -> "地图生成中..."
+                    !enoughPlayers -> "等待其他玩家加入..."
+                    !allModsReady -> "等待模组就绪..."
                     !allReady -> "等待全员准备..."
                     else -> "等待开始游戏"
                 }
@@ -614,8 +721,11 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             promptedMissingMods = missingFp
             ConfirmPopup(this, "缺少模组: ${missing.joinToString("、")}\n是否通过 GitHub 下载？", "下载") {
                 downloadMissingMods(missing, this) {
-                    // 下载完重建房间界面 (模组勾选/文明列表刷新)
-                    game.replaceCurrentScreen(LobbyRoomScreen(roomId, initialName, room.settings))
+                    // 下载完原位应用设置 (不重建屏幕, 消闪烁)
+                    applyServerSettings(gameSetupInfo, room.settings)
+                    tryUpdateRuleset(updateUI = true)
+                    updateTables()
+                    mapOptionsTable.refreshFromMapParameters()
                 }
             }.open()
         }
@@ -634,6 +744,9 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                 effectiveMods.add(gp.baseRuleset)
             }
             put("mods", JsonArray(effectiveMods.map { JsonPrimitive(it) }))
+            // 房主添加的 AI 电脑 (随设置同步给全员 + 生成端)
+            val aiPlayers = gp.players.filter { it.playerType == PlayerType.AI && it.playerId.isEmpty() }.map { it.chosenCiv }
+            put("aiPlayers", JsonArray(aiPlayers.map { JsonPrimitive(it) }))
             put("difficulty", gp.difficulty)
             put("speed", gp.speed)
             put("startingEra", gp.startingEra)
@@ -654,6 +767,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             put("shape", mp.shape)
             put("mapSize", mp.mapSize.name)
             put("mapResources", mp.mapResources)
+            put("mirroring", mp.mirroring)
             put("worldWrap", mp.worldWrap)
             put("legendaryStart", mp.legendaryStart)
             put("strategicBalance", mp.strategicBalance)
@@ -677,7 +791,8 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         val target = currentRoom?.members?.firstOrNull { it.playerId == targetPlayerId } ?: return
         Concurrency.run("LobbyKick") {
             try {
-                val result = LobbyApi.kick(roomId, nickname, target.nickname, playerId)
+                // 按 playerId 踢人 (昵称不唯一, 按昵称可能踢错人)
+                val result = LobbyApi.kick(roomId, nickname, targetPlayerId, playerId)
                 launchOnGLThread { ToastPopup(result.msg, this@LobbyRoomScreen) }
             } catch (e: Exception) {
                 launchOnGLThread { ToastPopup("踢出失败: ${e.message}", this@LobbyRoomScreen) }
@@ -732,8 +847,8 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         }
     }
 
-        /** 在存档服务器上注册/刷新本设备账号, 并保存密码到设置 (下载/上传回合都要用) */
-    override fun recreate(): BaseScreen = LobbyRoomScreen(roomId, initialName)
+    /** 重建屏幕 (旋转/键盘等) 时带上当前设置, 避免闪回默认值; 推送循环等 serverSynced 同步后才推, 不会覆盖房间设置 */
+    override fun recreate(): BaseScreen = LobbyRoomScreen(roomId, initialName, buildSettingsPayload())
 
     override fun dispose() {
         closed = true

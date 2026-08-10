@@ -114,6 +114,16 @@ open class UncivGame(val isConsoleMode: Boolean = false) : Game(), PlatformSpeci
         Display.setScreenMode(settings.screenMode, settings)
         setAsRootScreen(GameStartScreen())  // NOT dependent on any atlas or skin
 
+        // UncivGC: 上次大厅局被强杀时, 多人服务器还停留在大厅存档服务器 → 启动时自动恢复
+        try {
+            val mp = settings.multiplayer
+            if (mp.getServer() == com.unciv.ui.screens.lobbyscreens.LobbyRoomScreen.SP_SERVER_URL) {
+                mp.setServer(mp.lobbyPreviousServer ?: Constants.uncivXyzServer)
+                mp.lobbyPreviousServer = null
+            }
+        } catch (e: Exception) {
+        }
+
         musicController = MusicController()  // early, but at this point does only copy volume from settings
         installAudioHooks()
 

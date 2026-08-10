@@ -229,7 +229,7 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
         }
         runAndMeasure("spreadAncientRuins") { spreadAncientRuins(map) }
 
-        if (isMapEditor)
+        if (isMapEditor || map.mapParameters.mirroring != MirroringType.none)
             mirror(map)
         
         // Map generation may generate incompatible terrain/feature combinations

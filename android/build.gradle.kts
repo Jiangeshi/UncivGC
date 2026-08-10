@@ -58,6 +58,15 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file(System.getProperty("user.home") + "/.openclaw/workspace/keystores/uncivgc-release.jks")
+            storePassword = (project.findProperty("UNIVGC_STORE_PASS") ?: "") as String
+            keyAlias = "uncivgc"
+            keyPassword = (project.findProperty("UNIVGC_KEY_PASS") ?: "") as String
+        }
+    }
+
     buildTypes {
         debug {
             isDebuggable = true
@@ -67,6 +76,8 @@ android {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro")
             isDebuggable = false
+            // UncivGC: 正式签名 (密钥在仓库外, 密码在 ~/.gradle/gradle.properties)
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
@@ -79,7 +90,7 @@ android {
     }
     androidResources {
         // Don't add local save files and fonts to release, obviously
-        ignoreAssetsPattern = "!SaveFiles:!fonts:!maps:!music:!mods"
+        ignoreAssetsPattern = "!SaveFiles"  // UncivGC: 模组内置 (自带 fonts/maps/music 子目录), 只防误打包本地存档
     }
     buildFeatures {
         renderScript = true

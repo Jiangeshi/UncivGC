@@ -127,8 +127,8 @@ class GameOptionsTable(
         val expander = ExpanderTab(
             "Advanced Settings",
             startsOutOpened = advancedOpenByDefault || gameParameters.enableRandomNationsPool,
-            // UncivGC 大厅: 独立 ID, 避免被历史开合状态覆盖 (保证默认展开)
-            persistenceID = if (advancedOpenByDefault) "LobbyGameOptionsTable.Advanced" else "GameOptionsTable.Advanced"
+            // UncivGC 大厅: 不持久化折叠状态 — 否则折叠过一次后每次设置同步重建都保持折叠 (表现为高级设置调不了)
+            persistenceID = if (advancedOpenByDefault) null else "GameOptionsTable.Advanced"
         ) {
             it.defaults().pad(5f, 0f)
             it.addNoCityRazingCheckbox()

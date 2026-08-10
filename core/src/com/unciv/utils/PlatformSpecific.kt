@@ -7,6 +7,9 @@ interface PlatformSpecific {
     /** Notifies player that his multiplayer turn started */
     fun notifyTurnStarted() {}
 
+    /** Android 13+: 申请通知权限 (桌面端无操作) */
+    fun requestNotificationPermission() {}
+
     /** Install system audio hooks */
     fun installAudioHooks() {}
 

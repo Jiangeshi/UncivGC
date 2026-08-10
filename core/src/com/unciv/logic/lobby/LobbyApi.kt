@@ -5,6 +5,7 @@ import io.ktor.client.call.body
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -31,6 +32,7 @@ data class LobbyMember(
     val ready: Boolean = false,
     val isOwner: Boolean = false,
     val joinedAt: Double = 0.0,
+    val missingMods: List<String> = emptyList(),
 )
 
 @Serializable
@@ -63,11 +65,13 @@ data class CivRequest(val nickname: String, val playerId: String, val civ: Strin
 @Serializable
 data class LeaveRequest(val nickname: String, val playerId: String)
 @Serializable
-data class KickRequest(val nickname: String, val playerId: String, val target: String)
+data class KickRequest(val nickname: String, val playerId: String, val target: String = "", val targetPlayerId: String = "")
 @Serializable
 data class StartRequest(val nickname: String, val playerId: String)
 @Serializable
 data class RestartRequest(val nickname: String, val playerId: String)
+@Serializable
+data class ModsRequest(val nickname: String, val playerId: String, val missingMods: List<String> = emptyList())
 @Serializable
 data class SettingsRequest(val nickname: String, val playerId: String, val settings: Map<String, JsonElement>)
 
@@ -136,16 +140,18 @@ object LobbyApi {
             setBody(CivRequest(nickname, playerId ?: "", civ))
         })
 
-    suspend fun kick(roomId: String, nickname: String, target: String, playerId: String? = null): ApiResult =
+    suspend fun kick(roomId: String, nickname: String, targetPlayerId: String, playerId: String? = null): ApiResult =
         parse(client.post("$SERVER_URL/api/rooms/$roomId/kick") {
             contentType(ContentType.Application.Json)
-            setBody(KickRequest(nickname, playerId ?: "", target))
+            setBody(KickRequest(nickname, playerId ?: "", target = "", targetPlayerId = targetPlayerId))
         })
 
     suspend fun startGame(roomId: String, nickname: String, playerId: String? = null): ApiResult =
         parse(client.post("$SERVER_URL/api/rooms/$roomId/start") {
             contentType(ContentType.Application.Json)
             setBody(StartRequest(nickname, playerId ?: ""))
+            // 地图生成可能较久 (服务器端), 单独放宽超时
+            timeout { requestTimeoutMillis = 180_000 }
         })
 
     /** 跳海: 删旧存档, 房间重置为等待 (全员自动准备), 随后调用 startGame 直接开新图 */
@@ -153,6 +159,7 @@ object LobbyApi {
         parse(client.post("$SERVER_URL/api/rooms/$roomId/restart") {
             contentType(ContentType.Application.Json)
             setBody(RestartRequest(nickname, playerId ?: ""))
+            timeout { requestTimeoutMillis = 60_000 }
         })
 
     /** 观战: 加入进行中的房间, 返回 gameId (不进成员列表) */
@@ -171,6 +178,13 @@ object LobbyApi {
     /** 模组镜像清单 */
     suspend fun modMirrorManifest(): List<ModMirrorEntry> =
         parse(client.get("$SERVER_URL/api/mods"))
+
+    /** 上报自己缺失的模组 (服务器开始游戏前的统一性检查) */
+    suspend fun reportMods(roomId: String, nickname: String, playerId: String? = null, missingMods: List<String>): ApiResult =
+        parse(client.post("$SERVER_URL/api/rooms/$roomId/mods") {
+            contentType(ContentType.Application.Json)
+            setBody(ModsRequest(nickname, playerId ?: "", missingMods))
+        })
 
     /** 从服务器镜像下载模组 zip (流式, 带进度) → 本地临时文件路径; 失败返回 null */
     suspend fun downloadModFromMirror(modName: String, onProgress: (Int) -> Unit): String? {

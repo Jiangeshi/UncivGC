@@ -387,6 +387,9 @@ class GameSettings {
             }
         }
 
+        /** UncivGC: 进大厅局前的多人服务器 (退出时恢复; App 强杀后启动时自动恢复) */
+        var lobbyPreviousServer: String? = null
+
         val friendList: MutableList<FriendList.Friend> = mutableListOf()
         var turnCheckerEnabled = true
         var turnCheckerPersistentNotificationEnabled = true

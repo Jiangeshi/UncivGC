@@ -58,6 +58,7 @@ import com.unciv.ui.screens.worldscreen.minimap.MinimapHolder
 import com.unciv.ui.screens.worldscreen.status.AutoPlayStatusButton
 import com.unciv.ui.screens.worldscreen.status.MultiplayerStatusButton
 import com.unciv.ui.screens.worldscreen.status.NextTurnButton
+import com.unciv.ui.screens.worldscreen.status.UndoButton
 import com.unciv.ui.screens.worldscreen.status.NextTurnProgress
 import com.unciv.ui.screens.worldscreen.status.SmallUnitButton
 import com.unciv.ui.screens.worldscreen.status.StatusButtons
@@ -136,6 +137,8 @@ class WorldScreen(
     internal val notificationsScroll = NotificationsScroll(this)
     internal val nextTurnButton = NextTurnButton(this)
     private val statusButtons = StatusButtons(nextTurnButton)
+    /** UncivGC 撤回: 快照管理器 (自己回合内后台存快照, 点撤回回退) */
+    val undoManager = UndoManager(this).also { it.start() }
     internal val smallUnitButton = SmallUnitButton(this, statusButtons)
     private val tutorialTaskTable = Table().apply {
         background = skinStrings.getUiBackground("WorldScreen/TutorialTaskTable", tintColor = skinStrings.skinConfig.baseColor.darken(0.5f))
@@ -227,6 +230,7 @@ class WorldScreen(
 
     override fun dispose() {
         resizeDeferTimer?.cancel()
+        undoManager.stop()
         events.stopReceiving()
         statusButtons.dispose()
         super.dispose()
@@ -593,6 +597,7 @@ class WorldScreen(
     fun nextTurn() {
         isPlayersTurn = false
         shouldUpdate = true
+        undoManager.clear()  // UncivGC: 过回合清空撤回快照
         val progressBar = NextTurnProgress(nextTurnButton)
         progressBar.start(this)
 
@@ -713,6 +718,7 @@ class WorldScreen(
         nextTurnButton.update()
 
         updateAutoPlayStatusButton()
+        updateUndoStatusButton()
         updateMultiplayerStatusButton()
 
         statusButtons.update(false)
@@ -736,6 +742,20 @@ class WorldScreen(
                 autoPlay.stopAutoPlay()
             }
         }
+    }
+
+    /** UncivGC 撤回按钮: 只在自己回合内创建/显示 */
+    private fun updateUndoStatusButton() {
+        if (statusButtons.undoButton == null) {
+            statusButtons.undoButton = UndoButton(this).also { it.update() }
+        } else {
+            statusButtons.undoButton?.update()
+        }
+    }
+
+    /** 快照变化后刷新撤回按钮状态 (由 UndoManager 调用) */
+    fun refreshUndoButton() {
+        statusButtons.updateUndoButton()
     }
 
     private fun updateMultiplayerStatusButton() {

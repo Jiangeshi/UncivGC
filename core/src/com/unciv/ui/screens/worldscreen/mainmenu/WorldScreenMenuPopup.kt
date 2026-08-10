@@ -27,7 +27,7 @@ class WorldScreenMenuPopup(
     val worldScreen: WorldScreen,
     expertMode: Boolean = false
 ) : Popup(worldScreen, scrollable = Scrollability.All) {
-    private val singleColumn: Boolean
+    private val singleColumn = false  // UncivGC: 游戏菜单永远两列 (官方会按屏幕自动收成一列)
     private fun <T: Actor?> Cell<T>.nextColumn() {
         if (!singleColumn && column == 0) return
         row()
@@ -51,9 +51,6 @@ class WorldScreenMenuPopup(
         val firstCell = addButton("Main menu") {
             worldScreen.game.goToMainMenu()
         }
-        singleColumn = worldScreen.isCrampedPortrait() ||
-            2 * prefWidth > maxPopupWidth ||  // Very coarse: Assume width of translated "Main menu" is representative
-            buttonCount * (prefHeight - emptyPrefHeight) + emptyPrefHeight < maxPopupHeight
         firstCell.nextColumn()
 
         addButton("Civilopedia", KeyboardBinding.Civilopedia) {

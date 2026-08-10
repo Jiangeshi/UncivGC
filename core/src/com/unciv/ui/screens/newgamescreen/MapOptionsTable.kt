@@ -33,37 +33,6 @@ class MapOptionsTable(
         val initialMapType = mapParameters.type.takeIf { it in mapTypes } ?: MapGeneratedMainType.generated
         mapTypeSelectBox = TranslatedSelectBox(mapTypes, initialMapType)
 
-        fun updateOnMapTypeChange() {
-            mapTypeSpecificTable.clear()
-            when (mapTypeSelectBox.selected.value) {
-                MapGeneratedMainType.custom -> {
-                    mapParameters.type = MapGeneratedMainType.custom
-                    mapTypeSpecificTable.add(savedMapOptionsTable)
-                    savedMapOptionsTable.activateCustomMaps()
-                    newGameScreen.unlockTables()
-                }
-                MapGeneratedMainType.generated -> {
-                    mapParameters.name = ""
-                    mapParameters.type = generatedMapOptionsTable.mapTypeSelectBox.selected.value
-                    mapTypeSpecificTable.add(generatedMapOptionsTable)
-                    newGameScreen.unlockTables()
-                }
-                MapGeneratedMainType.randomGenerated -> {
-                    mapParameters.name = ""
-                    mapTypeSpecificTable.add(randomMapOptionsTable)
-                    newGameScreen.unlockTables()
-                }
-                MapGeneratedMainType.scenario -> {
-                    mapParameters.name = ""
-                    mapTypeSpecificTable.add(scenarioOptionsTable)
-                    scenarioOptionsTable.selectScenario()
-                    newGameScreen.lockTables()
-                }
-            }
-            newGameScreen.gameSetupInfo.gameParameters.godMode = false
-            newGameScreen.updateTables()
-        }
-
         // activate once, so the MapGeneratedMainType.generated controls show
         updateOnMapTypeChange()
 
@@ -74,6 +43,52 @@ class MapOptionsTable(
         mapTypeSelectWrapper.add(mapTypeSelectBox).right()
         add(mapTypeSelectWrapper).pad(10f).fillX().row()
         add(mapTypeSpecificTable).row()
+    }
+
+    private fun updateOnMapTypeChange() {
+        mapTypeSpecificTable.clear()
+        when (mapTypeSelectBox.selected.value) {
+            MapGeneratedMainType.custom -> {
+                mapParameters.type = MapGeneratedMainType.custom
+                mapTypeSpecificTable.add(savedMapOptionsTable)
+                savedMapOptionsTable.activateCustomMaps()
+                newGameScreen.unlockTables()
+            }
+            MapGeneratedMainType.generated -> {
+                mapParameters.name = ""
+                mapParameters.type = generatedMapOptionsTable.mapTypeSelectBox.selected.value
+                mapTypeSpecificTable.add(generatedMapOptionsTable)
+                newGameScreen.unlockTables()
+            }
+            MapGeneratedMainType.randomGenerated -> {
+                mapParameters.name = ""
+                mapTypeSpecificTable.add(randomMapOptionsTable)
+                newGameScreen.unlockTables()
+            }
+            MapGeneratedMainType.scenario -> {
+                mapParameters.name = ""
+                mapTypeSpecificTable.add(scenarioOptionsTable)
+                scenarioOptionsTable.selectScenario()
+                newGameScreen.lockTables()
+            }
+        }
+        newGameScreen.gameSetupInfo.gameParameters.godMode = false
+        newGameScreen.updateTables()
+    }
+
+    /** UncivGC 大厅: 服务器设置同步后局部刷新地图设置 (不重建整个界面, 消闪烁).
+     *  主类型选择器与同步值不一致时才重建类型区; 否则只刷新参数表的值
+     *  (注意: 不能调用 update() 重建 — 它会 reseed 并把种子改成随机值, 还会打断正在拖动的滑块) */
+    fun refreshFromMapParameters() {
+        val currentSel = mapTypeSelectBox.selected.value
+        val synced = mapParameters.type
+        val syncedItem = mapTypeSelectBox.items.firstOrNull { it.value == synced }
+        if (synced.isNotEmpty() && syncedItem != null && synced != currentSel) {
+            mapTypeSelectBox.setSelected(syncedItem)
+            updateOnMapTypeChange()
+        } else {
+            generatedMapOptionsTable.refreshValues()
+        }
     }
 
     internal fun getSelectedScenario(): ScenarioSelectTable.ScenarioData? {

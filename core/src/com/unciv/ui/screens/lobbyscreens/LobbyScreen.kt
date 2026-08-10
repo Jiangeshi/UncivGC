@@ -44,6 +44,12 @@ class LobbyScreen : PickerScreen() {
     init {
         setDefaultCloseAction()
 
+        // UncivGC: 进大厅时申请通知权限 (Android 13+, 每进程一次; 回合提醒用)
+        if (!notificationPermissionAsked) {
+            notificationPermissionAsked = true
+            com.unciv.UncivGame.Current.requestNotificationPermission()
+        }
+
         val refreshButton = "刷新".toTextButton()
         refreshButton.onClick { refresh() }
         val nicknameButton = "修改昵称".toTextButton()
@@ -269,7 +275,7 @@ class LobbyScreen : PickerScreen() {
                 LobbyRoomScreen.activeAmOwner = false
                 val settings = UncivGame.Current.settings.multiplayer
                 if (settings.getServer() != LobbyRoomScreen.SP_SERVER_URL) {
-                    LobbyRoomScreen.previousServer = settings.getServer()
+                    settings.lobbyPreviousServer = settings.getServer()
                 }
                 settings.setServer(LobbyRoomScreen.SP_SERVER_URL)
                 LobbyRoomScreen.ensureSaveServerRegistered()
@@ -286,7 +292,19 @@ class LobbyScreen : PickerScreen() {
         Concurrency.run("LobbyRefresh") {
             try {
                 val rooms = LobbyApi.listRooms()
-                launchOnGLThread { updateList(rooms) }
+                // 已在房间但落在列表页 (如返回键退房失败/其他设备建房) → 自动拉回房间/游戏
+                val myRoom = rooms.firstOrNull { room -> room.members.any { it.playerId == playerId } }
+                launchOnGLThread {
+                    if (!closed && myRoom != null && game.screen !is LobbyRoomScreen) {
+                        if (myRoom.status == "playing" && !myRoom.gameId.isNullOrEmpty()) {
+                            LobbyRoomScreen.enterLobbyGame(myRoom.gameId!!, myRoom, this@LobbyScreen)
+                        } else {
+                            game.pushScreen(LobbyRoomScreen(myRoom.id, myRoom.name))
+                        }
+                        return@launchOnGLThread
+                    }
+                    updateList(rooms)
+                }
             } catch (e: Exception) {
                 launchOnGLThread { ToastPopup("刷新失败: ${e.message}", this@LobbyScreen) }
             }
@@ -296,5 +314,10 @@ class LobbyScreen : PickerScreen() {
     override fun dispose() {
         closed = true
         super.dispose()
+    }
+
+    companion object {
+        /** 通知权限是否已申请过 (每进程一次, 避免每次进大厅都弹) */
+        private var notificationPermissionAsked = false
     }
 }

@@ -2,12 +2,16 @@ package com.unciv.app
 
 import android.app.Activity
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Rect
+import android.Manifest
 import android.net.Uri
 import android.os.Build
 import android.os.Debug
 import android.view.View
 import android.view.ViewTreeObserver
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.backends.android.AndroidGraphics
 import com.badlogic.gdx.math.Rectangle
@@ -21,6 +25,21 @@ import com.unciv.utils.isUUID
 import java.util.Locale
 
 class AndroidGame(private val activity: Activity) : UncivGame() {
+
+    /** Android 13+ (API 33): 运行时申请通知权限 — U 原本从不申请, 导致通知被系统静默屏蔽 */
+    override fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT < 33) return  // Android 12 及以下无需运行时权限
+        if (ContextCompat.checkSelfPermission(activity, Manifest.permission.POST_NOTIFICATIONS)
+            == PackageManager.PERMISSION_GRANTED) return
+        try {
+            ActivityCompat.requestPermissions(
+                activity,
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                9001,
+            )
+        } catch (e: Exception) {
+        }
+    }
 
     private var lastOrientation = activity.resources.configuration.orientation
 
