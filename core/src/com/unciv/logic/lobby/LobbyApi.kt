@@ -229,10 +229,10 @@ object LobbyApi {
             val total = response.contentLength() ?: 0L
             val temp = com.badlogic.gdx.Gdx.files.local("update-uncivgc.apk")
             val out = java.io.FileOutputStream(temp.file())
+            var received = 0L
             try {
                 val channel = response.bodyAsChannel()
                 val buf = ByteArray(64 * 1024)
-                var received = 0L
                 while (true) {
                     val read = channel.readAvailable(buf, 0, buf.size)
                     if (read == -1) break
