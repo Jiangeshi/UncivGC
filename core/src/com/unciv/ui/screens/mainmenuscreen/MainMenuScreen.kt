@@ -87,6 +87,9 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
         const val buttonsSize = 60f
         /** Distance of the Civilopedia and Discord+Github buttons from the stage edges */
         const val buttonsPosFromEdge = 30f
+
+        /** UncivGC: 「安装未知应用」权限是否已主动申请过 (每进程一次) */
+        private var installPermissionAsked = false
     }
 
     /** Create one **Main Menu Button** including onClick/key binding
@@ -179,6 +182,12 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
 
         // UncivGC: 应用内更新检查 (每进程一次, 后台检查)
         com.unciv.ui.screens.lobbyscreens.UpdateChecker.checkAndPrompt(this)
+
+        // UncivGC: 进主菜单时主动申请「安装未知应用」权限 (每进程一次, 跟通知权限同模式; 更新自动安装用)
+        if (!installPermissionAsked) {
+            installPermissionAsked = true
+            com.unciv.UncivGame.Current.requestInstallPermission()
+        }
 
         val multiplayerTable = getMenuButton("Multiplayer", "OtherIcons/Multiplayer", KeyboardBinding.Multiplayer)
             { game.pushScreen(MultiplayerScreen()) }

@@ -10,6 +10,9 @@ interface PlatformSpecific {
     /** Android 13+: 申请通知权限 (桌面端无操作) */
     fun requestNotificationPermission() {}
 
+    /** Android 8+: 主动申请「安装未知应用」权限 (无运行时弹窗, 只能拉起系统授权页; 桌面端无操作) */
+    fun requestInstallPermission() {}
+
     /** Install system audio hooks */
     fun installAudioHooks() {}
 

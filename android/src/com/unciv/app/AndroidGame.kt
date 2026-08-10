@@ -149,6 +149,23 @@ class AndroidGame(private val activity: Activity) : UncivGame() {
         }
     }
 
+    /** 主动申请「安装未知应用」权限 — 跟通知权限一样, 进主菜单时每进程申请一次 (API 26+ 无运行时弹窗, 直接拉起系统授权页) */
+    override fun requestInstallPermission() {
+        if (Build.VERSION.SDK_INT < 26) return
+        if (canInstallPackages()) return  // 已授权不再打扰
+        try {
+            android.widget.Toast.makeText(
+                activity, "为保证更新能自动安装，请允许本应用安装未知应用",
+                android.widget.Toast.LENGTH_LONG).show()
+            val intent = android.content.Intent(
+                android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                android.net.Uri.parse("package:${activity.packageName}")
+            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            activity.startActivity(intent)
+        } catch (e: Exception) {
+        }
+    }
+
     /** 从设置页返回后: 权限已开且上次安装失败 → 自动重试安装 */
     override fun onAppResume() {
         try {
