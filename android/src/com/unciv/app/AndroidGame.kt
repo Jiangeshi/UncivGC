@@ -26,6 +26,9 @@ import java.util.Locale
 
 class AndroidGame(private val activity: Activity) : UncivGame() {
 
+    /** 应用内更新: 最近一次系统下载的目标文件 (FileProvider 分享安装用) */
+    private var lastDownloadFile: java.io.File? = null
+
     /** 应用内更新: FileProvider 共享 APK → 系统安装界面 (Android 7+ 禁止 file:// URI) */
     override fun openApkForInstall(apkPath: String) {
         try {
@@ -43,21 +46,24 @@ class AndroidGame(private val activity: Activity) : UncivGame() {
         }
     }
 
-    /** 应用内更新: 系统 DownloadManager 下载 (通知栏进度, 断点续传, 慢速网络稳定) */
+    /** 应用内更新: 系统 DownloadManager 下载 (通知栏进度, 断点续传, 慢速网络稳定); 记住目标路径供 FileProvider 分享 */
     override fun enqueueSystemDownload(url: String, fileName: String): Long = try {
         val dm = activity.getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
+        val destDir = activity.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
+        val destFile = java.io.File(destDir, fileName)
+        lastDownloadFile = destFile
         val request = android.app.DownloadManager.Request(android.net.Uri.parse(url)).apply {
             setTitle("UncivGC 更新")
             setDescription(fileName)
             setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            setDestinationInExternalFilesDir(activity, android.os.Environment.DIRECTORY_DOWNLOADS, fileName)
+            setDestinationUri(android.net.Uri.fromFile(destFile))
         }
         dm.enqueue(request)
     } catch (e: Exception) {
         -1L
     }
 
-    /** 应用内更新: 下载完成 → 打开安装界面; 未完成/失败 → false */
+    /** 应用内更新: 下载完成 → FileProvider 分享 APK → 系统安装界面 (比 DownloadManager 的 content uri 兼容性好, 国产 ROM 也弹) */
     override fun openSystemDownload(downloadId: Long): Boolean = try {
         val dm = activity.getSystemService(android.content.Context.DOWNLOAD_SERVICE) as android.app.DownloadManager
         val cursor = dm.query(android.app.DownloadManager.Query().setFilterById(downloadId))
@@ -68,7 +74,15 @@ class AndroidGame(private val activity: Activity) : UncivGame() {
         val status = cursor.getInt(cursor.getColumnIndexOrThrow(android.app.DownloadManager.COLUMN_STATUS))
         cursor.close()
         if (status != android.app.DownloadManager.STATUS_SUCCESSFUL) return false
-        val uri = dm.getUriForDownloadedFile(downloadId) ?: return false
+        // 优先用记录的路径; 进程重启后记录丢失 → 从 App 下载目录找最新的更新包
+        var file = lastDownloadFile
+        if (file == null || !file.exists() || file.length() == 0L) {
+            val dir = activity.getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
+            file = dir?.listFiles()?.filter { it.name.startsWith("UncivGC-") && it.extension.equals("apk", true) }
+                ?.maxByOrNull { it.lastModified() }
+        }
+        if (file == null || !file.exists() || file.length() == 0L) return false
+        val uri = androidx.core.content.FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", file)
         val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
