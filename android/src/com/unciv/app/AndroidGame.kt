@@ -41,6 +41,36 @@ class AndroidGame(private val activity: Activity) : UncivGame() {
         }
     }
 
+    /** 用户可见目录 (外部存储 Android/data/包名/files/mods) → 应用内部目录 (App 实际读取处).
+     *  必须在图集打包前完成 (同一线程), 避免「外部 mod 还没同步进来就打包」的时序竞态 */
+    override fun syncModsFromVisibleToLocal() {
+        try {
+            val internalModsDir = java.io.File(activity.filesDir, "mods")
+            val externalPath = activity.getExternalFilesDir(null) ?: return
+            val externalModsDir = java.io.File(externalPath, "mods")
+            if (!externalModsDir.exists()) externalModsDir.mkdirs()
+            if (externalModsDir.exists()) externalModsDir.copyRecursively(internalModsDir, true)
+        } catch (ignored: Exception) {
+        }
+    }
+
+    /** 打包产物 (game*.png / game*.atlas / Atlases.json) 镜像回用户可见目录 —
+     *  否则用户放 mod 的外部文件夹里永远看不到图集 (单向同步只进不出) */
+    override fun mirrorAtlasToVisible(modFolderName: String) {
+        try {
+            val externalPath = activity.getExternalFilesDir(null) ?: return
+            val externalModsDir = java.io.File(externalPath, "mods")
+            val srcDir = java.io.File(activity.filesDir, "mods/$modFolderName")
+            val dstDir = java.io.File(externalModsDir, modFolderName)
+            if (!srcDir.isDirectory || !dstDir.isDirectory) return
+            val artifacts = srcDir.listFiles()?.filter {
+                it.isFile && (it.name.endsWith(".atlas") || it.name.endsWith(".png") || it.name == "Atlases.json")
+            } ?: return
+            for (f in artifacts) f.copyTo(java.io.File(dstDir, f.name), overwrite = true)
+        } catch (ignored: Exception) {
+        }
+    }
+
     private var lastOrientation = activity.resources.configuration.orientation
 
     fun addScreenObscuredListener() {

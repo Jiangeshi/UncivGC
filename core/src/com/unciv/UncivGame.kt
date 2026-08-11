@@ -103,6 +103,9 @@ open class UncivGame(val isConsoleMode: Boolean = false) : Game(), PlatformSpeci
         if (Gdx.app.type != Application.ApplicationType.Desktop) {
             Concurrency.runOnNonDaemonThreadPool("ModImagePacker") {
                 try {
+                    // 先同步: 用户可见目录 (外部存储) → 内部目录 (App 实际读取处).
+                    // 必须在打包前完成 (同一线程), 否则首次启动时外部 mod 还没同步进来就打包 → 白打
+                    syncModsFromVisibleToLocal()
                     // packImagesPerMod 期望传入单个模组目录 (内部检查 <dir>/Images) — 必须遍历每个模组, 不能直接传 mods 目录 (否则永远跳过)
                     val modsDir = java.io.File(files.getModsFolder().file().absolutePath)
                     if (modsDir.exists()) {
@@ -110,6 +113,8 @@ open class UncivGame(val isConsoleMode: Boolean = false) : Game(), PlatformSpeci
                             if (!mod.isHidden) {
                                 try {
                                     ImagePacker.packImagesPerMod(mod.path, mod.path)
+                                    // 打包产物镜像回用户可见目录 (否则外部文件夹里永远看不到 game.png)
+                                    mirrorAtlasToVisible(mod.name)
                                 } catch (e: Throwable) {
                                     com.unciv.utils.Log.debug("Android 模组图集打包失败 (${mod.name}): ${e.message}")
                                 }

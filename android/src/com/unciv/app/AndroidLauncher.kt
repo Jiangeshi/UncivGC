@@ -18,7 +18,6 @@ import com.unciv.utils.Dispatcher
 import com.unciv.utils.Display
 import com.unciv.utils.Log
 import com.unciv.utils.launchOnGLThread
-import java.io.File
 import java.lang.Exception
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -55,10 +54,6 @@ open class AndroidLauncher : AndroidApplication() {
         // Create notification channels for Multiplayer notificator
         MultiplayerTurnCheckWorker.createNotificationChannels(applicationContext)
 
-        CoroutineScope(Dispatchers.IO).launch {
-            copyMods()
-        }
-
         game = AndroidGame(this)
         initialize(game, config)
 
@@ -87,26 +82,6 @@ open class AndroidLauncher : AndroidApplication() {
         }
 
         return insets
-    }
-
-    /**
-     * Copies mods from external data directory (where users can access) to the private one (where
-     * libGDX reads from). Note: deletes all files currently in the private mod directory and
-     * replaces them with the ones in the external folder!)
-     */
-    private fun copyMods() {
-        // Mod directory in the internal app data (where Gdx.files.local looks)
-        val internalModsDir = File("${filesDir.path}/mods")
-
-        // Mod directory in the shared app data (where the user can see and modify)
-        val externalPath = getExternalFilesDir(null)?.path ?: return
-        val externalModsDir = File("$externalPath/mods")
-
-        try { // Rarely we get a kotlin.io.AccessDeniedException, if so - no biggie
-            // Copy external mod directory (with data user put in it) to internal (where it can be read)
-            if (!externalModsDir.exists()) externalModsDir.mkdirs() // this can fail sometimes, which is why we check if it exists again in the next line
-            if (externalModsDir.exists()) externalModsDir.copyRecursively(internalModsDir, true)
-        } catch (ex: Exception) {}
     }
 
     override fun onPause() {

@@ -10,6 +10,12 @@ interface PlatformSpecific {
     /** Android 13+: 申请通知权限 (桌面端无操作) */
     fun requestNotificationPermission() {}
 
+    /** Android: 把用户可见目录 (外部存储) 的 mods 同步到应用内部目录 (App 实际读取处); 桌面端无操作 */
+    fun syncModsFromVisibleToLocal() {}
+
+    /** Android: 把打包生成的图集文件 (game*.png / game*.atlas / Atlases.json) 镜像回用户可见目录; 桌面端无操作 */
+    fun mirrorAtlasToVisible(modFolderName: String) {}
+
     /** Install system audio hooks */
     fun installAudioHooks() {}
 
