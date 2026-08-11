@@ -288,6 +288,10 @@ class LobbyScreen : PickerScreen() {
     }
 
     private fun enterGameAsSpectator(gameId: String, room: LobbyRoom) {
+        // 下载存档需要几秒 (服务器 5Mbps 带宽) — 给持续提示, 避免看起来像卡住
+        val downloading = Popup(this)
+        downloading.addGoodSizedLabel("Downloading save, entering spectate...".tr())
+        downloading.open()
         Concurrency.run("LobbyEnterSpectator") {
             try {
                 // 记录房间 ID 和原多人服务器 (观战者退出/恢复也要用)
@@ -301,10 +305,15 @@ class LobbyScreen : PickerScreen() {
                 settings.setServer(LobbyRoomScreen.SP_SERVER_URL)
                 LobbyRoomScreen.ensureSaveServerRegistered()
                 game.onlineMultiplayer.downloadGame(gameId)
+                // 屏幕已切换到观战 (loadGame), popup 随旧屏幕销毁 — 这里 close 仅为兜底
+                launchOnGLThread { try { downloading.close() } catch (ignored: Exception) {} }
                 // 观战者也盯房间: 跳海开新局时自动跟进 (非成员, 不检查成员状态)
                 LobbyRoomScreen.startGameWatcher(room.id, gameId, isMember = false)
             } catch (e: Exception) {
-                launchOnGLThread { ToastPopup("Failed to enter spectate: [${e.message}]".tr(), this@LobbyScreen) }
+                launchOnGLThread {
+                    try { downloading.close() } catch (ignored: Exception) {}
+                    ToastPopup("Failed to enter spectate: [${e.message}]".tr(), this@LobbyScreen)
+                }
             }
         }
     }

@@ -808,7 +808,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         val me = room.members.firstOrNull { it.playerId == playerId }
         val isOwner = me?.isOwner == true
         activeAmOwner = isOwner
-        readyButton.setText(if (me?.ready == true) "Unready" else "Ready")
+        readyButton.setText(if (me?.ready == true) "Unready".tr() else "Ready".tr())
         readyButton.isVisible = room.status == "waiting"
         startLobbyButton.isVisible = room.status == "waiting" || room.status == "starting"
         val allReady = room.members.isNotEmpty() && room.members.all { it.ready }
@@ -820,11 +820,11 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             startLobbyButton.isDisabled = !canStart
             startLobbyButton.setText(
                 when {
-                    room.status == "starting" -> "Generating map..."
-                    !enoughPlayers -> "Waiting for other players..."
-                    !allModsReady -> "Waiting for mods..."
-                    !allReady -> "Waiting for everyone to be ready..."
-                    else -> "Start game"
+                    room.status == "starting" -> "Generating map...".tr()
+                    !enoughPlayers -> "Waiting for other players...".tr()
+                    !allModsReady -> "Waiting for mods...".tr()
+                    !allReady -> "Waiting for everyone to be ready...".tr()
+                    else -> "Start game".tr()
                 }
             )
         } else {
@@ -832,11 +832,11 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             startLobbyButton.isDisabled = true
             startLobbyButton.setText(
                 when {
-                    room.status == "starting" -> "Generating map..."
-                    !enoughPlayers -> "Waiting for other players..."
-                    !allModsReady -> "Waiting for mods..."
-                    !allReady -> "Waiting for everyone to be ready..."
-                    else -> "Waiting for the game to start"
+                    room.status == "starting" -> "Generating map...".tr()
+                    !enoughPlayers -> "Waiting for other players...".tr()
+                    !allModsReady -> "Waiting for mods...".tr()
+                    !allReady -> "Waiting for everyone to be ready...".tr()
+                    else -> "Waiting for the game to start".tr()
                 }
             )
         }
@@ -980,13 +980,13 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         val me = currentRoom?.members?.firstOrNull { it.playerId == playerId } ?: return
         val target = !me.ready
         // 乐观更新: 不等服务器轮询, 立即切换按钮状态; 失败再回滚
-        readyButton.setText(if (target) "Unready" else "Ready")
+        readyButton.setText(if (target) "Unready".tr() else "Ready".tr())
         Concurrency.run("LobbyReady") {
             try {
                 LobbyApi.setReady(roomId, nickname, target, playerId)
             } catch (e: Exception) {
                 launchOnGLThread {
-                    readyButton.setText(if (!target) "Unready" else "Ready")
+                    readyButton.setText(if (!target) "Unready".tr() else "Ready".tr())
                     ToastPopup("Operation failed: [${e.message}]".tr(), this@LobbyRoomScreen)
                 }
             }
