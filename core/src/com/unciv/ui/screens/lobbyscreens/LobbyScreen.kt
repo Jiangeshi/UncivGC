@@ -254,7 +254,7 @@ class LobbyScreen : PickerScreen() {
                     if (result.ok) {
                         game.pushScreen(LobbyRoomScreen(room.id, room.name))
                     } else {
-                        ToastPopup(result.msg.ifEmpty { "Join failed".tr() }, this@LobbyScreen)
+                        ToastPopup(result.msg.tr().ifEmpty { "Join failed".tr() }, this@LobbyScreen)
                     }
                 }
             } catch (e: Exception) {
@@ -278,7 +278,7 @@ class LobbyScreen : PickerScreen() {
                     if (result.ok && !result.gameId.isNullOrEmpty()) {
                         enterGameAsSpectator(result.gameId!!, room)
                     } else {
-                        ToastPopup(result.msg.ifEmpty { "Spectate failed".tr() }, this@LobbyScreen)
+                        ToastPopup(result.msg.tr().ifEmpty { "Spectate failed".tr() }, this@LobbyScreen)
                     }
                 }
             } catch (e: Exception) {

@@ -450,7 +450,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                     // 房间解散 (404) → 回大厅并恢复服务器 (主动退出时由菜单处理)
                     // 网络异常 (断网/切网/超时) → 只重试, 绝不弹回大厅 (掉线≠退出, 游戏继续)
                     if (!leavingGame) {
-                        val gone = e.message?.contains("404") == true || e.message?.contains("房间不存在") == true  // 匹配服务器 404 协议消息 (服务器消息未翻译, 见 lobby_server.py)
+                        val gone = e.message?.contains("404") == true || e.message?.contains("Room not found") == true  // 匹配服务器 404 协议消息 (服务器已英文化)
                         if (gone) {
                             launchOnGLThread {
                                 restoreMultiplayerServer()
@@ -767,7 +767,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                         break
                     }
                 } catch (e: Exception) {
-                    if (e.message?.contains("404") == true || e.message?.contains("房间不存在") == true) {  // 匹配服务器 404 协议消息 (服务器消息未翻译, 见 lobby_server.py)
+                    if (e.message?.contains("404") == true || e.message?.contains("Room not found") == true) {  // 匹配服务器 404 协议消息 (服务器已英文化)
                         // UncivGC: 主动退出时房间解散是预期 (最后一人退出服务器会解散) — 不弹提示也不重复弹屏
                         if (!voluntarilyLeft) {
                             launchOnGLThread {
@@ -969,7 +969,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             try {
                 // 按 playerId 踢人 (昵称不唯一, 按昵称可能踢错人)
                 val result = LobbyApi.kick(roomId, nickname, targetPlayerId, playerId)
-                launchOnGLThread { ToastPopup(result.msg, this@LobbyRoomScreen) }
+                launchOnGLThread { ToastPopup(result.msg.tr(), this@LobbyRoomScreen) }
             } catch (e: Exception) {
                 launchOnGLThread { ToastPopup("Kick failed: [${e.message}]".tr(), this@LobbyRoomScreen) }
             }
@@ -1003,7 +1003,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                 launchOnGLThread {
                     loading.close()
                     if (!result.ok) {
-                        ToastPopup(result.msg.ifEmpty { "Start failed".tr() }, this@LobbyRoomScreen)
+                        ToastPopup(result.msg.tr().ifEmpty { "Start failed".tr() }, this@LobbyRoomScreen)
                     }
                     // 成功后由轮询检测到 playing 并自动进入游戏
                 }
