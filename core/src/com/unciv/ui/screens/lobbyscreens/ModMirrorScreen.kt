@@ -28,7 +28,7 @@ class ModMirrorScreen : PickerScreen() {
     private var closed = false
     private val modRows = Table()
     private var allEntries: List<ModMirrorEntry> = emptyList()
-    private val searchField = UncivTextField("搜索模组")
+    private val searchField = UncivTextField("Search mods".tr())
 
     init {
         setDefaultCloseAction()
@@ -38,14 +38,14 @@ class ModMirrorScreen : PickerScreen() {
         scrollPane.setScrollingDisabled(false, true)
         topTable.add(AutoScrollPane(modRows)).fill().row()
 
-        rightSideButton.setText("刷新".tr())
+        rightSideButton.setText("Refresh".tr())
         rightSideButton.onActivation { refresh() }
         refresh()
     }
 
     private fun refresh() {
         modRows.clearChildren()
-        modRows.add("正在获取镜像列表...".toLabel()).pad(20f).row()
+        modRows.add("Fetching mirror list...".toLabel()).pad(20f).row()
         Concurrency.run("MirrorRefresh") {
             try {
                 val list = LobbyApi.modMirrorManifest()
@@ -57,7 +57,7 @@ class ModMirrorScreen : PickerScreen() {
                 launchOnGLThread {
                     if (closed) return@launchOnGLThread
                     modRows.clearChildren()
-                    modRows.add("获取镜像失败: ${e.message}".toLabel()).pad(20f).row()
+                    modRows.add("Failed to fetch mirror: [${e.message}]".toLabel()).pad(20f).row()
                 }
             }
         }
@@ -79,7 +79,7 @@ class ModMirrorScreen : PickerScreen() {
         if (closed) return
         modRows.clearChildren()
         if (list.isEmpty()) {
-            modRows.add((if (allEntries.isEmpty()) "镜像里还没有模组" else "没有匹配的模组").toLabel()).pad(20f).row()
+            modRows.add((if (allEntries.isEmpty()) "The mirror has no mods yet" else "No matching mods").toLabel()).pad(20f).row()
             return
         }
         val installed = LobbyRoomScreen.installedMods().map { LobbyRoomScreen.normName(it) }.toSet()
@@ -96,9 +96,9 @@ class ModMirrorScreen : PickerScreen() {
             val isInstalled = LobbyRoomScreen.normName(entry.name) in installed
             val hasUpdate = isInstalled && state[entry.name] != null && state[entry.name] != entry.version
             val button = when {
-                !isInstalled -> "下载".toTextButton()
-                hasUpdate -> "更新".toTextButton()
-                else -> "已安装".toTextButton().apply { isDisabled = true }
+                !isInstalled -> "Download".toTextButton()
+                hasUpdate -> "Update".toTextButton()
+                else -> "Installed".toTextButton().apply { isDisabled = true }
             }
             button.onClick { downloadOrUpdate(entry, hasUpdate) }
             row.add(button).width(90f)
@@ -113,16 +113,16 @@ class ModMirrorScreen : PickerScreen() {
         val size = if (entry.size > 0) String.format("%.1f MB", entry.size / 1048576.0) else ""
         val local = state[entry.name]
         val status = when {
-            local == null -> "未安装"
-            local == entry.version -> "已是最新"
-            else -> "本地 ${local.take(10)} → 有新版本"
+            local == null -> "Not installed"
+            local == entry.version -> "Up to date"
+            else -> "Local [${local.take(10)}] -> new version available"
         }
         return listOf(size, status).filter { it.isNotEmpty() }.joinToString(" · ")
     }
 
     private fun downloadOrUpdate(entry: ModMirrorEntry, isUpdate: Boolean) {
         val loading = Popup(this)
-        loading.addGoodSizedLabel(if (isUpdate) "正在更新 ${entry.name}..." else "正在下载 ${entry.name}...")
+        loading.addGoodSizedLabel(if (isUpdate) "Updating [${entry.name}]..." else "Downloading [${entry.name}]...")
         loading.open()
         Concurrency.runOnNonDaemonThreadPool("MirrorInstall") {
             val errs = LobbyRoomScreen.installFromMirror(listOf(entry), listOf(entry.name), this@ModMirrorScreen) { m, p ->
@@ -134,7 +134,7 @@ class ModMirrorScreen : PickerScreen() {
                 if (errs.isNotEmpty()) {
                     ToastPopup(errs.joinToString("\n"), this@ModMirrorScreen)
                 } else {
-                    ToastPopup("${entry.name} ${if (isUpdate) "更新" else "安装"}完成", this@ModMirrorScreen)
+                    ToastPopup((if (isUpdate) "[${entry.name}] update complete" else "[${entry.name}] installed").tr(), this@ModMirrorScreen)
                     // 立即重新加载规则集缓存, 游戏里马上能选到这个模组 (否则要重启 App)
                     RulesetCache.loadRulesets()
                 }

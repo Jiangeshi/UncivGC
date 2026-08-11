@@ -1,5 +1,6 @@
 package com.unciv.ui.screens.worldscreen.status
 
+import com.unciv.models.translations.tr
 import com.badlogic.gdx.scenes.scene2d.ui.Button
 import com.badlogic.gdx.scenes.scene2d.ui.Label
 import com.unciv.ui.components.input.onActivation
@@ -11,13 +12,13 @@ import com.unciv.ui.screens.worldscreen.WorldScreen
 class UndoButton(private val worldScreen: WorldScreen) : Button(BaseScreen.skin) {
 
     init {
-        add(Label("撤回", BaseScreen.skin)).pad(5f)
+        add(Label("Undo".tr(), BaseScreen.skin)).pad(5f)
         onActivation {
             if (!worldScreen.undoManager.hasSnapshot) return@onActivation
             ConfirmPopup(
                 worldScreen,
-                "撤回上一步？可连续点击继续回退（仅影响本回合内未上传的操作）。",
-                "撤回",
+                "Undo the last move? Tap repeatedly to keep undoing (only affects actions not yet uploaded this turn).".tr(),
+                "Undo".tr(),
             ) {
                 worldScreen.undoManager.undo()
             }.open()

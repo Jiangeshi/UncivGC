@@ -1,5 +1,6 @@
 package com.unciv.ui.screens.worldscreen.mainmenu
 
+import com.unciv.models.translations.tr
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.scenes.scene2d.Actor
 import com.badlogic.gdx.scenes.scene2d.ui.Cell
@@ -98,21 +99,21 @@ class WorldScreenMenuPopup(
             }.nextColumn()
 
         if (isLobbyGame)
-            addButton("退出房间") {
+            addButton("Leave room".tr()) {
                 close()
                 confirmLeaveLobbyGame()
             }.nextColumn()
 
         // UncivGC 联机大厅: 跳海 (房主) — 保存本局全部设置直接开新图
         if (isLobbyGame && LobbyRoomScreen.activeAmOwner)
-            addButton("跳海") {
+            addButton("Restart to new map".tr()) {
                 close()
                 confirmRestartLobbyGame()
             }.nextColumn()
 
         // UncivGC 联机大厅: 重新开始 (房主) — 重置房间, 全员自动准备, 回房间再点开始
         if (isLobbyGame && LobbyRoomScreen.activeAmOwner)
-            addButton("重新开始") {
+            addButton("Reset room".tr()) {
                 close()
                 confirmRestartToRoom()
             }.nextColumn()
@@ -132,15 +133,15 @@ class WorldScreenMenuPopup(
     /** UncivGC 联机大厅: 重新开始 = 删旧存档, 重置房间 (保留设置/文明, 全员自动准备), 全员回房间界面等房主再点开始 */
     private fun confirmRestartToRoom() {
         val roomId = LobbyRoomScreen.activeRoomId ?: return
-        ConfirmPopup(worldScreen, "重置房间（保留本局设置和文明），全员自动准备，回到房间等待再次开始？", "重新开始") {
+        ConfirmPopup(worldScreen, "Reset the room (keep settings and civs), everyone auto-readies, back to the room to start again?".tr(), "Reset room".tr()) {
             Concurrency.run("LobbyRestartToRoom") {
                 try {
                     val res = LobbyApi.restartRoom(roomId, LobbyRoomScreen.currentNickname(), LobbyRoomScreen.currentPlayerId())
                     if (!res.ok) throw Exception(res.msg)
                     // 全员(含自己)由房间监视器自动带回房间界面
-                    launchOnGLThread { ToastPopup("已重置，等待全员回房...", worldScreen) }
+                    launchOnGLThread { ToastPopup("Room reset, waiting for everyone to return...".tr(), worldScreen) }
                 } catch (e: Exception) {
-                    launchOnGLThread { ToastPopup("重新开始失败: ${e.message}", worldScreen) }
+                    launchOnGLThread { ToastPopup("Reset room failed: [${e.message}]".tr(), worldScreen) }
                 }
             }
         }.open()
@@ -149,7 +150,7 @@ class WorldScreenMenuPopup(
     /** UncivGC 联机大厅: 跳海 = 删旧存档, 重置房间(全员自动准备), 直接开新图 */
     private fun confirmRestartLobbyGame() {
         val roomId = LobbyRoomScreen.activeRoomId ?: return
-        ConfirmPopup(worldScreen, "保存本局全部设置，直接开新图？旧存档将删除。", "跳海") {
+        ConfirmPopup(worldScreen, "Keep all settings and start a new map directly? The old save will be deleted.".tr(), "Restart to new map".tr()) {
             Concurrency.run("LobbyRestartGame") {
                 try {
                     // 1. 重置房间: 删旧存档, 保留成员/文明/设置, 全员自动准备; 跳海要随机新图 → 重置种子
@@ -159,9 +160,9 @@ class WorldScreenMenuPopup(
                     val start = LobbyApi.startGame(roomId, LobbyRoomScreen.currentNickname(), LobbyRoomScreen.currentPlayerId())
                     if (!start.ok) throw Exception(start.msg)
                     // 3. 自己的房间监视器会检测到新 gameId 自动切图
-                    launchOnGLThread { ToastPopup("跳海成功，正在开新图...", worldScreen) }
+                    launchOnGLThread { ToastPopup("New map started, entering...".tr(), worldScreen) }
                 } catch (e: Exception) {
-                    launchOnGLThread { ToastPopup("跳海失败: ${e.message}", worldScreen) }
+                    launchOnGLThread { ToastPopup("Restart to new map failed: [${e.message}]".tr(), worldScreen) }
                 }
             }
         }.open()
@@ -175,10 +176,10 @@ class WorldScreenMenuPopup(
             .firstOrNull { it.playerId == myId }?.civName
         val isSpectator = myCivName == null
         val confirmText = if (isSpectator)
-            "确定退出房间吗？"
+            "Leave the room?"
         else
-            "确定退出房间吗？你的文明将交给 AI 托管，游戏继续。"
-        ConfirmPopup(worldScreen, confirmText, "退出房间") {
+            "Leave the room? Your civilization will be handed to AI and the game continues.".tr()
+        ConfirmPopup(worldScreen, confirmText, "Leave room".tr()) {
             LobbyRoomScreen.leavingGame = true
             Concurrency.run("LobbyLeaveGame") {
                 var leaveError: String? = null
@@ -187,7 +188,7 @@ class WorldScreenMenuPopup(
                         val onlineMultiplayer = worldScreen.game.onlineMultiplayer
                         val preview = onlineMultiplayer.multiplayerFiles.getGameByGameId(worldScreen.gameInfo.gameId)
                         if (preview == null) {
-                            throw Exception("无法找到游戏记录")
+                            throw Exception("Could not find the game record")
                         }
                         // 1. 玩家: 文明转 AI (resign + 上传存档)
                         onlineMultiplayer.resignPlayer(preview, myCivName!!, myCivName)
@@ -197,12 +198,12 @@ class WorldScreenMenuPopup(
                         try {
                             LobbyApi.leaveRoom(roomId, LobbyRoomScreen.currentNickname(), LobbyRoomScreen.currentPlayerId())
                         } catch (e: Exception) {
-                            leaveError = "离开房间失败: ${e.message}"
+                            leaveError = "Leave room failed: [${e.message}]".tr()
                         }
                     }
                 } catch (e: Exception) {
                     launchOnGLThread {
-                        ToastPopup("退出房间失败: ${e.message}", worldScreen)
+                        ToastPopup("Leave room failed: [${e.message}]".tr(), worldScreen)
                     }
                     return@run
                 }

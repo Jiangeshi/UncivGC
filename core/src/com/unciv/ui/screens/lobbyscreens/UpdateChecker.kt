@@ -1,5 +1,7 @@
 package com.unciv.ui.screens.lobbyscreens
 
+import com.unciv.models.translations.fillPlaceholders
+import com.unciv.models.translations.tr
 import com.badlogic.gdx.Gdx
 import com.unciv.UncivGame
 import com.unciv.logic.lobby.LobbyApi
@@ -31,8 +33,8 @@ object UpdateChecker {
                 if (screen.stage.root.isVisible) {
                     ConfirmPopup(
                         screen,
-                        "发现新版本 ${info.version}\n\n${info.notes}\n\n是否下载更新？",
-                        "下载更新",
+                        "New version [${info.version}] available\n\n${info.notes}\n\nDownload the update?".tr(),
+                        "Download update".tr(),
                     ) { downloadAndInstall(info, screen) }.open()
                 }
             }
@@ -44,14 +46,14 @@ object UpdateChecker {
         if (!UncivGame.Current.canInstallPackages()) {
             ConfirmPopup(
                 screen,
-                "下载完成后需要安装更新\n\n请先在系统设置中允许本应用「安装未知应用」\n\n开启后请重新点击「下载更新」",
-                "去设置",
+                "The update needs to be installed after downloading\n\nPlease allow this app to \"Install unknown apps\" in system settings\n\nAfter enabling, tap \"Download update\" again".tr(),
+                "Go to settings".tr(),
             ) { UncivGame.Current.openInstallSettings() }.open()
             return
         }
         // App 内直接下载 (HttpURLConnection — 与 curl 同级, 慢速网络稳定) + FileProvider 安装
         val loading = Popup(screen)
-        loading.addGoodSizedLabel("正在下载更新 (0 MB)...")
+        loading.addGoodSizedLabel("Downloading update (0 MB)...".tr())
         loading.open()
         Concurrency.run("UpdateDownload") {
             val totalMb = if (info.apkSize > 0) String.format("%.0f", info.apkSize / 1048576.0) else "?"
@@ -60,7 +62,7 @@ object UpdateChecker {
                     launchOnGLThread {
                         val mb = String.format("%.1f", received / 1048576.0)
                         val pct = if (total > 0) " (${(received * 100 / total)}%)" else ""
-                        loading.reuseWith("正在下载更新 $mb MB / $totalMb MB$pct\n请保持 App 在前台...", false)
+                        loading.reuseWith("Downloading update: [mb] MB / [total] MB[pct]\nKeep the app in the foreground...".fillPlaceholders(mb, totalMb, pct).tr(), false)
                     }
                 }
             } catch (e: Exception) {
@@ -71,19 +73,19 @@ object UpdateChecker {
             launchOnGLThread {
                 loading.close()
                 if (path == null) {
-                    ToastPopup("下载失败（网络中断或服务器繁忙），请稍后重试", screen)
+                    ToastPopup("Download failed (network or server issue), please retry later".tr(), screen)
                     return@launchOnGLThread
                 }
                 if (info.apkMd5.isNotEmpty() && md5 != info.apkMd5) {
                     Gdx.files.local(path).delete()
-                    ToastPopup("下载校验失败，请重试", screen)
+                    ToastPopup("Download checksum failed, please retry".tr(), screen)
                     return@launchOnGLThread
                 }
-                ToastPopup("下载完成，正在打开安装...", screen)
+                ToastPopup("Download complete, opening installer...".tr(), screen)
                 val opened = UncivGame.Current.openApkForInstall(Gdx.files.local(path).file().absolutePath)
                 if (!opened) {
                     ToastPopup(
-                        "无法自动打开安装界面\n请手动安装: ${Gdx.files.local(path).file().absolutePath}",
+                        "Could not open the installer automatically\nPlease install manually: [${Gdx.files.local(path).file().absolutePath}]".tr(),
                         screen)
                 }
             }

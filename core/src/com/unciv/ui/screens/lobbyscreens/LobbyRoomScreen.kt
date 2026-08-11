@@ -98,7 +98,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                 applyServerSettings(this, settings)
             }
 
-        fun currentNickname() = UncivGame.Current.settings.lobbyNickname.ifBlank { "玩家" }
+        fun currentNickname() = UncivGame.Current.settings.lobbyNickname.ifBlank { "Player".tr() }
         fun currentPlayerId() = UncivGame.Current.settings.multiplayer.getUserId()
 
         /** 从房间设置解析模组列表 */
@@ -198,7 +198,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             for (modName in mods) {
                 val entry = byNorm[normName(modName)]
                 if (entry == null) {
-                    errors.add("[$modName] 镜像中没有")
+                    errors.add("[$modName] not on the mirror".tr())
                     continue
                 }
                 try {
@@ -206,7 +206,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                     val zipPath = LobbyApi.downloadModFromMirror(entry.name) { p ->
                         onProgress(modName, p)
                     } ?: run {
-                        errors.add("[$modName] 下载失败")
+                        errors.add("[$modName] download failed".tr())
                         continue
                     }
                     // md5 校验 (防传输损坏/坏包) — 用 FileHandle 读 (相对路径字符串直接建 java.io.File 在 Android 上会解析到错误位置)
@@ -214,7 +214,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                         val md5 = md5Of(Gdx.files.local(zipPath))
                         if (md5 != entry.md5) {
                             Gdx.files.local(zipPath).delete()
-                            errors.add("[$modName] 校验失败, 请重试")
+                            errors.add("[$modName] checksum failed, please retry".tr())
                             continue
                         }
                     }
@@ -228,7 +228,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                     zipHandle.delete()
                     state[entry.name] = entry.version
                 } catch (e: Exception) {
-                    errors.add("[$modName] ${e.message ?: "异常"}")
+                    errors.add("[$modName] ${e.message ?: "Download error".tr()}")
                 }
             }
             saveMirrorState(state)
@@ -239,7 +239,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         fun downloadMissingMods(mods: List<String>, screen: BaseScreen?, onDone: () -> Unit) {
             if (screen == null) return
             val popup = Popup(screen)
-            popup.addGoodSizedLabel("正在下载模组...").row()
+            popup.addGoodSizedLabel("Downloading mods...".tr()).row()
             val progressLabel = "0%".toLabel()
             popup.add(progressLabel).row()
             popup.open()
@@ -259,11 +259,11 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                         // 1. 优先从我们的服务器镜像下载 (国内快)
                         if (normName(modName) in mirrorMods) {
                             val errs = installFromMirror(mirrorEntries, listOf(modName), screen) { m, p ->
-                                launchOnGLThread { progressLabel.setText("[$m] $p% (服务器)") }
+                                launchOnGLThread { progressLabel.setText("[$m] $p% (server)") }
                             }
                             if (errs.isEmpty()) continue
                             errors.addAll(errs)
-                            errors.add("[$modName] 服务器镜像下载失败, 尝试 GitHub...")
+                            errors.add("[$modName] mirror download failed, trying GitHub...".tr())
                         }
                         // 2. GitHub 回退 (U 自带机制)
                         val repoName = modName.folderNameToRepoName().lowercase()
@@ -271,7 +271,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                             ?: Github.tryGetGithubReposWithTopic(1, 10, repoName)
                                 ?.items?.firstOrNull { it.name.lowercase() == repoName }
                         if (repo == null) {
-                            errors.add("未找到模组 [$modName] (GitHub 搜索无结果)")
+                            errors.add("Mod [$modName] not found (GitHub search returned nothing)".tr())
                             continue
                         }
                         var lastPercent = -1
@@ -281,10 +281,10 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                                 lastPercent = p
                                 launchOnGLThread { progressLabel.setText("[$modName] $p% (GitHub)") }
                             }
-                        } ?: run { errors.add("[$modName] 下载失败 (404)"); continue }
+                        } ?: run { errors.add("[$modName] download failed (404)".tr()); continue }
                     }
                 } catch (e: Exception) {
-                    errors.add(e.message ?: "下载异常")
+                    errors.add(e.message ?: "Download error".tr())
                 }
                 launchOnGLThread {
                     popup.close()
@@ -292,7 +292,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                         ToastPopup(errors.joinToString("\n"), screen)
                     } else {
                         RulesetCache.loadRulesets()
-                        ToastPopup("模组下载完成", screen)
+                        ToastPopup("Mod download complete".tr(), screen)
                         onDone()
                     }
                 }
@@ -305,7 +305,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             if (missing.isNotEmpty()) {
                 if (screen != null) {
                     Concurrency.runOnGLThread("LobbyModPrompt") {
-                        ConfirmPopup(screen, "缺少模组: ${missing.joinToString("、")}\n是否下载？", "下载") {
+                        ConfirmPopup(screen, "Missing mods: [${missing.joinToString(", ")}]\nDownload?".tr(), "Download".tr()) {
                             downloadMissingMods(missing, screen) {
                                 enterLobbyGame(gameId, room, screen)
                             }
@@ -350,7 +350,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                     startGameWatcher(room.id, gameId, isMember = true)
                 } catch (e: Exception) {
                     if (screen != null) {
-                        launchOnGLThread { ToastPopup("进入游戏失败: ${e.message}", screen) }
+                        launchOnGLThread { ToastPopup("Failed to enter game: [${e.message}]".tr(), screen) }
                     }
                 }
             }
@@ -420,7 +420,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                             if (confirmed.status == "starting") {
                                 launchOnGLThread {
                                     UncivGame.Current.worldScreen?.let { ws ->
-                                        ToastPopup("房主正在跳海，新地图生成中...", ws)
+                                        ToastPopup("Host is restarting the game, generating a new map...".tr(), ws)
                                     }
                                 }
                             }
@@ -450,7 +450,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                     // 房间解散 (404) → 回大厅并恢复服务器 (主动退出时由菜单处理)
                     // 网络异常 (断网/切网/超时) → 只重试, 绝不弹回大厅 (掉线≠退出, 游戏继续)
                     if (!leavingGame) {
-                        val gone = e.message?.contains("404") == true || e.message?.contains("房间不存在") == true
+                        val gone = e.message?.contains("404") == true || e.message?.contains("房间不存在") == true  // 匹配服务器 404 协议消息 (服务器消息未翻译, 见 lobby_server.py)
                         if (gone) {
                             launchOnGLThread {
                                 restoreMultiplayerServer()
@@ -575,12 +575,12 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
     private var serverSynced = false
 
     private val nickname: String
-        get() = UncivGame.Current.settings.lobbyNickname.ifBlank { "玩家" }
+        get() = UncivGame.Current.settings.lobbyNickname.ifBlank { "Player".tr() }
     private val playerId: String
         get() = UncivGame.Current.settings.multiplayer.getUserId()
 
-    private val readyButton = "准备".toTextButton()
-    private val startLobbyButton = "开始游戏".toTextButton().apply { color = Color.GREEN }
+    private val readyButton = "Ready".toTextButton()
+    private val startLobbyButton = "Start game".toTextButton().apply { color = Color.GREEN }
 
     init {
         activeRoomId = roomId
@@ -598,7 +598,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         bottomTable.getCell(rightSideGroup)?.padRight(0f)
 
         // ---- 退出房间 (替换原版返回动作: 先清掉原版 Tap 激活, 避免双重弹屏) ----
-        closeButton.setText("退出房间".tr())
+        closeButton.setText("Leave room".tr())
         ActorAttachments.get(closeButton).clearActivationActions(ActivationTypes.Tap)
         closeButton.onActivation {
             voluntarilyLeft = true
@@ -624,7 +624,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                     try {
                         LobbyApi.setCiv(roomId, nickname, player.chosenCiv, playerId)
                     } catch (e: Exception) {
-                        launchOnGLThread { ToastPopup("文明同步失败: ${e.message}", this@LobbyRoomScreen) }
+                        launchOnGLThread { ToastPopup("Civilization sync failed: [${e.message}]".tr(), this@LobbyRoomScreen) }
                     }
                 }
             }
@@ -720,7 +720,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                                     promptedMissingMods = missingFp
                                     launchOnGLThread {
                                         if (!closed) {
-                                            ConfirmPopup(this@LobbyRoomScreen, "缺少模组: ${pendingMissing.joinToString("、")}\n是否下载？", "下载") {
+                                            ConfirmPopup(this@LobbyRoomScreen, "Missing mods: [${pendingMissing.joinToString(", ")}]\nDownload?".tr(), "Download".tr()) {
                                                 downloadMissingMods(pendingMissing, this@LobbyRoomScreen) {
                                                     // 装好后原位应用新设置 (不重建屏幕)
                                                     applyServerSettings(gameSetupInfo, room.settings)
@@ -761,17 +761,17 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                     // 被房主踢出: 成员列表里没有自己 → 回大厅并提示 (主动退出不算)
                     if (!voluntarilyLeft && room.status != "playing" && room.members.none { it.playerId == playerId }) {
                         launchOnGLThread {
-                            ToastPopup("你已被房主踢出", this@LobbyRoomScreen)
+                            ToastPopup("You have been kicked by the host".tr(), this@LobbyRoomScreen)
                             game.popScreen()
                         }
                         break
                     }
                 } catch (e: Exception) {
-                    if (e.message?.contains("404") == true || e.message?.contains("房间不存在") == true) {
+                    if (e.message?.contains("404") == true || e.message?.contains("房间不存在") == true) {  // 匹配服务器 404 协议消息 (服务器消息未翻译, 见 lobby_server.py)
                         // UncivGC: 主动退出时房间解散是预期 (最后一人退出服务器会解散) — 不弹提示也不重复弹屏
                         if (!voluntarilyLeft) {
                             launchOnGLThread {
-                                ToastPopup("房间已解散", this@LobbyRoomScreen)
+                                ToastPopup("The room has been disbanded".tr(), this@LobbyRoomScreen)
                                 game.popScreen()
                             }
                         }
@@ -808,7 +808,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         val me = room.members.firstOrNull { it.playerId == playerId }
         val isOwner = me?.isOwner == true
         activeAmOwner = isOwner
-        readyButton.setText(if (me?.ready == true) "取消准备" else "准备")
+        readyButton.setText(if (me?.ready == true) "Unready" else "Ready")
         readyButton.isVisible = room.status == "waiting"
         startLobbyButton.isVisible = room.status == "waiting" || room.status == "starting"
         val allReady = room.members.isNotEmpty() && room.members.all { it.ready }
@@ -820,11 +820,11 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             startLobbyButton.isDisabled = !canStart
             startLobbyButton.setText(
                 when {
-                    room.status == "starting" -> "地图生成中..."
-                    !enoughPlayers -> "等待其他玩家加入..."
-                    !allModsReady -> "等待模组就绪..."
-                    !allReady -> "等待全员准备..."
-                    else -> "开始游戏"
+                    room.status == "starting" -> "Generating map..."
+                    !enoughPlayers -> "Waiting for other players..."
+                    !allModsReady -> "Waiting for mods..."
+                    !allReady -> "Waiting for everyone to be ready..."
+                    else -> "Start game"
                 }
             )
         } else {
@@ -832,11 +832,11 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             startLobbyButton.isDisabled = true
             startLobbyButton.setText(
                 when {
-                    room.status == "starting" -> "地图生成中..."
-                    !enoughPlayers -> "等待其他玩家加入..."
-                    !allModsReady -> "等待模组就绪..."
-                    !allReady -> "等待全员准备..."
-                    else -> "等待开始游戏"
+                    room.status == "starting" -> "Generating map..."
+                    !enoughPlayers -> "Waiting for other players..."
+                    !allModsReady -> "Waiting for mods..."
+                    !allReady -> "Waiting for everyone to be ready..."
+                    else -> "Waiting for the game to start"
                 }
             )
         }
@@ -850,7 +850,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         val missingFp = missing.joinToString(",")
         if (missing.isNotEmpty() && missingFp != promptedMissingMods) {
             promptedMissingMods = missingFp
-            ConfirmPopup(this, "缺少模组: ${missing.joinToString("、")}\n是否下载？", "下载") {
+            ConfirmPopup(this, "Missing mods: [${missing.joinToString(", ")}]\nDownload?".tr(), "Download".tr()) {
                 downloadMissingMods(missing, this) {
                     // 下载完原位应用设置 (不重建屏幕, 消闪烁)
                     applyServerSettings(gameSetupInfo, room.settings)
@@ -875,9 +875,9 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                                 launchOnGLThread {
                                     if (!closed) {
                                         ConfirmPopup(this@LobbyRoomScreen,
-                                            "模组有新版: ${outdated.joinToString("、")}\n是否从国内镜像更新？", "更新") {
+                                            "Mod updates available: [${outdated.joinToString(", ")}]\nUpdate from the mirror?".tr(), "Update".tr()) {
                                             val loading = Popup(this@LobbyRoomScreen)
-                                            loading.addGoodSizedLabel("正在更新...")
+                                            loading.addGoodSizedLabel("Updating...".tr())
                                             loading.open()
                                             Concurrency.runOnNonDaemonThreadPool("LobbyUpdateMods") {
                                                 val errs = installFromMirror(manifest, outdated, this@LobbyRoomScreen) { m, p ->
@@ -890,7 +890,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                                                     } else {
                                                         // 重载规则集缓存, 让当前房间立即用上新版模组
                                                         RulesetCache.loadRulesets()
-                                                        ToastPopup("模组更新完成", this@LobbyRoomScreen)
+                                                        ToastPopup("Mod update complete".tr(), this@LobbyRoomScreen)
                                                     }
                                                 }
                                             }
@@ -971,7 +971,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                 val result = LobbyApi.kick(roomId, nickname, targetPlayerId, playerId)
                 launchOnGLThread { ToastPopup(result.msg, this@LobbyRoomScreen) }
             } catch (e: Exception) {
-                launchOnGLThread { ToastPopup("踢出失败: ${e.message}", this@LobbyRoomScreen) }
+                launchOnGLThread { ToastPopup("Kick failed: [${e.message}]".tr(), this@LobbyRoomScreen) }
             }
         }
     }
@@ -980,14 +980,14 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         val me = currentRoom?.members?.firstOrNull { it.playerId == playerId } ?: return
         val target = !me.ready
         // 乐观更新: 不等服务器轮询, 立即切换按钮状态; 失败再回滚
-        readyButton.setText(if (target) "取消准备" else "准备")
+        readyButton.setText(if (target) "Unready" else "Ready")
         Concurrency.run("LobbyReady") {
             try {
                 LobbyApi.setReady(roomId, nickname, target, playerId)
             } catch (e: Exception) {
                 launchOnGLThread {
-                    readyButton.setText(if (!target) "取消准备" else "准备")
-                    ToastPopup("操作失败: ${e.message}", this@LobbyRoomScreen)
+                    readyButton.setText(if (!target) "Unready" else "Ready")
+                    ToastPopup("Operation failed: [${e.message}]".tr(), this@LobbyRoomScreen)
                 }
             }
         }
@@ -995,7 +995,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
 
     private fun tryStart() {
         val loading = Popup(this)
-        loading.addGoodSizedLabel("正在生成地图并开始...")
+        loading.addGoodSizedLabel("Generating map and starting...".tr())
         loading.open()
         Concurrency.run("LobbyStart") {
             try {
@@ -1003,19 +1003,19 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                 launchOnGLThread {
                     loading.close()
                     if (!result.ok) {
-                        ToastPopup(result.msg.ifEmpty { "开始失败" }, this@LobbyRoomScreen)
+                        ToastPopup(result.msg.ifEmpty { "Start failed".tr() }, this@LobbyRoomScreen)
                     }
                     // 成功后由轮询检测到 playing 并自动进入游戏
                 }
             } catch (e: Exception) {
-                launchOnGLThread { loading.reuseWith("开始失败: ${e.message}", true) }
+                launchOnGLThread { loading.reuseWith("Start failed: [${e.message}]".tr(), true) }
             }
         }
     }
 
     private fun enterGame(gameId: String) {
         Concurrency.runOnGLThread("LobbyEnterToast") {
-            ToastPopup("游戏已开始, 进入游戏中...", this@LobbyRoomScreen)
+            ToastPopup("Game started, entering...".tr(), this@LobbyRoomScreen)
         }
         val room = currentRoom
         if (room != null) {

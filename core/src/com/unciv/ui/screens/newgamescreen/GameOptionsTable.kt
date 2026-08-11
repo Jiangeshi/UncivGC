@@ -196,7 +196,7 @@ class GameOptionsTable(
 
     // UncivGC: 随机数 SL 开关 (创建游戏 → 高级设置, 与无蛮族/单城挑战同区; 局参数随存档)
     private fun Table.addReRollableRandomCheckbox() =
-            addCheckbox("允许读档重试（随机结果可变）", gameParameters.reRollableRandom)
+            addCheckbox("Allow random re-roll on reload (results may vary)", gameParameters.reRollableRandom)
             { gameParameters.reRollableRandom = it }
 
     private fun Table.addNuclearWeaponsCheckbox() =

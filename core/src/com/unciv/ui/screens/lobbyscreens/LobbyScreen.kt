@@ -38,7 +38,7 @@ class LobbyScreen : PickerScreen() {
     private var lastAutoRejoinMs = 0L
 
     private val nickname: String
-        get() = UncivGame.Current.settings.lobbyNickname.ifBlank { "玩家" }
+        get() = UncivGame.Current.settings.lobbyNickname.ifBlank { "Player".tr() }
 
     private val playerId: String
         get() = UncivGame.Current.settings.multiplayer.getUserId()
@@ -52,9 +52,9 @@ class LobbyScreen : PickerScreen() {
             com.unciv.UncivGame.Current.requestNotificationPermission()
         }
 
-        val refreshButton = "刷新".toTextButton()
+        val refreshButton = "Refresh".toTextButton()
         refreshButton.onClick { refresh() }
-        val nicknameButton = "修改昵称".toTextButton()
+        val nicknameButton = "Change nickname".toTextButton()
         nicknameButton.onClick {
             showNicknamePopup()
         }
@@ -68,13 +68,13 @@ class LobbyScreen : PickerScreen() {
         scrollPane.setScrollingDisabled(false, true)
         topTable.add(AutoScrollPane(roomRows)).fill().row()
 
-        rightSideButton.setText("创建房间".tr())
+        rightSideButton.setText("Create room".tr())
         // 自动进房检测完成前不可创建房间 (否则可能绕过唯一房间限制)
         rightSideButton.disable()
         rightSideButton.keyShortcuts.add(KeyCharAndCode.RETURN)
         rightSideButton.onActivation { showCreateRoomPopup() }
 
-        roomRows.add("检测是否已在房间中...".toLabel()).pad(20f).row()
+        roomRows.add("Checking if you are already in a room...".toLabel()).pad(20f).row()
 
         // 如果自己已经在某个房间里, 直接进入该房间/游戏 (不用先看大厅列表)
         Concurrency.run("LobbyAutoJoin") {
@@ -134,16 +134,16 @@ class LobbyScreen : PickerScreen() {
     }
 
     private fun updateNicknameLabel() {
-        nicknameLabel.setText("当前昵称: ${nickname}")
+        nicknameLabel.setText("Current nickname: [${nickname}]".tr())
     }
 
     private fun showNicknamePopup() {
         val current = nickname
         val popup = Popup(this)
-        popup.addGoodSizedLabel("设置大厅昵称 (其他玩家看到的名字)").colspan(2).row()
+        popup.addGoodSizedLabel("Set lobby nickname (shown to other players)".tr()).colspan(2).row()
         val textField = UncivTextField(current)
         popup.add(textField).width(stage.width / 2).row()
-        val okButton = "确定".toTextButton()
+        val okButton = "OK".toTextButton()
         okButton.onActivation {
             val name = textField.text.trim()
             if (name.isNotEmpty()) {
@@ -159,15 +159,15 @@ class LobbyScreen : PickerScreen() {
 
     private fun showCreateRoomPopup() {
         val popup = Popup(this)
-        popup.addGoodSizedLabel("创建房间").colspan(2).row()
-        val nameField = UncivTextField("我的房间")
+        popup.addGoodSizedLabel("Create room".tr()).colspan(2).row()
+        val nameField = UncivTextField("My room".tr())
         popup.add(nameField).width(stage.width / 2).row()
-        val createButton = "创建".toTextButton()
+        val createButton = "Create".toTextButton()
         createButton.onActivation {
-            val name = nameField.text.trim().ifEmpty { "我的房间" }
+            val name = nameField.text.trim().ifEmpty { "My room".tr() }
             popup.close()
             val loading = Popup(this)
-            loading.addGoodSizedLabel("创建中...")
+            loading.addGoodSizedLabel("Creating...".tr())
             loading.open()
             Concurrency.run("LobbyCreate") {
                 try {
@@ -178,7 +178,7 @@ class LobbyScreen : PickerScreen() {
                     }
                 } catch (e: Exception) {
                     launchOnGLThread {
-                        loading.reuseWith("创建失败: ${e.message}", true)
+                        loading.reuseWith("Create failed: [${e.message}]".tr(), true)
                     }
                 }
             }
@@ -196,7 +196,7 @@ class LobbyScreen : PickerScreen() {
         lastListFingerprint = fp
         roomRows.clearChildren()
         if (rooms.isEmpty()) {
-            roomRows.add("暂无房间, 点右下角「创建房间」开一局吧".toLabel()).pad(20f).row()
+            roomRows.add("No rooms yet - tap 'Create room' to start one".toLabel()).pad(20f).row()
             return
         }
         for (room in rooms) {
@@ -204,20 +204,20 @@ class LobbyScreen : PickerScreen() {
             val row = Table()
             row.defaults().pad(5f)
             row.add(room.name.toLabel(fontSize = 22)).width(200f)
-            row.add("房主: ${room.owner ?: "-"}".toLabel()).width(140f)
-            row.add("${room.playerCount}人".toLabel()).width(60f)
+            row.add("Host: [${room.owner ?: "-"}]".toLabel()).width(140f)
+            row.add("[${room.playerCount}] players".toLabel()).width(60f)
             val statusText = when (room.status) {
-                "playing" -> "[游戏中]"
-                "starting" -> "[生成地图中...]"
-                else -> "[等待中]"
+                "playing" -> "In game"
+                "starting" -> "Generating map..."
+                else -> "Waiting"
             }
             row.add(statusText.toLabel()).width(120f)
             if (room.status == "waiting") {
-                val joinButton = "加入".toTextButton()
+                val joinButton = "Join".toTextButton()
                 joinButton.onClick { joinRoom(room) }
                 row.add(joinButton)
             } else if (room.status == "playing") {
-                val spectateButton = "观战".toTextButton()
+                val spectateButton = "Spectate".toTextButton()
                 spectateButton.onClick { spectateRoom(room) }
                 row.add(spectateButton)
             } else {
@@ -238,12 +238,13 @@ class LobbyScreen : PickerScreen() {
     private fun lobbyModsText(room: LobbyRoom): String {
         val base = room.baseRuleset ?: return ""
         val mods = room.mods
-        return if (mods.isEmpty()) "规则集: $base" else "规则集: $base  模组: ${mods.joinToString("、")}"
+        return if (mods.isEmpty()) "Ruleset: [$base]".tr()
+        else "Ruleset: [$base]  Mods: [${mods.joinToString(", ")}]".tr()
     }
 
     private fun joinRoom(room: LobbyRoom) {
         val loading = Popup(this)
-        loading.addGoodSizedLabel("加入中...")
+        loading.addGoodSizedLabel("Joining...".tr())
         loading.open()
         Concurrency.run("LobbyJoin") {
             try {
@@ -253,12 +254,12 @@ class LobbyScreen : PickerScreen() {
                     if (result.ok) {
                         game.pushScreen(LobbyRoomScreen(room.id, room.name))
                     } else {
-                        ToastPopup(result.msg.ifEmpty { "加入失败" }, this@LobbyScreen)
+                        ToastPopup(result.msg.ifEmpty { "Join failed".tr() }, this@LobbyScreen)
                     }
                 }
             } catch (e: Exception) {
                 launchOnGLThread {
-                    loading.reuseWith("加入失败: ${e.message}", true)
+                    loading.reuseWith("Join failed: [${e.message}]".tr(), true)
                 }
             }
         }
@@ -267,7 +268,7 @@ class LobbyScreen : PickerScreen() {
     /** 观战: 加入进行中的房间, 直接以观战者身份进入游戏 (不进成员列表) */
     private fun spectateRoom(room: LobbyRoom) {
         val loading = Popup(this)
-        loading.addGoodSizedLabel("进入观战...")
+        loading.addGoodSizedLabel("Entering spectate...".tr())
         loading.open()
         Concurrency.run("LobbySpectate") {
             try {
@@ -277,11 +278,11 @@ class LobbyScreen : PickerScreen() {
                     if (result.ok && !result.gameId.isNullOrEmpty()) {
                         enterGameAsSpectator(result.gameId!!, room)
                     } else {
-                        ToastPopup(result.msg.ifEmpty { "观战失败" }, this@LobbyScreen)
+                        ToastPopup(result.msg.ifEmpty { "Spectate failed".tr() }, this@LobbyScreen)
                     }
                 }
             } catch (e: Exception) {
-                launchOnGLThread { loading.reuseWith("观战失败: ${e.message}", true) }
+                launchOnGLThread { loading.reuseWith("Spectate failed: [${e.message}]".tr(), true) }
             }
         }
     }
@@ -303,7 +304,7 @@ class LobbyScreen : PickerScreen() {
                 // 观战者也盯房间: 跳海开新局时自动跟进 (非成员, 不检查成员状态)
                 LobbyRoomScreen.startGameWatcher(room.id, gameId, isMember = false)
             } catch (e: Exception) {
-                launchOnGLThread { ToastPopup("进入观战失败: ${e.message}", this@LobbyScreen) }
+                launchOnGLThread { ToastPopup("Failed to enter spectate: [${e.message}]".tr(), this@LobbyScreen) }
             }
         }
     }
@@ -326,7 +327,7 @@ class LobbyScreen : PickerScreen() {
                     updateList(rooms)
                 }
             } catch (e: Exception) {
-                launchOnGLThread { ToastPopup("刷新失败: ${e.message}", this@LobbyScreen) }
+                launchOnGLThread { ToastPopup("Refresh failed: [${e.message}]".tr(), this@LobbyScreen) }
             }
         }
     }

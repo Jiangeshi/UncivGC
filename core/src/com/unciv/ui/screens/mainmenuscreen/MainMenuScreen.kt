@@ -1,5 +1,6 @@
 ﻿package com.unciv.ui.screens.mainmenuscreen
 
+import com.unciv.models.translations.tr
 import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.scenes.scene2d.Touchable
@@ -197,13 +198,13 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
                 Gdx.app.postRunnable {
                     ConfirmPopup(
                         this,
-                        "为保证以后更新能自动安装\n\n请允许本应用「安装未知应用」（需在系统设置中打开开关）",
-                        "去设置",
+                        "To allow future automatic updates\n\nplease allow this app to \"Install unknown apps\" (toggle in system settings)".tr(),
+                        "Go to settings".tr(),
                     ) { com.unciv.UncivGame.Current.openInstallSettings() }.open()
                 }
             }
         }
-        val lobbyTable = getMenuButton("联机大厅", "OtherIcons/Multiplayer", KeyboardBinding.Multiplayer)
+        val lobbyTable = getMenuButton("Online Lobby", "OtherIcons/Multiplayer", KeyboardBinding.Multiplayer)
             { game.pushScreen(LobbyScreen()) }
         column2.add(lobbyTable).row()
 
@@ -216,7 +217,7 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
         column2.add(modsTable).row()
 
         // Unciv 共创: 国内模组镜像 (模组下面)
-        val modMirrorTable = getMenuButton("国内模组镜像", "OtherIcons/Mods", KeyboardBinding.ModManager)
+        val modMirrorTable = getMenuButton("Mod Mirror (CN)", "OtherIcons/Mods", KeyboardBinding.ModManager)
             { game.pushScreen(ModMirrorScreen()) }
         column2.add(modMirrorTable).row()
 

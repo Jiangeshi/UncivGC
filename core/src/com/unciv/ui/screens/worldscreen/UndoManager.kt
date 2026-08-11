@@ -1,5 +1,6 @@
 package com.unciv.ui.screens.worldscreen
 
+import com.unciv.models.translations.tr
 import com.unciv.UncivGame
 import com.unciv.logic.files.UncivFiles
 import com.unciv.ui.popups.ToastPopup
@@ -124,7 +125,7 @@ class UndoManager(private val worldScreen: WorldScreen) {
                 }
             } catch (e: Exception) {
                 Concurrency.runOnGLThread {
-                    ToastPopup("撤回失败: ${e.message}", worldScreen)
+                    ToastPopup("Undo failed: [${e.message}]".tr(), worldScreen)
                 }
             }
         }
