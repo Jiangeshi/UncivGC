@@ -98,7 +98,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                 applyServerSettings(this, settings)
             }
 
-        fun currentNickname() = UncivGame.Current.settings.lobbyNickname.ifBlank { "Player".tr() }
+        fun currentNickname() = UncivGame.Current.settings.lobbyNickname.ifBlank { "Player" }
         fun currentPlayerId() = UncivGame.Current.settings.multiplayer.getUserId()
 
         /** 从房间设置解析模组列表 */
@@ -575,7 +575,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
     private var serverSynced = false
 
     private val nickname: String
-        get() = UncivGame.Current.settings.lobbyNickname.ifBlank { "Player".tr() }
+        get() = UncivGame.Current.settings.lobbyNickname.ifBlank { "Player" }
     private val playerId: String
         get() = UncivGame.Current.settings.multiplayer.getUserId()
 

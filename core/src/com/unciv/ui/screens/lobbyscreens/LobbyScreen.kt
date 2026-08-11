@@ -38,7 +38,7 @@ class LobbyScreen : PickerScreen() {
     private var lastAutoRejoinMs = 0L
 
     private val nickname: String
-        get() = UncivGame.Current.settings.lobbyNickname.ifBlank { "Player".tr() }
+        get() = UncivGame.Current.settings.lobbyNickname.ifBlank { "Player" }
 
     private val playerId: String
         get() = UncivGame.Current.settings.multiplayer.getUserId()

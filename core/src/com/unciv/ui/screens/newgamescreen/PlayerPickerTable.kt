@@ -340,15 +340,15 @@ class PlayerPickerTable(
         val nickRow = Table()
         nickRow.defaults().padRight(6f)
         val displayName = when {
-            isAI -> "AI 电脑"
+            isAI -> "AI"
             status?.nickname?.takeIf { it.isNotEmpty() } != null -> status!!.nickname
             else -> player.playerId.take(8)
         }
-        nickRow.add(("玩家昵称: $displayName" + if (status?.isOwner == true) "（房主）" else "").toLabel())
+        nickRow.add(("Nickname: [$displayName]" + if (status?.isOwner == true) " (host)" else "").toLabel())
         nickRow.add("".toLabel()).expandX()
         // 踢出只对真人成员显示 (AI 有自己的减号移除按钮)
         if (amOwner && !canEdit && !isAI) {
-            val kickButton = "踢出".toTextButton()
+            val kickButton = "Kick".toTextButton()
             kickButton.onClick { lobbyOnKick?.invoke(player) }
             nickRow.add(kickButton)
         }
@@ -358,9 +358,9 @@ class PlayerPickerTable(
         val missingMods = status?.missingMods.orEmpty()
         if (!isAI) {
             val statusLabel = when {
-                missingMods.isNotEmpty() -> "缺模组: ${missingMods.joinToString("、")}".toLabel().apply { setFontColor(Color.RED) }
-                status?.ready == true -> "已准备".toLabel().apply { setFontColor(Color.GREEN) }
-                else -> "未准备".toLabel().apply { setFontColor(Color.RED) }
+                missingMods.isNotEmpty() -> "Missing mods: [${missingMods.joinToString(", ")}]".toLabel().apply { setFontColor(Color.RED) }
+                status?.ready == true -> "Ready".toLabel().apply { setFontColor(Color.GREEN) }
+                else -> "Not ready".toLabel().apply { setFontColor(Color.RED) }
             }
             statusLabel.wrap = true
             block.add(statusLabel).left().fillX().row()
