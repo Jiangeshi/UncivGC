@@ -10,6 +10,9 @@ interface PlatformSpecific {
     /** Android 13+: 申请通知权限 (桌面端无操作) */
     fun requestNotificationPermission() {}
 
+    /** Android 8+: 申请「安装未知应用」权限 (无运行时弹窗, 只能拉起系统授权页; 桌面端无操作) */
+    fun requestInstallPermission() {}
+
     /** Android: 把用户可见目录 (外部存储) 的 mods 同步到应用内部目录 (App 实际读取处); 桌面端无操作 */
     fun syncModsFromVisibleToLocal() {}
 

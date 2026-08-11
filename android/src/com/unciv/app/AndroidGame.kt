@@ -71,6 +71,23 @@ class AndroidGame(private val activity: Activity) : UncivGame() {
         }
     }
 
+    /** 主动申请「安装未知应用」权限 — 自更新前置准备 (API 26+ 无运行时弹窗, 直接拉起系统授权页) */
+    override fun requestInstallPermission() {
+        if (Build.VERSION.SDK_INT < 26) return
+        if (activity.packageManager.canRequestPackageInstalls()) return  // 已授权不再打扰
+        try {
+            android.widget.Toast.makeText(
+                activity, "为保证更新能自动安装，请允许本应用安装未知应用",
+                android.widget.Toast.LENGTH_LONG).show()
+            val intent = android.content.Intent(
+                android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                android.net.Uri.parse("package:${activity.packageName}")
+            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            activity.startActivity(intent)
+        } catch (e: Exception) {
+        }
+    }
+
     private var lastOrientation = activity.resources.configuration.orientation
 
     fun addScreenObscuredListener() {
