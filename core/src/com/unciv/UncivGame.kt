@@ -428,6 +428,8 @@ open class UncivGame(val isConsoleMode: Boolean = false) : Game(), PlatformSpeci
     override fun resume() {
         super.resume()
         if (!isInitialized) return // The stuff from Create() is still happening, so the main screen will load eventually
+        // UncivGC: 从「安装未知应用」设置页返回后 — 权限已开且上次安装失败 → 自动重试安装
+        onAppResume()
         musicController.resumeFromShutdown()
 
         // This is also needed in resume to open links and notifications
@@ -512,6 +514,9 @@ open class UncivGame(val isConsoleMode: Boolean = false) : Game(), PlatformSpeci
         //region AUTOMATICALLY GENERATED VERSION DATA - DO NOT CHANGE THIS REGION, INCLUDING THIS COMMENT
         val VERSION = Version("4.21.6", 1242)
         //endregion
+
+        /** UncivGC 构建版本 (应用内更新检查用, 与服务器 apk/version.json 的 version 对比; 发新版时同步改) */
+        const val UGC_VERSION = "4.21.6.1"
 
         /** Global reference to the one Gdx.Game instance created by the platform launchers - do not use without checking [isCurrentInitialized] first. */
         // Set by Gdx Game.create callback, or the special cases ConsoleLauncher and unit tests make do with out Gdx and set this themselves.

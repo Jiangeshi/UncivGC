@@ -71,20 +71,79 @@ class AndroidGame(private val activity: Activity) : UncivGame() {
         }
     }
 
-    /** 主动申请「安装未知应用」权限 — 自更新前置准备 (API 26+ 无运行时弹窗, 直接拉起系统授权页) */
-    override fun requestInstallPermission() {
-        if (Build.VERSION.SDK_INT < 26) return
-        if (activity.packageManager.canRequestPackageInstalls()) return  // 已授权不再打扰
+    /** 主动申请「安装未知应用」— 已改为游戏内弹窗引导 (MainMenuScreen ConfirmPopup), 这里只提供判断和跳转 */
+    override fun canInstallPackages(): Boolean = try {
+        if (Build.VERSION.SDK_INT < 26) true
+        else activity.packageManager.canRequestPackageInstalls()
+    } catch (e: Exception) {
+        true
+    }
+
+    /** 打开「安装未知应用」授权页 — 兼容链: 带包名 → 通用页 → 应用详情页 (华为对带包名跳转可能不响应) */
+    override fun openInstallSettings() {
         try {
-            android.widget.Toast.makeText(
-                activity, "为保证更新能自动安装，请允许本应用安装未知应用",
-                android.widget.Toast.LENGTH_LONG).show()
-            val intent = android.content.Intent(
-                android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                android.net.Uri.parse("package:${activity.packageName}")
-            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            activity.startActivity(intent)
-        } catch (e: Exception) {
+            if (Build.VERSION.SDK_INT < 26) return
+            val base = android.content.Intent().addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                activity.startActivity(
+                    base.setAction(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES)
+                        .setData(android.net.Uri.parse("package:${activity.packageName}")))
+            } catch (e: Exception) {
+                try {
+                    activity.startActivity(
+                        base.setAction(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES))
+                } catch (e2: Exception) {
+                    activity.startActivity(
+                        base.setAction(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                            .setData(android.net.Uri.parse("package:${activity.packageName}")))
+                }
+            }
+        } catch (ignored: Exception) {
+        }
+    }
+
+    /** 应用内更新: PackageInstaller 系统级安装 (应用商店同款 API, 国产 ROM 兼容最好); 记录 APK 路径供失败时兜底 */
+    override fun openApkForInstall(apkPath: String): Boolean = try {
+        val apkFile = java.io.File(apkPath)
+        if (!apkFile.exists() || apkFile.length() == 0L) return false
+        activity.getSharedPreferences("uncivgc_update", android.content.Context.MODE_PRIVATE)
+            .edit().putString("last_apk_path", apkFile.absolutePath).apply()
+        val installer = activity.packageManager.packageInstaller
+        val params = android.content.pm.PackageInstaller.SessionParams(
+            android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+        val sessionId: Int = installer.createSession(params)
+        val session: android.content.pm.PackageInstaller.Session = installer.openSession(sessionId)
+        val out: java.io.OutputStream = session.openWrite("uncivgc_update", 0, apkFile.length())
+        val input = java.io.FileInputStream(apkFile)
+        val buf = ByteArray(64 * 1024)
+        while (true) {
+            val n = input.read(buf)
+            if (n < 0) break
+            out.write(buf, 0, n)
+        }
+        input.close()
+        session.fsync(out)
+        out.close()
+        // 结果回调 (InstallResultReceiver 静态注册)
+        val resultIntent = android.app.PendingIntent.getBroadcast(
+            activity, 0, android.content.Intent(activity, InstallResultReceiver::class.java),
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE)
+        session.commit(resultIntent.intentSender)
+        true
+    } catch (e: Exception) {
+        false
+    }
+
+    /** 从设置页返回后: 权限已开且上次安装失败 → 自动重试安装 */
+    override fun onAppResume() {
+        try {
+            val prefs = activity.getSharedPreferences("uncivgc_update", android.content.Context.MODE_PRIVATE)
+            if (prefs.getBoolean("install_failed", false) && canInstallPackages()) {
+                prefs.edit().putBoolean("install_failed", false).apply()
+                val path = prefs.getString("last_apk_path", null)
+                if (path != null) openApkForInstall(path)
+            }
+        } catch (ignored: Exception) {
         }
     }
 

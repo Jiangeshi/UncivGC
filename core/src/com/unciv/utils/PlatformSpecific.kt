@@ -10,8 +10,17 @@ interface PlatformSpecific {
     /** Android 13+: 申请通知权限 (桌面端无操作) */
     fun requestNotificationPermission() {}
 
-    /** Android 8+: 申请「安装未知应用」权限 (无运行时弹窗, 只能拉起系统授权页; 桌面端无操作) */
-    fun requestInstallPermission() {}
+    /** 应用内更新: 打开系统安装界面安装 APK (Android 用 PackageInstaller; 桌面端返回 false) */
+    fun openApkForInstall(apkPath: String): Boolean = false
+
+    /** 应用内更新: 是否允许安装未知应用 (Android 8+; 其他平台默认允许) */
+    fun canInstallPackages(): Boolean = true
+
+    /** 应用内更新: 打开系统设置里的「安装未知应用」授权页 */
+    fun openInstallSettings() {}
+
+    /** App 从后台恢复时回调 (Android 从设置页返回; 用于权限开启后自动重试安装) */
+    fun onAppResume() {}
 
     /** Android: 把用户可见目录 (外部存储) 的 mods 同步到应用内部目录 (App 实际读取处); 桌面端无操作 */
     fun syncModsFromVisibleToLocal() {}

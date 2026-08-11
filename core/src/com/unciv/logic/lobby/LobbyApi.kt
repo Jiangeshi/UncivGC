@@ -28,6 +28,13 @@ import kotlinx.serialization.json.JsonElement
 data class ModMirrorEntry(val name: String = "", val size: Long = 0, val updatedAt: Double = 0.0, val md5: String = "", val version: String = "")
 
 @Serializable
+data class UpdateInfo(
+    val version: String = "",
+    val notes: String = "",
+    val apkSize: Long = 0,
+    val apkMd5: String = "",
+)
+@Serializable
 data class LobbyMember(
     val nickname: String,
     val playerId: String = "",
@@ -199,6 +206,64 @@ object LobbyApi {
             contentType(ContentType.Application.Json)
             setBody(ModsRequest(nickname, playerId ?: "", missingMods))
         })
+
+    /** 应用更新检查: 服务器 version.json; 失败返回 null (静默跳过) */
+    suspend fun checkUpdate(): UpdateInfo? = try {
+        parse<UpdateInfo>(client.get("$SERVER_URL/api/version"))
+    } catch (e: Exception) {
+        null
+    }
+
+    /** 下载最新 APK → 本地临时文件路径 (流式+进度); 失败 null.
+     *  进度回调传 (received: Long, total: Long) 字节数.
+     *  用 java.net.HttpURLConnection — 与 curl 同级别的系统网络栈, 慢速/抖动网络稳定
+     *  (Ktor CIO 在到服务器的慢速传输中反复断连/进度卡 0) */
+    suspend fun downloadApk(onProgress: (received: Long, total: Long) -> Unit): String? {
+        var conn: java.net.HttpURLConnection? = null
+        var out: java.io.FileOutputStream? = null
+        return try {
+            conn = java.net.URL("$SERVER_URL/api/download/apk").openConnection() as java.net.HttpURLConnection
+            conn.connectTimeout = 15_000
+            conn.readTimeout = 300_000  // 5 分钟无数据才超时 (慢速下载持续有数据不受影响)
+            conn.instanceFollowRedirects = true
+            if (conn.responseCode !in 200..299) return null
+            val total = conn.contentLength.toLong()
+            val temp = com.badlogic.gdx.Gdx.files.local("update-uncivgc.apk")
+            out = java.io.FileOutputStream(temp.file())
+            val input = conn.inputStream
+            val buf = ByteArray(64 * 1024)
+            var received = 0L
+            var lastReport = 0L
+            while (true) {
+                val read = input.read(buf)
+                if (read == -1) break
+                out.write(buf, 0, read)
+                received += read
+                if (received - lastReport >= 512 * 1024) {
+                    lastReport = received
+                    onProgress(received, total)
+                }
+            }
+            onProgress(received, total)  // 最终完整回报
+            if (total > 0 && received != total) null else temp.path()
+        } catch (e: Exception) {
+            // 下载中断 (网络/服务器断开) → 返回 null, 调用方提示重试, 不崩溃
+            try {
+                com.badlogic.gdx.Gdx.files.local("update-uncivgc.apk").delete()
+            } catch (ignored: Exception) {
+            }
+            null
+        } finally {
+            try {
+                out?.close()
+            } catch (ignored: Exception) {
+            }
+            try {
+                conn?.disconnect()
+            } catch (ignored: Exception) {
+            }
+        }
+    }
 
     /** 从服务器镜像下载模组 zip (流式, 带进度) → 本地临时文件路径; 失败返回 null.
      *  大模组下载单独放宽超时 (全局 35s 对几十 MB 的 zip 不够);

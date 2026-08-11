@@ -41,6 +41,7 @@ import com.unciv.ui.components.tilegroups.TileGroupMap
 import com.unciv.ui.components.widgets.AutoScrollPane
 import com.unciv.ui.images.ImageGetter
 import com.unciv.ui.images.padTopDescent
+import com.unciv.ui.popups.ConfirmPopup
 import com.unciv.ui.popups.Popup
 import com.unciv.ui.popups.ToastPopup
 import com.unciv.ui.popups.closeAllPopups
@@ -185,10 +186,19 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
         column2.add(multiplayerTable).row()
 
         // Unciv 共创: 联机大厅
-        // UncivGC: 进主菜单时主动申请「安装未知应用」权限 (每进程一次, 自更新前置准备; 无自更新代码)
+        // UncivGC: 应用内更新检查 (每进程一次, 后台检查)
+        com.unciv.ui.screens.lobbyscreens.UpdateChecker.checkAndPrompt(this)
+
+        // UncivGC: 「安装未知应用」权限引导 — 无系统弹窗, 游戏内弹窗引导去设置 (每进程一次, 自更新前置)
         if (!installPermissionAsked) {
             installPermissionAsked = true
-            com.unciv.UncivGame.Current.requestInstallPermission()
+            if (!com.unciv.UncivGame.Current.canInstallPackages()) {
+                ConfirmPopup(
+                    this,
+                    "为保证以后更新能自动安装\n\n请允许本应用「安装未知应用」（需在系统设置中打开开关）",
+                    "去设置",
+                ) { com.unciv.UncivGame.Current.openInstallSettings() }.open()
+            }
         }
         val lobbyTable = getMenuButton("联机大厅", "OtherIcons/Multiplayer", KeyboardBinding.Multiplayer)
             { game.pushScreen(LobbyScreen()) }
