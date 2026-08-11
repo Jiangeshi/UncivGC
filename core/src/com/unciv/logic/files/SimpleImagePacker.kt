@@ -39,8 +39,18 @@ object SimpleImagePacker {
         }
         try {
             pack(folder, output, packFileName)
+            // 打包成功 → 清掉上次失败留下的诊断文件
+            try {
+                File(output, "图集打包失败.txt").delete()
+            } catch (ignored: Exception) {
+            }
         } catch (e: Throwable) {
             Log.debug("Android 模组图集打包失败 (${folder.name}): ${e.message}")
+            // 把异常写到模组目录, 用户能在文件管理器里看到 (手机日志难拿)
+            try {
+                File(output, "图集打包失败.txt").writeText("${e}\n\n${e.stackTraceToString()}")
+            } catch (ignored: Exception) {
+            }
         }
     }
 
@@ -77,43 +87,42 @@ object SimpleImagePacker {
             }
         }
 
-        val pages = packer.pages
-        if (pages.isEmpty) {
-            packer.dispose()
-            return
-        }
-        // 只用第一页 (绝大多数模组一页足够; 超页的图放弃打包, 模组自带 atlas 的不受影响)
-        val page = pages.first()
-        val pagePixmap = page.pixmap
-        if (pagePixmap.width == 0 || pagePixmap.height == 0) {
-            packer.dispose()
-            return
-        }
-        val pngFile = File(output, "$packFileName.png")
-        PixmapIO.writePNG(FileHandle(pngFile.absolutePath), pagePixmap)
-
-        // 生成 libgdx TextureAtlas 文本格式
+        // gdx 1.14 的 PixmapPacker 会预建空白页, 且大图集会撑出多页 —
+        // 必须遍历所有页, 每页一个 PNG (game.png / game2.png / ...), atlas 里全部引用
         val sb = StringBuilder()
-        sb.append("$packFileName.png\n")
-        sb.append("size: ${pagePixmap.width}, ${pagePixmap.height}\n")
-        sb.append("format: RGBA8888\n")
-        sb.append("filter: Linear,Linear\n")
-        sb.append("repeat: none\n")
-        val rects = sortedMapOf<String, com.badlogic.gdx.graphics.g2d.PixmapPacker.PixmapPackerRectangle>()
-        page.rects.forEach { entry -> rects[entry.key] = entry.value }
-        for ((name, rect) in rects) {
-            sb.append(name).append('\n')
-            sb.append("  rotate: false\n")
-            sb.append("  xy: ${rect.x.toInt()}, ${rect.y.toInt()}\n")
-            sb.append("  size: ${rect.width.toInt()}, ${rect.height.toInt()}\n")
-            sb.append("  orig: ${rect.width.toInt()}, ${rect.height.toInt()}\n")
-            sb.append("  offset: 0, 0\n")
-            sb.append("  index: -1\n")
+        var writtenPages = 0
+        for (page in packer.pages) {
+            val rects = page.getRects()
+            if (rects.size == 0) continue  // 空页 (预建页) 跳过, 不产文件
+            val pagePixmap = page.pixmap
+            if (pagePixmap.width == 0 || pagePixmap.height == 0) continue
+            writtenPages++
+            val pageFileName = if (writtenPages == 1) "$packFileName.png" else "$packFileName$writtenPages.png"
+            PixmapIO.writePNG(FileHandle(File(output, pageFileName).absolutePath), pagePixmap)
+            sb.append(pageFileName).append('\n')
+            sb.append("size: ${pagePixmap.width}, ${pagePixmap.height}\n")
+            sb.append("format: RGBA8888\n")
+            sb.append("filter: Linear,Linear\n")
+            sb.append("repeat: none\n")
+            val sortedRects = sortedMapOf<String, com.badlogic.gdx.graphics.g2d.PixmapPacker.PixmapPackerRectangle>()
+            rects.forEach { entry -> sortedRects[entry.key] = entry.value }
+            for ((name, rect) in sortedRects) {
+                sb.append(name).append('\n')
+                sb.append("  rotate: false\n")
+                sb.append("  xy: ${rect.x.toInt()}, ${rect.y.toInt()}\n")
+                sb.append("  size: ${rect.width.toInt()}, ${rect.height.toInt()}\n")
+                sb.append("  orig: ${rect.width.toInt()}, ${rect.height.toInt()}\n")
+                sb.append("  offset: 0, 0\n")
+                sb.append("  index: -1\n")
+            }
+            // 关键: gdx TextureAtlas 解析用「空行」分页 (不是 .png 后缀) — 页之间必须有空行,
+            // 否则下一页的 png 文件名会被当成 region 名
+            sb.append('\n')
         }
-        File(output, "$packFileName.atlas").writeText(sb.toString())
-
-        pagePixmap.dispose()
+        // 页 pixmap 由 packer.dispose() 统一释放 — 不要单独 dispose, 避免双重释放告警
         packer.dispose()
+        if (writtenPages == 0) return
+        File(output, "$packFileName.atlas").writeText(sb.toString())
         if (skipped > 0) Log.debug("Android 图集打包 (${folder.name}): $skipped 张图跳过 (超大/无法解码)")
     }
 
