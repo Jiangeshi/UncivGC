@@ -43,7 +43,11 @@ class RuinsManager(
             .toMutableList()
         // The resulting List now gets shuffled, using a tile-based random to thwart save-scumming.
         // Note both Sequence.shuffled and Iterable.shuffled (with a 'd') always pull an extra copy of a MutableList internally, even if you feed them one.
-        candidates.shuffle(Random(triggeringUnit.getTile().position.toVector2().hashCode()))
+        // UncivGC: SL 开关开启时用真随机 — 读档重试遗迹奖励可变
+        val rng = if (triggeringUnit.civ.gameInfo.gameParameters.reRollableRandom)
+            Random.Default
+        else Random(triggeringUnit.getTile().position.toVector2().hashCode())
+        candidates.shuffle(rng)
         return candidates
     }
 

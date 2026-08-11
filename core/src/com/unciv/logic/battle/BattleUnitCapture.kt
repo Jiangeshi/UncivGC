@@ -57,9 +57,12 @@ object BattleUnitCapture {
             0.1f + attacker.getAttackingStrength(defender).toFloat() / defender.getDefendingStrength(attacker)
                 .toFloat() * 0.4f
         )
-        /** Between 0 and 1.  Defaults to turn and location-based random to avoid save scumming */
-        val random = Random((attacker.getCivInfo().gameInfo.turns * defender.getTile().position.toVector2().hashCode()).toLong())
-        return random.nextFloat() <= captureChance
+        /** Between 0 and 1.  Defaults to turn and location-based random to avoid save scumming
+         *  UncivGC: SL 开关开启时用真随机, 读档重试捕获结果可变 */
+        val random = if (attacker.getCivInfo().gameInfo.gameParameters.reRollableRandom)
+            Random.nextFloat()
+        else Random((attacker.getCivInfo().gameInfo.turns * defender.getTile().position.toVector2().hashCode()).toLong()).nextFloat()
+        return random <= captureChance
     }
 
 

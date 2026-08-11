@@ -285,9 +285,13 @@ object BattleDamage {
     }
     
     @Readonly
-    fun getRandomness(combatant: ICombatant): Float = 
-        Random(combatant.getCivInfo().gameInfo.turns
+    fun getRandomness(combatant: ICombatant): Float {
+        val gameInfo = combatant.getCivInfo().gameInfo
+        // UncivGC: SL 开关 (创建游戏→高级设置) 开启时用真随机 — 读档重试伤害结果可变
+        if (gameInfo.gameParameters.reRollableRandom) return Random.nextFloat()
+        return Random(gameInfo.turns
                 * combatant.getTile().position.toVector2().hashCode().toLong()).nextFloat()
+    }
 
     @Readonly
     fun calculateDamageToAttacker(
