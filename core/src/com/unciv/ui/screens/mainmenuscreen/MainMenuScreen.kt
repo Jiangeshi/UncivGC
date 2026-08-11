@@ -190,14 +190,17 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
         com.unciv.ui.screens.lobbyscreens.UpdateChecker.checkAndPrompt(this)
 
         // UncivGC: 「安装未知应用」权限引导 — 无系统弹窗, 游戏内弹窗引导去设置 (每进程一次, 自更新前置)
+        // 注意: 必须 postRunnable 延迟到界面构建完成后再弹 — init 中途直接 open 会被后续菜单 UI 盖住点不到
         if (!installPermissionAsked) {
             installPermissionAsked = true
             if (!com.unciv.UncivGame.Current.canInstallPackages()) {
-                ConfirmPopup(
-                    this,
-                    "为保证以后更新能自动安装\n\n请允许本应用「安装未知应用」（需在系统设置中打开开关）",
-                    "去设置",
-                ) { com.unciv.UncivGame.Current.openInstallSettings() }.open()
+                Gdx.app.postRunnable {
+                    ConfirmPopup(
+                        this,
+                        "为保证以后更新能自动安装\n\n请允许本应用「安装未知应用」（需在系统设置中打开开关）",
+                        "去设置",
+                    ) { com.unciv.UncivGame.Current.openInstallSettings() }.open()
+                }
             }
         }
         val lobbyTable = getMenuButton("联机大厅", "OtherIcons/Multiplayer", KeyboardBinding.Multiplayer)
