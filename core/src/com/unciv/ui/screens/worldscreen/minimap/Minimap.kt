@@ -85,18 +85,14 @@ class Minimap(val mapHolder: WorldMapHolder, minimapSize: Int, private val civIn
         val width: Float
         val mapParameters = mapHolder.tileMap.mapParameters
 
-        if (civInfo != null) {
-            height = civInfo.exploredRegion.getHeight().toFloat()
-            width = civInfo.exploredRegion.getWidth().toFloat()
+        // UncivGC: 小地图改为全图尺寸 (不再按已探索区域裁剪), 未探索区域以灰色显示
+        if (mapParameters.shape != MapShape.rectangular) {
+            val diameter = mapParameters.mapSize.radius * 2f + 1f
+            height = diameter
+            width = diameter
         } else {
-            if (mapParameters.shape != MapShape.rectangular) {
-                val diameter = mapParameters.mapSize.radius * 2f + 1f
-                height = diameter
-                width = diameter
-            } else {
-                height = mapParameters.mapSize.height.toFloat()
-                width = mapParameters.mapSize.width.toFloat()
-            }
+            height = mapParameters.mapSize.height.toFloat()
+            width = mapParameters.mapSize.width.toFloat()
         }
 
         val result =
@@ -180,19 +176,10 @@ class Minimap(val mapHolder: WorldMapHolder, minimapSize: Int, private val civIn
     }
 
     private fun createMinimapTiles(tileSize: Float): List<MinimapTile> {
+        // UncivGC: 创建全部地块 (不再按已探索区域过滤) — 未探索地块由 updateColor 显示为灰色
         val tiles = ArrayList<MinimapTile>()
-        val pad = if (mapHolder.tileMap.mapParameters.shape != MapShape.rectangular)
-            mapHolder.tileMap.mapParameters.mapSize.radius * tileSize * 1.5f
-        else
-            (mapHolder.tileMap.mapParameters.mapSize.width - 1f) * tileSize * 0.75f
-        val leftSide =
-                if (civInfo != null) civInfo.exploredRegion.getMinimapLeft(tileSize) else -Float.MAX_VALUE
         for (tileInfo in mapHolder.tileMap.values) {
-            if (civInfo?.exploredRegion?.isPositionInRegion(tileInfo.position) == false) continue
-            val minimapTile = MinimapTile(tileInfo, tileSize)
-            if (minimapTile.image.x < leftSide)
-                minimapTile.image.x += pad
-            tiles.add(minimapTile)
+            tiles.add(MinimapTile(tileInfo, tileSize))
         }
         return tiles
     }
@@ -234,22 +221,9 @@ class Minimap(val mapHolder: WorldMapHolder, minimapSize: Int, private val civIn
         val worldToMiniFactor: Vector2
         var miniViewport = worldViewport
 
-        if (civInfo != null) {
-            if (civInfo.exploredRegion.shouldRecalculateCoords()) civInfo.exploredRegion.calculateStageCoords(
-                worldWidth,
-                worldHeight
-            )
-
-            val exploredRectangle = civInfo.exploredRegion.getRectangle()
-            worldToMiniFactor = Vector2(
-                tileMapWidth / exploredRectangle.width,
-                tileMapHeight / exploredRectangle.height
-            )
-            miniViewport.x -= exploredRectangle.x
-            miniViewport.y -= exploredRectangle.y
-        } else
-            worldToMiniFactor =
-                    Vector2(tileLayer.width / worldWidth, tileLayer.height / worldHeight)
+        // UncivGC: 全图小地图 — 视野框直接按全图坐标换算 (不再裁剪到已探索区域)
+        worldToMiniFactor =
+                Vector2(tileLayer.width / worldWidth, tileLayer.height / worldHeight)
 
         miniViewport *= worldToMiniFactor
         miniViewport.x += (tileLayer.width - tileMapWidth) * 0.5f

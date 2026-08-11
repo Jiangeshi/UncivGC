@@ -12,7 +12,6 @@ import com.unciv.logic.map.tile.TileHistory.TileHistoryState.CityCenterType
 import com.unciv.ui.components.extensions.surroundWithCircle
 import com.unciv.ui.images.IconCircleGroup
 import com.unciv.ui.images.ImageGetter
-import com.unciv.utils.DebugUtils
 import kotlin.math.PI
 import kotlin.math.atan
 
@@ -21,13 +20,16 @@ class MinimapTile(val tile: Tile, tileSize: Float) {
     private var cityCircleImage: IconCircleGroup? = null
     var owningCiv: Civilization? = null
     private var neighborToBorderImage = HashMap<Tile, Image>()
-    val isUnrevealed get() = !image.isVisible
+    /** UncivGC: 未探索状态改为独立字段 (原由 isVisible 推断, 现未探索也可见=灰色) */
+    var isUnrevealed = false
 
     init {
         val positionalVector = HexMath.hex2WorldCoords(tile.position)
 
-        image.isVisible = false
+        image.isVisible = true  // UncivGC: 全图小地图 — 未探索地块也显示 (灰色)
         image.setSize(tileSize, tileSize)
+        // 初始地形色 (首次 update 若状态未变化不会触发重上色, 需保证初始颜色正确)
+        image.color = tile.getBaseTerrain().getColor().lerp(Color.GRAY, 0.5f)
         image.setPosition(
             positionalVector.x * 0.5f * tileSize,
             positionalVector.y * 0.5f * tileSize
@@ -35,8 +37,13 @@ class MinimapTile(val tile: Tile, tileSize: Float) {
     }
 
     fun updateColor(isTileUnrevealed: Boolean, turn: Int? = null) {
-        image.isVisible = DebugUtils.VISIBLE_MAP || !isTileUnrevealed
-        if (!image.isVisible) return
+        isUnrevealed = isTileUnrevealed
+        image.isVisible = true  // UncivGC: 未探索也显示
+        if (isTileUnrevealed) {
+            // UncivGC: 未探索地块显示为灰色 (不泄露地形信息, 但能看到世界相对位置)
+            image.color = Color.GRAY
+            return
+        }
         val isCityCenter =
                 if (turn == null) tile.isCityCenter() else tile.history.getState(turn).cityCenterType != CityCenterType.None
         val owningCiv = if (turn == null) tile.getOwner() else getOwningCivFromHistory(tile, turn)

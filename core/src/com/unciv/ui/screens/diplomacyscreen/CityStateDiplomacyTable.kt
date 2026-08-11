@@ -319,11 +319,9 @@ class CityStateDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
         val diplomaticMarriageButton =
             "Diplomatic Marriage ([${otherCiv.cityStateFunctions.getDiplomaticMarriageCost()}] Gold)".toTextButton()
         diplomaticMarriageButton.onClick {
-            val newCities = otherCiv.cities
+            // UncivGC: 联姻直接并入为自建城市 (或单城挑战者直接摧毁), 不再弹窗选择吞并/傀儡
             otherCiv.cityStateFunctions.diplomaticMarriage(viewingCiv)
             UncivGame.Current.popScreen() // The other civ will no longer exist
-            for (city in newCities)
-                viewingCiv.popupAlerts.add(PopupAlert(AlertType.DiplomaticMarriage, city.id))   // Player gets to choose between annex and puppet
         }
         if (diplomacyScreen.isNotPlayersTurn() || !otherCiv.cityStateFunctions.canBeMarriedBy(viewingCiv))
             diplomaticMarriageButton.disable()

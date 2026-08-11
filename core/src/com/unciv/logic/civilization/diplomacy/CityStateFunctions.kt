@@ -412,8 +412,12 @@ class CityStateFunctions(val civInfo: Civilization) {
 
         for (city in civInfo.cities) {
             city.espionage.removeAllPresentSpies(SpyFleeReason.CityTakenOverByMarriage)
-            city.moveToCiv(otherCiv)
-            city.isPuppet = true // Human players get a popup that allows them to annex instead
+            // UncivGC: 单城挑战者联姻后直接摧毁城市 (保持原弹窗行为); 其余文明直接并入为自建城市 (不再傀儡+弹窗选择)
+            if (otherCiv.isOneCityChallenger()) {
+                city.destroyCity(overrideSafeties = true)
+            } else {
+                city.moveToCiv(otherCiv)
+            }
         }
         civInfo.destroy(notificationLocation.toHexCoord())
     }
