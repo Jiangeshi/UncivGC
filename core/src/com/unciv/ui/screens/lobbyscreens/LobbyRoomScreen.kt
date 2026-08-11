@@ -768,9 +768,12 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                     }
                 } catch (e: Exception) {
                     if (e.message?.contains("404") == true || e.message?.contains("房间不存在") == true) {
-                        launchOnGLThread {
-                            ToastPopup("房间已解散", this@LobbyRoomScreen)
-                            game.popScreen()
+                        // UncivGC: 主动退出时房间解散是预期 (最后一人退出服务器会解散) — 不弹提示也不重复弹屏
+                        if (!voluntarilyLeft) {
+                            launchOnGLThread {
+                                ToastPopup("房间已解散", this@LobbyRoomScreen)
+                                game.popScreen()
+                            }
                         }
                         break
                     }
