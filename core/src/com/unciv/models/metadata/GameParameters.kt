@@ -27,6 +27,8 @@ class GameParameters : IsPartOfGameInfoSerialization { // Default values are the
     var noBarbarians = false
     var ragingBarbarians = false
     var oneCityChallenge = false
+    // UncivGC: 随机数可变 (SL) — 开启后随机事件结果可因读档重试而改变; 默认关 = 确定性随机 (联机公平)
+    var reRollableRandom = false
     var godMode = false
     var nuclearWeaponsEnabled = true
     var espionageEnabled = false

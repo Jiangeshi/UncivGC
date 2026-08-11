@@ -92,9 +92,6 @@ internal class AdvancedTab(
         addCheckbox("Enlarge selected notifications", settings::enlargeSelectedNotification)
         addCheckbox("Enable experimental A* pathing", settings::useAStarPathfinding)
 
-        // UncivGC: 随机数 SL 开关 (读档重试随机结果可变; 联机局建议关闭)
-        addCheckbox("允许读档重试（随机结果可变）", settings::reRollableRandom)
-
         addSeparator()
 
         addSetUserId()

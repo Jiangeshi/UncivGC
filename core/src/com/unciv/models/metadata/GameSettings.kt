@@ -51,8 +51,6 @@ class GameSettings {
     // Defaulting this to "" - and implement the fallback only in NotificationsScroll leads to Options popup and actual effect being in disagreement!
     var notificationScroll: String = NotificationsScroll.UserSetting.default().name
     var showMinimap = true
-    // UncivGC: 随机数可变开关 — 开启后随机事件结果可因读档重试而改变 (SL); 默认关 = 确定性随机 (联机安全)
-    var reRollableRandom = false
     var showTutorials = true
     // There have no UI other than the "Reset tutorials" button:
     var tutorialsShown = HashSet<String>()
