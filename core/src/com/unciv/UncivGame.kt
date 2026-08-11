@@ -103,8 +103,19 @@ open class UncivGame(val isConsoleMode: Boolean = false) : Game(), PlatformSpeci
         if (Gdx.app.type != Application.ApplicationType.Desktop) {
             Concurrency.runOnNonDaemonThreadPool("ModImagePacker") {
                 try {
+                    // packImagesPerMod 期望传入单个模组目录 (内部检查 <dir>/Images) — 必须遍历每个模组, 不能直接传 mods 目录 (否则永远跳过)
                     val modsDir = java.io.File(files.getModsFolder().file().absolutePath)
-                    ImagePacker.packImagesPerMod(modsDir.path, modsDir.path)
+                    if (modsDir.exists()) {
+                        for (mod in modsDir.listFiles()!!) {
+                            if (!mod.isHidden) {
+                                try {
+                                    ImagePacker.packImagesPerMod(mod.path, mod.path)
+                                } catch (e: Throwable) {
+                                    com.unciv.utils.Log.debug("Android 模组图集打包失败 (${mod.name}): ${e.message}")
+                                }
+                            }
+                        }
+                    }
                 } catch (e: Throwable) {  // Error 也要兜 (如 NoClassDefFoundError), 不能崩启动
                     com.unciv.utils.Log.debug("Android 模组图集打包失败: ${e.message}")
                 }
