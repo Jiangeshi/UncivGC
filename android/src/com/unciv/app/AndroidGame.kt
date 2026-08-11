@@ -102,33 +102,18 @@ class AndroidGame(private val activity: Activity) : UncivGame() {
         }
     }
 
-    /** 应用内更新: PackageInstaller 系统级安装 (应用商店同款 API, 国产 ROM 兼容最好); 记录 APK 路径供失败时兜底 */
+    /** 应用内更新: FileProvider 分享 APK → 系统安装器弹确认框 — 华为等 ROM 对 PackageInstaller 静默通道拦截,
+     *  系统安装界面最稳 (用户手动装 APK 看到的同款界面) */
     override fun openApkForInstall(apkPath: String): Boolean = try {
         val apkFile = java.io.File(apkPath)
         if (!apkFile.exists() || apkFile.length() == 0L) return false
-        activity.getSharedPreferences("uncivgc_update", android.content.Context.MODE_PRIVATE)
-            .edit().putString("last_apk_path", apkFile.absolutePath).apply()
-        val installer = activity.packageManager.packageInstaller
-        val params = android.content.pm.PackageInstaller.SessionParams(
-            android.content.pm.PackageInstaller.SessionParams.MODE_FULL_INSTALL)
-        val sessionId: Int = installer.createSession(params)
-        val session: android.content.pm.PackageInstaller.Session = installer.openSession(sessionId)
-        val out: java.io.OutputStream = session.openWrite("uncivgc_update", 0, apkFile.length())
-        val input = java.io.FileInputStream(apkFile)
-        val buf = ByteArray(64 * 1024)
-        while (true) {
-            val n = input.read(buf)
-            if (n < 0) break
-            out.write(buf, 0, n)
+        val uri = androidx.core.content.FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", apkFile)
+        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
         }
-        input.close()
-        session.fsync(out)
-        out.close()
-        // 结果回调 (InstallResultReceiver 静态注册)
-        val resultIntent = android.app.PendingIntent.getBroadcast(
-            activity, 0, android.content.Intent(activity, InstallResultReceiver::class.java),
-            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE)
-        session.commit(resultIntent.intentSender)
+        activity.startActivity(intent)
         true
     } catch (e: Exception) {
         false
