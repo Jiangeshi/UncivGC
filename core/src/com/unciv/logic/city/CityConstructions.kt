@@ -626,6 +626,8 @@ class CityConstructions : IsPartOfGameInfoSerialization {
             city.health += (building.cityHealth.toFloat() * city.health.toFloat() / city.getMaxHealth().toFloat()).toInt()
         }
         builtBuildingObjects = builtBuildingObjects.withItem(building)
+        // 记录本次 addBuilding 前是否已拥有 (科技加成去重: 同一建筑/奇观只触发一次, 防免费连锁/重复 addBuilding 重复给科技)
+        val wasAlreadyBuilt = builtBuildings.contains(buildingName)
         builtBuildings.add(buildingName)
 
         updateUniques()
@@ -639,9 +641,14 @@ class CityConstructions : IsPartOfGameInfoSerialization {
             civ.cache.updateHasActiveEnemyMovementPenalty()
 
         // Korean unique - apparently gives the same as the research agreement
-        if (building.isStatRelated(Stat.Science, city) && civ.hasUnique(UniqueType.TechBoostWhenScientificBuildingsBuiltInCapital)
-            && city.isCapital())
-            civ.tech.addScience(civ.tech.scienceOfLast8Turns.sum() / 8)
+        // UncivGC: 加 !wasAlreadyBuilt — 每个建筑/奇观只触发一次 (防免费连锁/重复 addBuilding 重复给科技)
+        // 严格一次: techBoostEverBuiltBuildings 记录本文明所有建过的科学建筑/奇观 —
+        // 卖了/被摧毁后重建也不得再次触发 (add 返回 false = 建过, 跳过)
+        if (!wasAlreadyBuilt && building.isStatRelated(Stat.Science, city)
+            && civ.hasUnique(UniqueType.TechBoostWhenScientificBuildingsBuiltInCapital)
+            && city.isCapital()
+            && civ.techBoostEverBuiltBuildings.add(buildingName))
+            civ.tech.addScience(civ.tech.getHalfMedianScienceCostOfResearchableTechs())
 
         val previousHappiness = civ.getHappiness()
         // can cause civ happiness update: reassignPopulationDeferred -> reassignPopulation -> cityStats.update -> civ.updateHappiness
@@ -694,6 +701,16 @@ class CityConstructions : IsPartOfGameInfoSerialization {
         }
         
         updateUniques()
+    }
+
+    /** UncivGC 帧同步: 服务器同步 builtBuildings 列表后重建建筑对象缓存 —
+     *  界面建筑列表 (getBuiltBuildings) 读 builtBuildingObjects, 只改 HashSet 界面不更新
+     *  (购买建筑/卖建筑"下回合才看到"的根因); 同时重建建筑 uniques (产量/条件计算用) */
+    fun rebuildBuiltBuildingsFromSync() {
+        builtBuildingObjects = ArrayList(builtBuildings.mapNotNull {
+            city.getRuleset().buildings[it]
+        })
+        updateUniques(true)
     }
 
     private fun updateUniques(onLoadGame: Boolean = false) {

@@ -20,6 +20,7 @@ import yairm210.purity.annotations.LocalState
 import yairm210.purity.annotations.Pure
 import yairm210.purity.annotations.Readonly
 import kotlin.math.min
+import kotlin.math.max
 
 @InternalState
 class StatTreeNode {
@@ -597,6 +598,10 @@ class CityStats(val city: City) {
         if (canConvertFoodToProduction(totalFood, currentConstruction)) {
             newFinalStatList["Excess food to production"] =
                 Stats(production = getProductionFromExcessiveFood(totalFood), food = -totalFood)
+        } else if (canConvertAllFoodToProduction(currentConstruction)) {
+            // UncivGC 全粮转化: 建造中全部粮食(含被人口消耗部分) 1:1 转产能, 粮食净值归零 → 不增长也不饥荒
+            newFinalStatList["All food to production"] =
+                Stats(production = max(0f, totalFood + foodEaten), food = -totalFood)
         }
 
         val growthNullifyingUnique = city.getMatchingUniques(UniqueType.NullifiesGrowth).firstOrNull()
@@ -623,6 +628,13 @@ class CityStats(val city: City) {
         return (food > 0
             && currentConstruction is INonPerpetualConstruction
             && currentConstruction.hasUnique(UniqueType.ConvertFoodToProductionWhenConstructed))
+    }
+
+    /** UncivGC 全粮转化: 建造中所有粮食(含负值)都转产能, 城市不会因此饥荒 */
+    @Readonly
+    fun canConvertAllFoodToProduction(currentConstruction: IConstruction): Boolean {
+        return (currentConstruction is INonPerpetualConstruction
+            && currentConstruction.hasUnique(UniqueType.ConvertAllFoodToProductionWhenConstructed))
     }
 
     /**

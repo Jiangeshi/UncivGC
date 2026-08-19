@@ -135,8 +135,8 @@ class CityConquestFunctions(val city: City) {
 
         if (!reconqueredCityWhileStillInResistance && city.foundingCivObject != receivingCiv) {
             // add resistance
-            // I checked, and even if you puppet there's resistance for conquering
-            city.setFlag(CityFlags.Resistance, city.population.population)
+            // UncivGC 调整: 抵抗回合 = 征服减员后的当前人口 × 0.5, 向下取整 (原版 = 当前人口)
+            city.setFlag(CityFlags.Resistance, city.population.population / 2)
         } else {
             // reconquering or liberating city in resistance so eliminate it
             city.removeFlag(CityFlags.Resistance)

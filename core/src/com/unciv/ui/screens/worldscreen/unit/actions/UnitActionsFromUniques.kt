@@ -26,6 +26,7 @@ import com.unciv.models.translations.tr
 import com.unciv.ui.components.fonts.Fonts
 import com.unciv.ui.popups.ConfirmPopup
 import com.unciv.ui.screens.pickerscreens.ImprovementPickerScreen
+import com.unciv.ui.screens.worldscreen.FrameSync
 import com.unciv.ui.screens.worldscreen.unit.actions.UnitActionModifiers.getUseFrequency
 import yairm210.purity.annotations.Readonly
 
@@ -60,7 +61,11 @@ object UnitActionsFromUniques {
         val hasActionModifiers = unique.modifiers.any { it.type?.targetTypes?.contains(
             UniqueTarget.UnitActionModifier
         ) == true }
-        val foundAction = {
+        val foundAction = foundCityAction@{
+            // UncivGC 帧同步: 仅人类 UI 操作发服务器执行; AI 自动化/headless 无世界屏幕 → 照旧本地执行
+            val worldScreen = FrameSync.currentWorldScreenOrNull()
+            if (worldScreen != null && FrameSync.tryInterceptOp(worldScreen, "unit.foundCity", mapOf("unitId" to unit.id)))
+                return@foundCityAction
             if (unit.civ.playerType != PlayerType.AI)
                 UncivGame.Current.settings.addCompletedTutorialTask("Found city")
             // Get the city to be able to change it into puppet, for modding.
@@ -139,8 +144,11 @@ object UnitActionsFromUniques {
             isCurrentAction = isSetUp,
             useFrequency = 85f,
             action = {
-                unit.action = UnitActionType.SetUp.value
-                unit.useMovementPoints(1f)
+                // UncivGC 帧同步: 发服务器执行 — 架设消耗 1 移动力由服务器权威处理,
+                // 纯本地执行会被同步回滚 (本地扣了又被服务器值恢复 → “架设不消耗移动力”)
+                val ws = com.unciv.ui.screens.worldscreen.FrameSync.currentWorldScreenOrNull()
+                if (!com.unciv.ui.screens.worldscreen.FrameSync.tryInterceptOp(ws, "unit.setUp", mapOf("unitId" to unit.id)))
+                    unit.action = UnitActionType.SetUp.value
             }.takeIf { unit.hasMovement() && !isSetUp })
         )
     }
@@ -168,8 +176,14 @@ object UnitActionsFromUniques {
             isCurrentAction = unit.isPreparingParadrop(),
             useFrequency = useFrequency, // While it is important to see, it isn't nessesary used a lot
             action = {
-                if (unit.isPreparingParadrop()) unit.action = null
-                else unit.action = UnitActionType.Paradrop.value
+                if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(unit.civ.gameInfo)) {
+                    // UncivGC 帧同步: 准备状态由服务器权威 (实际空降 = 移动 op)
+                    com.unciv.ui.screens.worldscreen.FrameSync.sendOp("unit.paradrop",
+                        mapOf("unitId" to unit.id, "on" to !unit.isPreparingParadrop()))
+                } else {
+                    if (unit.isPreparingParadrop()) unit.action = null
+                    else unit.action = UnitActionType.Paradrop.value
+                }
             }.takeIf {
                 !unit.hasUnitMovedThisTurn()
             })
@@ -184,8 +198,14 @@ object UnitActionsFromUniques {
             isCurrentAction = unit.isPreparingAirSweep(),
             useFrequency = useFrequency,
             action = {
-                if (unit.isPreparingAirSweep()) unit.action = null
-                else unit.action = UnitActionType.AirSweep.value
+                if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(unit.civ.gameInfo)) {
+                    // UncivGC 帧同步: 准备状态由服务器权威 (实际空扫 = 攻击 op, 服务器走 AirInterception)
+                    com.unciv.ui.screens.worldscreen.FrameSync.sendOp("unit.airSweep",
+                        mapOf("unitId" to unit.id, "on" to !unit.isPreparingAirSweep()))
+                } else {
+                    if (unit.isPreparingAirSweep()) unit.action = null
+                    else unit.action = UnitActionType.AirSweep.value
+                }
             }.takeIf {
                 unit.canAttack()
             }
@@ -267,10 +287,16 @@ object UnitActionsFromUniques {
                 val triggerFunction = UniqueTriggerActivation.getTriggerFunction(unique, unit.civ, unit = unit, tile = unit.currentTile)
                     ?: return null
                 return { // This is the *action* that will be triggered!
-                    repeat(unique.getUniqueMultiplier(unit.cache.state)) {
-                        triggerFunction.invoke()
+                    if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(unit.civ.gameInfo)) {
+                        // UncivGC 帧同步: 通用 unique 触发走服务器 (覆盖 mod 一切 TriggerUnique 行动, 防重载回滚)
+                        com.unciv.ui.screens.worldscreen.FrameSync.sendOp("unit.triggerUnique",
+                            mapOf("unitId" to unit.id, "unique" to unique.text))
+                    } else {
+                        repeat(unique.getUniqueMultiplier(unit.cache.state)) {
+                            triggerFunction.invoke()
+                        }
+                        UnitActionModifiers.activateSideEffects(unit, unique)
                     }
-                    UnitActionModifiers.activateSideEffects(unit, unique)
                 }
             }()
 
@@ -291,8 +317,13 @@ object UnitActionsFromUniques {
             title = "Add to [${unique.params[0]}]",
             useFrequency = useFrequency,
             action = {
-                unit.civ.victoryManager.currentsSpaceshipParts.add(unit.name, 1)
-                unit.destroy()
+                if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(unit.civ.gameInfo)) {
+                    // UncivGC 帧同步: 飞船部件入首都由服务器权威执行 (防重载回滚)
+                    com.unciv.ui.screens.worldscreen.FrameSync.sendOp("unit.addInCapital", mapOf("unitId" to unit.id))
+                } else {
+                    unit.civ.victoryManager.currentsSpaceshipParts.add(unit.name, 1)
+                    unit.destroy()
+                }
             }.takeIf {
                 tile.isCityCenter() && tile.getCity()!!
                     .isCapital() && tile.getCity()!!.civ == unit.civ
@@ -316,8 +347,17 @@ object UnitActionsFromUniques {
 
         return UnitAction(UnitActionType.CreateImprovement, useFrequency, "Create [${improvement.name}]",
             action = {
-                tile.setImprovement(improvement, unit.civ, unit)
-                unit.destroy()  // Modders may wish for a nondestructive way, but that should be another Unique
+                // UncivGC 帧同步: 服务器权威 (原版渔船=立即创建+消耗单位; 纯本地会被同步回滚)
+                val ws = com.unciv.ui.screens.worldscreen.FrameSync.currentWorldScreenOrNull()
+                val tilePos = unit.getTile().position
+                if (!com.unciv.ui.screens.worldscreen.FrameSync.tryInterceptOp(
+                        ws, "unit.createImprovement",
+                        mapOf("unitId" to unit.id,
+                              "tileX" to (tilePos.x ?: 0), "tileY" to (tilePos.y ?: 0),
+                              "improvement" to improvement.name))) {
+                    tile.setImprovement(improvement, unit.civ, unit)
+                    unit.destroy()  // Modders may wish for a nondestructive way, but that should be another Unique
+                }
             }.takeIf { unit.hasMovement() })
     }
 
@@ -351,12 +391,20 @@ object UnitActionsFromUniques {
                     ),
                     associatedUnique = unique,
                     action = {
-                        val unitTile = unit.getTile()
-                        unitTile.setImprovement(improvement, unit.civ, unit)
-
-                        unit.civ.cache.updateViewableTiles() // to update 'last seen improvement'
-
-                        UnitActionModifiers.activateSideEffects(unit, unique)
+                        // UncivGC 帧同步: 服务器权威 (doCreateImprovement — 校验+setImprovement+副作用+广播);
+                        // 纯本地执行会被同步回滚 → “造了又没了” (Colony 瞬间建造)
+                        val ws = com.unciv.ui.screens.worldscreen.FrameSync.currentWorldScreenOrNull()
+                        val tilePos = unit.getTile().position
+                        if (!com.unciv.ui.screens.worldscreen.FrameSync.tryInterceptOp(
+                                ws, "unit.createImprovement",
+                                mapOf("unitId" to unit.id,
+                                      "tileX" to (tilePos.x ?: 0), "tileY" to (tilePos.y ?: 0),
+                                      "improvement" to improvement.name))) {
+                            val unitTile = unit.getTile()
+                            unitTile.setImprovement(improvement, unit.civ, unit)
+                            unit.civ.cache.updateViewableTiles() // to update 'last seen improvement'
+                            UnitActionModifiers.activateSideEffects(unit, unique)
+                        }
                     }.takeIf {
                         resourcesAvailable
                             && unit.hasMovement()

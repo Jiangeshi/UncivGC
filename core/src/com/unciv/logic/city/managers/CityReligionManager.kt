@@ -27,6 +27,16 @@ class CityReligionManager : IsPartOfGameInfoSerialization {
     @Transient
     private val followers: Counter<String> = Counter()
 
+    /** UncivGC 帧同步: 服务器权威城市宗教同步 — 直接设置主流宗教压力 (传教/创立后立即生效,
+     *  城市横幅/宗教概览/信仰折扣不用等回合末重载; 压力近似值, 重载后由存档精确覆盖) */
+    fun setPressureForSync(religionName: String?) {
+        pressures.clear()
+        if (religionName != null && religionName != Constants.noReligionName && religionName.isNotEmpty()) {
+            pressures.add(religionName, (city.population.population * 2).coerceAtLeast(1))
+        }
+        updateNumberOfFollowers(true)
+    }
+
     @delegate:Transient
     private val pressureFromAdjacentCities: Int by lazy { city.civ.gameInfo.speed.religiousPressureAdjacentCity }
 

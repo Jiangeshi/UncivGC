@@ -91,6 +91,13 @@ class MapOptionsTable(
         }
     }
 
+    /** UncivGC 联机大厅: 房间设置同步后全量刷新 (类型联动 + 生成/随机参数全部控件) */
+    fun syncFullFromMapParameters() {
+        refreshFromMapParameters()
+        generatedMapOptionsTable.syncFromMapParameters()
+        randomMapOptionsTable.syncFromMapParameters()
+    }
+
     internal fun getSelectedScenario(): ScenarioSelectTable.ScenarioData? {
         if (mapTypeSelectBox.selected.value != MapGeneratedMainType.scenario) return null
         return scenarioOptionsTable.selectedScenario

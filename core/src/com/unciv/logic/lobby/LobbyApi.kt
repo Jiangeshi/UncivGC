@@ -60,6 +60,17 @@ data class LobbyRoom(
     val memberIds: List<String> = emptyList(),
     val baseRuleset: String? = null,
     val mods: List<String> = emptyList(),
+    // UncivGC 房间聊天: 服务器只带最近 50 条, 客户端按 seq 增量渲染
+    val chat: List<LobbyChatMessage> = emptyList(),
+)
+
+@Serializable
+data class LobbyChatMessage(
+    val seq: Int = 0,
+    val playerId: String = "",
+    val nickname: String = "",
+    val text: String = "",
+    val ts: Long = 0,
 )
 
 @Serializable
@@ -87,12 +98,15 @@ data class RestartRequest(val nickname: String, val playerId: String, val random
 @Serializable
 data class ModsRequest(val nickname: String, val playerId: String, val missingMods: List<String> = emptyList())
 @Serializable
+data class ChatRequest(val nickname: String, val playerId: String, val text: String)
+@Serializable
 data class SettingsRequest(val nickname: String, val playerId: String, val settings: Map<String, JsonElement>)
 
 /** 联机大厅 API 客户端 (M2 服务器: unciv-lobby/lobby_server.py) */
 object LobbyApi {
-    // TODO: 上架前改为可配置 (设置页)
-    const val SERVER_URL = "http://110.40.151.9:8123"
+    // 生产默认; 本地联调可用 -Duncivgc.lobbyUrl=http://127.0.0.1:8124 覆盖
+    val SERVER_URL: String
+        get() = System.getProperty("uncivgc.lobbyUrl") ?: "http://110.40.151.9:8123"
 
     /** 房间接口鉴权 token (与服务器 LOBBY_TOKEN 一致; 防止陌生客户端建房/进房) */
     const val LOBBY_TOKEN = "fe645aeabf2862a9d70405643a849bee"
@@ -205,6 +219,13 @@ object LobbyApi {
         parse(client.post("$SERVER_URL/api/rooms/$roomId/mods") {
             contentType(ContentType.Application.Json)
             setBody(ModsRequest(nickname, playerId ?: "", missingMods))
+        })
+
+    /** UncivGC 房间聊天: 发送消息, 返回最新 seq */
+    suspend fun sendChat(roomId: String, nickname: String, playerId: String, text: String): ApiResult =
+        parse(client.post("$SERVER_URL/api/rooms/$roomId/chat") {
+            contentType(ContentType.Application.Json)
+            setBody(ChatRequest(nickname, playerId, text))
         })
 
     /** 应用更新检查: 服务器 version.json; 失败返回 null (静默跳过) */

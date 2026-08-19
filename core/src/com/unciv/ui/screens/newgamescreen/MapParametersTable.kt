@@ -48,6 +48,7 @@ class MapParametersTable(
     private var customWorldSizeTable = Table()
     private var hexagonalSizeTable = Table()
     private var rectangularSizeTable = Table()
+    private lateinit var mapShapeSelectBox: TranslatedSelectBox
     lateinit var resourceSelectBox: TranslatedSelectBox
     lateinit var mirrorSelectBox: TranslatedSelectBox
     private lateinit var noRuinsCheckbox: CheckBox
@@ -126,6 +127,41 @@ class MapParametersTable(
         for (entry in advancedSliders) entry.key.value = entry.value()
     }
 
+    /** UncivGC 联机大厅: 房间设置同步后全量刷新 — SelectBox/勾选框/custom 文本全部对齐 mapParameters
+     *  (refreshValues 只刷 seed+滑块; 大小/资源/镜像/开关不刷新是地图设置不同步的根因) */
+    fun syncFromMapParameters() {
+        refreshValues()
+        // 地图形状/生成地图类型: onChange 会联动 updateWorldSizeTable/generateExampleMap, 先同步
+        if (::mapShapeSelectBox.isInitialized) {
+            mapShapeSelectBox.items.firstOrNull { it.value == mapParameters.shape }
+                ?.let { if (mapShapeSelectBox.selected.value != it.value) mapShapeSelectBox.setSelected(it) }
+        }
+        if (::mapTypeSelectBox.isInitialized) {
+            mapTypeSelectBox.items.firstOrNull { it.value == mapParameters.type }
+                ?.let { if (mapTypeSelectBox.selected.value != it.value) mapTypeSelectBox.setSelected(it) }
+        }
+        if (::worldSizeSelectBox.isInitialized) {
+            worldSizeSelectBox.items.firstOrNull { it.value == mapParameters.mapSize.name }
+                ?.let { if (worldSizeSelectBox.selected.value != it.value) worldSizeSelectBox.setSelected(it) }
+        }
+        if (::resourceSelectBox.isInitialized) {
+            resourceSelectBox.items.firstOrNull { it.value == mapParameters.mapResources }
+                ?.let { if (resourceSelectBox.selected.value != it.value) resourceSelectBox.setSelected(it) }
+        }
+        if (::mirrorSelectBox.isInitialized) {
+            mirrorSelectBox.items.firstOrNull { it.value == mapParameters.mirroring }
+                ?.let { if (mirrorSelectBox.selected.value != it.value) mirrorSelectBox.setSelected(it) }
+        }
+        if (::noRuinsCheckbox.isInitialized) noRuinsCheckbox.isChecked = mapParameters.noRuins
+        if (::noNaturalWondersCheckbox.isInitialized) noNaturalWondersCheckbox.isChecked = mapParameters.noNaturalWonders
+        if (::worldWrapCheckbox.isInitialized) worldWrapCheckbox.isChecked = mapParameters.worldWrap
+        if (::legendaryStartCheckbox.isInitialized) legendaryStartCheckbox.isChecked = mapParameters.legendaryStart
+        if (::strategicBalanceCheckbox.isInitialized) strategicBalanceCheckbox.isChecked = mapParameters.strategicBalance
+        if (::customMapSizeRadius.isInitialized) customMapSizeRadius.value = mapParameters.mapSize.radius
+        if (::customMapWidth.isInitialized) customMapWidth.value = mapParameters.mapSize.width
+        if (::customMapHeight.isInitialized) customMapHeight.value = mapParameters.mapSize.height
+    }
+
     private fun addMapShapeSelectBox() {
         val mapShapes = MapShape.allValues
         val rng = GameContext().stateBasedRandom("MapParametersTable.addMapShapeSelectBox", System.currentTimeMillis().toInt())
@@ -141,8 +177,7 @@ class MapParametersTable(
             }
             add(optionsTable).colspan(2).grow().row()
         } else {
-            val mapShapeSelectBox =
-                    TranslatedSelectBox(mapShapes, mapParameters.shape)
+            mapShapeSelectBox = TranslatedSelectBox(mapShapes, mapParameters.shape)
             mapShapeSelectBox.onChange {
                 mapParameters.shape = mapShapeSelectBox.selected.value
                 updateWorldSizeTable()

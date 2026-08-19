@@ -442,9 +442,15 @@ class CityScreen(
             restoreDefault = { update() }
         ) {
             SoundPlayer.play(UncivSound.Coin)
-            cityView.tryBuyTile(cityView.tileView(selectedTile))
-            // preselect the next tile on city screen rebuild so bulk buying can go faster
-            UncivGame.Current.replaceCurrentScreen(CityScreen(cityView, initSelectedTile = cityView.chooseNewTileToOwn()))
+            if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(cityView.viewingCiv().civ.gameInfo)) {
+                // 帧同步: 服务器权威买地 (金币/地块由状态广播+回合末存档对齐)
+                com.unciv.ui.screens.worldscreen.FrameSync.sendBuyTile(
+                    cityView.city.id, selectedTile.position.x, selectedTile.position.y)
+            } else {
+                cityView.tryBuyTile(cityView.tileView(selectedTile))
+                // preselect the next tile on city screen rebuild so bulk buying can go faster
+                UncivGame.Current.replaceCurrentScreen(CityScreen(cityView, initSelectedTile = cityView.chooseNewTileToOwn()))
+            }
         }.open()
     }
 

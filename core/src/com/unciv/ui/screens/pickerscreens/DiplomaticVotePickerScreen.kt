@@ -37,7 +37,12 @@ class DiplomaticVotePickerScreen(private val votingCiv: Civilization) : PickerSc
     }
 
     private fun voteAndClose() {
-        votingCiv.diplomaticVoteForCiv(chosenCiv)
+        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(votingCiv.gameInfo)) {
+            // UncivGC 帧同步: 服务器权威写入 votesCast (防重复投票/回滚)
+            com.unciv.ui.screens.worldscreen.FrameSync.sendDiplomaticVote(chosenCiv)
+        } else {
+            votingCiv.diplomaticVoteForCiv(chosenCiv)
+        }
         UncivGame.Current.popScreen()
     }
 

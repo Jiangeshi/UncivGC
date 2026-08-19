@@ -201,7 +201,12 @@ class AlertPopup(
     private fun addCityConquered() {
         val city = getCity(popupAlert.value)
         addQuestionAboutTheCity(city.name)
-        val conqueringCiv = gameInfo.getCurrentPlayerCivilization()
+        // UncivGC 帧同步: 弹窗属于观看文明 (同时回合下 currentPlayer 不一定是自己); 决策由服务器权威执行
+        val conqueringCiv = viewingCiv
+        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(city.civ.gameInfo)) {
+            addFsConquerChoiceButtons(city, conqueringCiv)
+            return
+        }
 
         if (city.foundingCivObject != null
                 && city.civ != city.foundingCivObject // can't liberate if the city actually belongs to those guys
@@ -231,6 +236,37 @@ class AlertPopup(
         }
     }
 
+    /** UncivGC 帧同步: 占领城市决策按钮 — 只发 op, 本地不执行 (服务器 doCityConquerChoice 权威执行) */
+    private fun addFsConquerChoiceButtons(city: com.unciv.logic.city.City, conqueringCiv: Civilization) {
+        fun choiceButton(text: String, action: String): com.badlogic.gdx.scenes.scene2d.ui.TextButton {
+            val button = text.toTextButton()
+            button.onActivation {
+                com.unciv.ui.screens.worldscreen.FrameSync.sendCityConquerChoice(city.id, action)
+                close()
+            }
+            return button
+        }
+        if (city.foundingCivObject != null
+                && city.civ != city.foundingCivObject
+                && conqueringCiv != city.foundingCivObject) {
+            add(choiceButton("Liberate (city returns to [${city.foundingCivObject!!.civName}])", "liberate")).row()
+            addSeparator()
+        }
+        if (conqueringCiv.isOneCityChallenger()) {
+            add(choiceButton("Destroy", "destroy")).row()
+        } else {
+            val mayAnnex = !conqueringCiv.hasUnique(UniqueType.MayNotAnnexCities)
+            add(choiceButton("Annex", "annex")).row()
+            addSeparator()
+            add(choiceButton("Puppet", "puppet")).row()
+            addSeparator()
+            val canRaze = city.canBeDestroyed(justCaptured = true)
+            if (canRaze && mayAnnex)
+                add(choiceButton("Raze", "raze")).row()
+        }
+        // 不提供 Close: 必须做出选择 (与单机一致; 放弃选择会导致城市永久待决)
+    }
+
     private fun addDemandViolationNoticed(demand: Demand): Boolean {
         val otherciv = getCiv(popupAlert.value)
         if (otherciv.isDefeated()) return false
@@ -243,7 +279,8 @@ class AlertPopup(
     private fun addCityTraded() {
         val city = getCity(popupAlert.value)
         addQuestionAboutTheCity(city.name)
-        val conqueringCiv = gameInfo.getCurrentPlayerCivilization()
+        // UncivGC 帧同步: 弹窗属于观看文明 (同时回合下 currentPlayer 不一定是自己)
+        val conqueringCiv = viewingCiv
 
         if (!conqueringCiv.isAtWarWith(city.foundingCivObject!!)) {
             addLiberateOption(city, conqueringCiv)
@@ -262,10 +299,21 @@ class AlertPopup(
                 if (otherciv.nation.declaringFriendship.isNotEmpty()) otherciv.nation.declaringFriendship else "My friend, shall we declare our friendship to the world?"
         ).row()
         addCloseButton("Declare Friendship ([30] turns)", KeyboardBinding.Confirm) {
-            playerDiploManager.signDeclarationOfFriendship()
+            if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                // 帧同步: 服务器权威接受 (flag 由状态广播同步)
+                FrameSync.sendFriendshipAccept(popupAlert.value)
+                viewingCiv.popupAlerts.remove(popupAlert)
+            } else {
+                playerDiploManager.signDeclarationOfFriendship()
+            }
         }.row()
         addCloseButton("We are not interested.", KeyboardBinding.Cancel) {
-            playerDiploManager.otherCivDiplomacy().setFlag(DiplomacyFlags.DeclinedDeclarationOfFriendship, 20)
+            if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                FrameSync.sendFriendshipDecline(popupAlert.value)
+                viewingCiv.popupAlerts.remove(popupAlert)
+            } else {
+                playerDiploManager.otherCivDiplomacy().setFlag(DiplomacyFlags.DeclinedDeclarationOfFriendship, 20)
+            }
         }.row()
         val music = UncivGame.Current.musicController
         music.playVoice("${otherciv.nation.name}.declaringFriendship")
@@ -290,7 +338,12 @@ class AlertPopup(
         val diplomacy = viewingCiv.getDiplomacyManager(denouncer)!!
         if (diplomacy.canDeclareWar()) {
             addCloseButton("THIS MEANS WAR! (Declare war)") {
-                diplomacy.declareWar()
+                if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                    // 帧同步: 服务器权威宣战
+                    FrameSync.sendDeclareWar(popupAlert.value)
+                } else {
+                    diplomacy.declareWar()
+                }
             }.row()
         }
         addCloseButton("Very well.", KeyboardBinding.Cancel).row()
@@ -314,12 +367,23 @@ class AlertPopup(
         addLeaderName(otherciv)
         addGoodSizedLabel(demand.demandText).row()
         addCloseButton(demand.acceptDemandText, KeyboardBinding.Confirm) {
-            playerDiploManager.agreeToDemand(demand)
+            if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                // 帧同步: 服务器权威接受 (flag 由回合末存档对齐)
+                FrameSync.sendDemandAccept(popupAlert.value, demand.name)
+                viewingCiv.popupAlerts.remove(popupAlert)
+            } else {
+                playerDiploManager.agreeToDemand(demand)
+            }
         }.row()
         addCloseButton(demand.refuseDemandText, KeyboardBinding.Cancel) {
-            playerDiploManager.refuseDemand(demand)
-            if (demand == Demand.DoNotAttackUs)
-                viewingCiv.getDiplomacyManager(otherciv)!!.declareWar()
+            if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                FrameSync.sendDemandRefuse(popupAlert.value, demand.name)
+                viewingCiv.popupAlerts.remove(popupAlert)
+            } else {
+                playerDiploManager.refuseDemand(demand)
+                if (demand == Demand.DoNotAttackUs)
+                    viewingCiv.getDiplomacyManager(otherciv)!!.declareWar()
+            }
         }
         return true
     }
@@ -368,7 +432,8 @@ class AlertPopup(
         val city = getCity(popupAlert.value)
         addGoodSizedLabel(city.name.tr() + ": " + "What would you like to do with the city?".tr(), Constants.headingFontSize) // Add name because there might be several cities
             .padBottom(20f).row()
-        val marryingCiv = gameInfo.getCurrentPlayerCivilization()
+        // UncivGC 帧同步: 弹窗属于观看文明 (同时回合下 currentPlayer 不一定是自己)
+        val marryingCiv = viewingCiv
 
         if (marryingCiv.isOneCityChallenger()) {
             addDestroyOption {
@@ -651,6 +716,32 @@ class AlertPopup(
     }
 
     /** Returns if event was triggered correctly */
+    /** UncivGC 帧同步: 事件渲染 actor 引用 (refreshForFsSync 只替换它, 不关闭整个弹窗) */
+    private var eventRenderActor: com.badlogic.gdx.scenes.scene2d.Actor? = null
+    /** 当前选项指纹 (选项没变就不重建 — 否则回合结算 built 广播会触发无谓重建 → 弹窗闪一下) */
+    private var lastChoicesFingerprint = ""
+
+    /** 计算当前事件可用选项指纹 (选项文本集合; 条件 "if [X] is constructed by anybody" 等变化会反映) */
+    private fun computeChoicesFingerprint(): String {
+        try {
+            val splitString = popupAlert.value.split(Constants.stringSplitCharacter)
+            val eventName = splitString[0]
+            val event = gameInfo.ruleset.events[eventName] ?: return ""
+            var unit: MapUnit? = null
+            for (i in 1 until splitString.size) {
+                if (splitString[i].startsWith("unitId=")) {
+                    unit = viewingCiv.units.getUnitById(splitString[i].substringAfter("unitId=").toInt())
+                }
+            }
+            val eventCiv = if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo))
+                worldScreen.viewingCiv else gameInfo.currentPlayerCiv
+            val choices = event.getMatchingChoices(com.unciv.models.ruleset.unique.GameContext(eventCiv, unit = unit))
+            return choices?.map { it.text }?.joinToString("|") ?: ""
+        } catch (e: Exception) {
+            return ""
+        }
+    }
+
     private fun addEvent(): Boolean {
         // The event string is in the format "eventName" + (Constants.stringSplitCharacter + "unitId=1234")?
         // We explicitly specify that this is a unitId, to enable us to add other context info in the future - for example city id
@@ -668,13 +759,43 @@ class AlertPopup(
         val event = gameInfo.ruleset.events[eventName] ?: return false
         val render = RenderEvent(event, worldScreen, unit) { close() }
         if (!render.isValid) return false
-        add(render).pad(0f).row()
+        // 记录渲染 actor (帧同步实时刷新时只替换它, 不关闭整个弹窗 → 不闪烁)
+        val cell = add(render).pad(0f)
+        eventRenderActor = cell.actor
+        lastChoicesFingerprint = computeChoicesFingerprint()
+        row()
         return true
     }
 
     //endregion
 
+    /** UncivGC 帧同步: 事件选项可用性实时刷新 (如特殊伟人项目 "if [X] is constructed by anybody"
+     *  互斥选项被他人占用后立即消失) — **弹窗内重建内容** (不关闭重开: 关闭重开会闪烁 + 触发
+     *  close() 的 markEventResolved 误清挂起事件 → 重载后不再弹)。 */
+    fun refreshForFsSync() {
+        if (popupAlert.type != AlertType.Event) return
+        try {
+            // 选项没变 → 不重建 (回合结算 built 广播频繁, 重建会造成弹窗闪一下)
+            val newFp = computeChoicesFingerprint()
+            if (newFp.isNotEmpty() && newFp == lastChoicesFingerprint) return
+            lastChoicesFingerprint = newFp
+            eventRenderActor?.remove()
+            eventRenderActor = null
+            addEvent()
+            innerTable.invalidateHierarchy()
+            pack()
+            worldScreen.shouldUpdate = true
+        } catch (e: Exception) {
+            // 重建失败不崩溃 — 下次广播再试
+        }
+    }
+
     override fun close() {
+        // UncivGC 帧同步: 事件弹窗关闭 (选完或放弃) → 不再重新挂起 (防存档重载后重复弹窗)
+        if (popupAlert.type == AlertType.Event) {
+            com.unciv.ui.screens.worldscreen.FrameSync.markEventResolved(
+                popupAlert.value.split(com.unciv.Constants.stringSplitCharacter)[0])
+        }
         viewingCiv.popupAlerts.remove(popupAlert)
         worldScreen.shouldUpdate = true
         super.close()

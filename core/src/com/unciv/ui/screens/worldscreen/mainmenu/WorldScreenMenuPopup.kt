@@ -138,13 +138,16 @@ class WorldScreenMenuPopup(
                 try {
                     val res = LobbyApi.restartRoom(roomId, LobbyRoomScreen.currentNickname(), LobbyRoomScreen.currentPlayerId())
                     if (!res.ok) throw Exception(res.msg)
+                    // 重置进房标记: 房间已重置, 再次开始能正常进游戏 (否则 LobbyRoomPoll 的
+                    // enteredGameForRoom != room.id 不成立 → 房主点开始后卡在房间界面)
+                    LobbyRoomScreen.enteredGameForRoom = null
                     // 全员(含自己)由房间监视器自动带回房间界面
                     launchOnGLThread { ToastPopup("Room reset, waiting for everyone to return...".tr(), worldScreen) }
                 } catch (e: Exception) {
                     launchOnGLThread { ToastPopup("Reset room failed: [${e.message}]".tr(), worldScreen) }
                 }
             }
-        }.open()
+        }.open(force = true)
     }
 
     /** UncivGC 联机大厅: 跳海 = 删旧存档, 重置房间(全员自动准备), 直接开新图 */
@@ -156,6 +159,8 @@ class WorldScreenMenuPopup(
                     // 1. 重置房间: 删旧存档, 保留成员/文明/设置, 全员自动准备; 跳海要随机新图 → 重置种子
                     val res = LobbyApi.restartRoom(roomId, LobbyRoomScreen.currentNickname(), LobbyRoomScreen.currentPlayerId(), randomizeSeed = true)
                     if (!res.ok) throw Exception(res.msg)
+                    // 重置进房标记 (同 confirmRestartToRoom: 防止再次进入同房间时轮询不触发进游戏)
+                    LobbyRoomScreen.enteredGameForRoom = null
                     // 2. 直接开始新图 (全员已自动准备)
                     val start = LobbyApi.startGame(roomId, LobbyRoomScreen.currentNickname(), LobbyRoomScreen.currentPlayerId())
                     if (!start.ok) throw Exception(start.msg)
@@ -165,7 +170,7 @@ class WorldScreenMenuPopup(
                     launchOnGLThread { ToastPopup("Restart to new map failed: [${e.message}]".tr(), worldScreen) }
                 }
             }
-        }.open()
+        }.open(force = true)
     }
 
     /** UncivGC 联机大厅: 退出房间 = 玩家时文明交给 AI 托管 + 离开房间; 观战者直接离开 */
@@ -214,6 +219,6 @@ class WorldScreenMenuPopup(
                     worldScreen.game.replaceCurrentScreen(LobbyScreen())
                 }
             }
-        }.open()
+        }.open(force = true)
     }
 }

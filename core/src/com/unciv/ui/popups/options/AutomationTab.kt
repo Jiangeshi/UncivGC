@@ -19,8 +19,13 @@ internal class AutomationTab(
 
         addHeader("Automation")
 
-        addCheckbox("Auto-assign city production", settings::autoAssignCityProduction, updateWorld = true) {
-            allCitiesChooseNextConstruction(it)
+        // UncivGC 帧同步: 隐藏 — 本地改所有城市生产队列会被服务器广播回滚
+        val fsMode = com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(
+            com.unciv.GUI.getWorldScreenIfActive()?.gameInfo)
+        if (!fsMode) {
+            addCheckbox("Auto-assign city production", settings::autoAssignCityProduction, updateWorld = true) {
+                allCitiesChooseNextConstruction(it)
+            }
         }
         addCheckbox("Auto-build roads", settings::autoBuildingRoads)
         addCheckbox("Automated workers replace improvements", settings::automatedWorkersReplaceImprovements)

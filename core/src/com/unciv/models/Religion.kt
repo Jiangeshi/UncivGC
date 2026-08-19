@@ -88,6 +88,10 @@ class Religion() : INamed, IsPartOfGameInfoSerialization {
         updateUniqueMaps()
     }
 
+    // UncivGC 帧同步: 服务器 stateJson 读取用 (founderBeliefs/followerBeliefs private, Java 无 getter)
+    fun getFounderBeliefsForSync(): Set<String> = founderBeliefs
+    fun getFollowerBeliefsForSync(): Set<String> = followerBeliefs
+
     fun addBelief(belief: Belief) = addBeliefs(listOf(belief))
     fun addBelief(beliefName: String) = gameInfo.ruleset.beliefs[beliefName]?.let { addBelief(it) }
 

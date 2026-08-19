@@ -30,7 +30,12 @@ object UnitActionsPillage {
                 "Pillage",
                 true
             ) {
-                (pillageAction.action)()
+                // UncivGC 帧同步: 服务器权威执行 (劫掠状态由广播同步, 防回合末回滚)
+                if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(unit.civ.gameInfo)) {
+                    com.unciv.ui.screens.worldscreen.FrameSync.sendOp("unit.pillage", mapOf("unitId" to unit.id))
+                } else {
+                    (pillageAction.action)()
+                }
                 GUI.setUpdateWorldOnNextRender()
             }.open()
         })

@@ -8,6 +8,7 @@ import com.badlogic.gdx.utils.Align
 import com.unciv.Constants
 import com.unciv.UncivGame
 import com.unciv.logic.GameInfo
+import com.unciv.view.CivView
 import com.unciv.view.GameView
 import com.unciv.logic.UncivShowableException
 import com.unciv.logic.civilization.Civilization
@@ -155,6 +156,11 @@ class WorldScreen(
 
 
     init {
+        // UncivGC 帧同步: 进局强制刷新翻译 (mod 翻译/新键立即生效 — 镜像下载/重载后 translations 缓存可能旧)
+        try {
+            com.unciv.UncivGame.Current.translations.tryReadTranslationForCurrentLanguage()
+        } catch (ignored: Exception) {
+        }
         // notifications are right-aligned, they take up only as much space as necessary.
         notificationsScroll.width = stage.width / 2
 
@@ -212,6 +218,8 @@ class WorldScreen(
         if (gameInfo.gameParameters.isOnlineMultiplayer) {
             val gameId = gameInfo.gameId
             events.receive(MultiplayerGameUpdated::class, { it.preview.gameId == gameId }) {
+                // UncivGC 帧同步: 存档更新由 FrameSync 统一处理, 不走 preview 事件重载 (防双刷)
+                if (FrameSync.isFsMode(gameInfo)) return@receive
                 if (isNextTurnUpdateRunning() || game.onlineMultiplayer.hasLatestGameState(gameInfo, it.preview)) {
                     return@receive
                 }
@@ -223,12 +231,27 @@ class WorldScreen(
 
         if (restoreState != null) restore(restoreState)
 
+        // UncivGC 帧同步 (同时回合): 启动 ws 操作通道; 全员始终可操作 (回合由服务器权威推进)
+        if (FrameSync.isFsMode(gameInfo)) {
+            isPlayersTurn = true
+            FrameSync.startIfEnabled(this)
+        }
+
         // don't run update() directly, because the UncivGame.worldScreen should be set so that the city buttons and tile groups
         //  know what the viewing civ is.
         shouldUpdate = true
     }
 
+    /** 从子屏 (城市/科技等) 返回时 libGDX 会重新调用 show(): 若处于暂停, 补弹全局暂停弹窗 */
+    override fun show() {
+        super.show()
+        if (FrameSync.isFsMode(gameInfo)) {
+            FrameSync.ensurePausePopup()
+        }
+    }
+
     override fun dispose() {
+        FrameSync.stop()
         resizeDeferTimer?.cancel()
         undoManager.stop()
         events.stopReceiving()
@@ -284,7 +307,8 @@ class WorldScreen(
         globalShortcuts.add(KeyboardBinding.QuickSave) { QuickSave.save(gameInfo, this) }
         globalShortcuts.add(KeyboardBinding.QuickLoad) { QuickSave.load(this) }
         globalShortcuts.add(KeyboardBinding.ViewCapitalCity) {
-            val capital = gameInfo.getCurrentPlayerCivilization().getCapital()
+            // UncivGC 帧同步: 同时回合下 currentPlayer 不一定是自己 → 用观看文明 (否则跳到别人首都)
+            val capital = viewingCiv.getCapital()
             if (capital != null && !mapHolder.setCenterPosition(capital.location.toHexCoord()))
                 game.pushScreen(CityScreen(gameView.getCityView(capital)))
         }
@@ -422,8 +446,10 @@ class WorldScreen(
         // it doesn't update the explored tiles of the civ... need to think about that harder
         // it causes a bug when we move a unit to an unexplored tile (for instance a cavalry unit which can move far)
 
+        // UncivGC: 观战者战争迷雾按钮 — fogOfWar=true 按所选文明视野(迷雾), false 用 spectator 视角全图显示
+        // (原版两个分支相同, 按钮只切 minimap 视角, 主视图永远跟随 selectedCiv → 观战者点按钮无任何变化)
         if (fogOfWar) mapHolder.updateTiles(gameView.civView)
-        else mapHolder.updateTiles(gameView.civView)
+        else mapHolder.updateTiles(CivView(viewingCiv, viewingCiv, true, gameView))
 
         topBar.update(selectedCiv)
         if (tutorialTaskTable.isVisible)
@@ -595,6 +621,11 @@ class WorldScreen(
     }
 
     fun nextTurn() {
+        // UncivGC 帧同步: 结束回合 = 通知服务器 (服务器收集全员结束信号后统一推进)
+        if (FrameSync.isFsMode(gameInfo)) {
+            FrameSync.sendNextTurn()
+            return
+        }
         isPlayersTurn = false
         shouldUpdate = true
         undoManager.clear()  // UncivGC: 过回合清空撤回快照
@@ -690,8 +721,12 @@ class WorldScreen(
 
     fun switchToNextUnit(resetDue: Boolean = true) {
         // Try to select something new if we already have the next pending unit selected.
-        if (bottomUnitTable.selectedUnit != null && resetDue)
+        if (bottomUnitTable.selectedUnit != null && resetDue) {
+            // UncivGC 帧同步: due=false 是本地“已查看”标记, 会被广播回滚 (stateJson 带 due) →
+            // 记入本地集合, applyState 后重新应用, 否则“下一个单位”永远循环同一个单位
+            if (FrameSync.isFsMode(gameInfo)) FrameSync.markDueSeen(bottomUnitTable.selectedUnit!!.id)
             bottomUnitTable.selectedUnit!!.due = false
+        }
         val nextDueUnit = viewingCiv.units.cycleThroughDueUnits(bottomUnitTable.selectedUnit)
         if (nextDueUnit != null) {
             mapHolder.setCenterPosition(
@@ -734,6 +769,8 @@ class WorldScreen(
 
     private fun updateAutoPlayStatusButton() {
         if (statusButtons.autoPlayStatusButton == null) {
+            // UncivGC 帧同步: 隐藏 AutoPlay — 客户端本地自动化会被服务器广播回滚 (单位乱跳)
+            if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo)) return
             if (game.settings.autoPlay.showAutoPlayButton)
                 statusButtons.autoPlayStatusButton = AutoPlayStatusButton(this, nextTurnButton)
         } else {

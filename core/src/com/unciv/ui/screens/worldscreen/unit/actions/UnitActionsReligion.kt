@@ -86,6 +86,15 @@ object UnitActionsReligion {
     }
 
     internal fun getSpreadReligionActions(unit: MapUnit, tile: Tile): Sequence<UnitAction> {
+        // UncivGC 帧同步: 宗教单位 religion 为空 (事件/免费获得时出生城市无主流宗教, 且无 TakeReligionOverBirthCity
+        // 词条 → 创教后永不更新) → 用文明宗教补上, 否则 maySpreadReligionAtAll 拒绝 → 无传教按钮
+        // (LM2 穆罕默德场景; 服务器 doSpreadReligion 同款兜底 — 本地补上才能发 op, 服务器 setReligion 后 stateJson 同步一致)
+        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(unit.civ.gameInfo)
+            && unit.religion == null
+            && unit.hasUnique(UniqueType.ReligiousUnit)
+            && unit.civ.religionManager.religion != null) {
+            unit.religion = unit.civ.religionManager.religion!!.name
+        }
         if (!unit.civ.religionManager.maySpreadReligionAtAll(unit)) return emptySequence()
         val city = tile.getCity() ?: return emptySequence()
 
@@ -149,7 +158,12 @@ object UnitActionsReligion {
             UnitActionType.RemoveHeresy, useFrequency,
             title = title,
             action = {
-                city.religion.removeAllPressuresExceptFor(unit.religion!!)
+                if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(unit.civ.gameInfo)) {
+                    // UncivGC 帧同步: 服务器权威执行 (防重载回滚)
+                    com.unciv.ui.screens.worldscreen.FrameSync.sendOp("unit.removeHeresy",
+                        mapOf("unitId" to unit.id, "cityId" to city.id))
+                } else {
+                    city.religion.removeAllPressuresExceptFor(unit.religion!!)
                 if (city.religion.religionThisIsTheHolyCityOf != null) {
                     val holyCityReligion = unit.civ.gameInfo.religions[city.religion.religionThisIsTheHolyCityOf]!!
                     if (city.religion.religionThisIsTheHolyCityOf != unit.religion && !city.religion.isBlockedHolyCity) {
@@ -160,7 +174,8 @@ object UnitActionsReligion {
                         city.religion.isBlockedHolyCity = false
                     }
                 }
-                UnitActionModifiers.activateSideEffects(unit, newStyleUnique)
+                    UnitActionModifiers.activateSideEffects(unit, newStyleUnique)
+                }
             }.takeIf { UnitActionModifiers.canActivateSideEffects(unit, newStyleUnique)}
         ))
     }

@@ -31,7 +31,14 @@ class PantheonPickerScreen(
         }
 
         setOKAction("Choose a pantheon") {
-            chooseBeliefs(listOf(selectedPantheon!!), useFreeBeliefs = usingFreeBeliefs())
+            // UncivGC 帧同步: 服务器权威 (防重载回滚)
+            if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(choosingCiv.gameInfo)) {
+                com.unciv.ui.screens.worldscreen.FrameSync.sendOp("civ.chooseBeliefs", mapOf(
+                    "beliefs" to listOf(selectedPantheon!!.name),
+                    "free" to usingFreeBeliefs()))
+            } else {
+                chooseBeliefs(listOf(selectedPantheon!!), useFreeBeliefs = usingFreeBeliefs())
+            }
         }
     }
     fun beliefIsAllowed(belief: Belief, choosingCiv: Civilization): Boolean {

@@ -1,5 +1,7 @@
 package com.unciv.ui.screens.cityscreen
 
+import com.unciv.ui.screens.worldscreen.FrameSync
+
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.unciv.Constants
@@ -165,6 +167,18 @@ class BuyButtonFactory(val cityScreen: CityScreen) {
     ) {
         SoundPlayer.play(stat.purchaseSound)
         val cityView = cityScreen.cityView
+        // UncivGC 帧同步: 服务器权威, 本地不执行 (统一服务器广播 — 避免双执行/回滚)
+        if (FrameSync.isFsMode(cityScreen.cityView.getCity().civ.gameInfo)) {
+            FrameSync.sendOp("city.buy", mapOf(
+                "cityId" to cityView.getCity().id,
+                "item" to construction.name,
+                "stat" to stat.name))
+            // 关闭购买弹窗 (购买结果由状态广播/回合末存档同步)
+            if (cityScreen.selectedQueueEntry >= 0) cityScreen.selectedQueueEntry = -1
+            cityScreen.clearSelection()
+            cityScreen.update()
+            return
+        }
         if (!cityView.constructions.purchaseConstruction(construction, cityScreen.selectedQueueEntry, false, stat, tile)) {
             Popup(cityScreen).apply {
                 add("No space available to place [${construction.name}] near [${cityView.name}]".tr()).row()

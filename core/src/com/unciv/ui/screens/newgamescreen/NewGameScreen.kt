@@ -91,6 +91,7 @@ open class NewGameScreen(
             updatePlayerPickerRandomLabel = { playerPickerTable.updateRandomNumberLabel() },
             showOnlineMultiplayer = showOnlineMultiplayer,
             advancedOpenByDefault = lobbyMode,
+            lobbyMode = lobbyMode,
         )
         mapOptionsTable = MapOptionsTable(this, lobbyMode = lobbyMode)
         mapOptionsTableInitialized = true

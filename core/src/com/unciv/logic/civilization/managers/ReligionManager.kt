@@ -29,6 +29,11 @@ class ReligionManager : IsPartOfGameInfoSerialization {
 
     var storedFaith = 0
 
+    /** UncivGC 帧同步: 服务器权威信仰池同步 (stateJson civs.faith = storedFaith) */
+    fun setStoredFaithForSync(value: Int) {
+        storedFaith = value
+    }
+
     @Transient
     var religion: Religion? = null
     // You might ask why this is the transient variable, and not the one in GameInfo.
@@ -44,6 +49,11 @@ class ReligionManager : IsPartOfGameInfoSerialization {
     var religionState = ReligionState.None
         private set
 
+    /** UncivGC 帧同步: 服务器权威同步宗教状态 (本地不执行操作, 状态由广播驱动) */
+    fun setReligionStateForSync(state: ReligionState) {
+        religionState = state
+    }
+
     // Counter containing the number of free beliefs types that this civ can add to its religion this turn
     // Uses String instead of BeliefType enum for serialization reasons
     var freeBeliefs: Counter<String> = Counter()
@@ -54,6 +64,12 @@ class ReligionManager : IsPartOfGameInfoSerialization {
     // Only used for keeping track of the city a prophet was used when founding a religion
 
     private var shouldChoosePantheonBelief: Boolean = false
+
+    /** UncivGC 帧同步: 创立宗教时若无万神殿 → 创立界面附带万神殿选择 (服务器权威同步) */
+    fun shouldChoosePantheonBeliefForSync(): Boolean = shouldChoosePantheonBelief
+    fun setShouldChoosePantheonBeliefForSync(value: Boolean) {
+        shouldChoosePantheonBelief = value
+    }
 
 
     fun clone(): ReligionManager {

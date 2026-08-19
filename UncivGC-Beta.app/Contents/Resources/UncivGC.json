@@ -1,0 +1,12 @@
+{
+  "jrePath": "jre",
+  "classPath": [
+    "UncivGC.jar"
+  ],
+  "mainClass": "com.unciv.app.desktop.DesktopLauncher",
+  "useZgcIfSupportedOs": false,
+  "vmArgs": [
+    "-Xmx4G",
+    "-"
+  ]
+}

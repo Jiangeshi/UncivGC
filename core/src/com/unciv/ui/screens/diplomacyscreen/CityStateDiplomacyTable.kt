@@ -319,9 +319,16 @@ class CityStateDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
         val diplomaticMarriageButton =
             "Diplomatic Marriage ([${otherCiv.cityStateFunctions.getDiplomaticMarriageCost()}] Gold)".toTextButton()
         diplomaticMarriageButton.onClick {
-            // UncivGC: 联姻直接并入为自建城市 (或单城挑战者直接摧毁), 不再弹窗选择吞并/傀儡
-            otherCiv.cityStateFunctions.diplomaticMarriage(viewingCiv)
-            UncivGame.Current.popScreen() // The other civ will no longer exist
+            if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                // UncivGC 帧同步: 服务器权威 — 本地不执行, 扣款/并入由广播同步 (防重载回滚)
+                com.unciv.ui.screens.worldscreen.FrameSync.sendOp(
+                    "civ.diplomaticMarriage", mapOf("cityState" to otherCiv.civName))
+                UncivGame.Current.popScreen() // 城邦将不复存在, 关闭外交界面
+            } else {
+                // UncivGC: 联姻直接并入为自建城市 (或单城挑战者直接摧毁), 不再弹窗选择吞并/傀儡
+                otherCiv.cityStateFunctions.diplomaticMarriage(viewingCiv)
+                UncivGame.Current.popScreen() // The other civ will no longer exist
+            }
         }
         if (diplomacyScreen.isNotPlayersTurn() || !otherCiv.cityStateFunctions.canBeMarriedBy(viewingCiv))
             diplomaticMarriageButton.disable()
@@ -337,7 +344,13 @@ class CityStateDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
             val giftButton =
                 "Gift [$giftAmount] gold (+[$influenceAmount] influence)".toTextButton()
             giftButton.onClick {
-                otherCiv.cityStateFunctions.receiveGoldGift(viewingCiv, giftAmount)
+                if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                    // UncivGC 帧同步: 服务器权威 — 本地不执行, 扣款/influence 由广播同步 (防重载回滚)
+                    com.unciv.ui.screens.worldscreen.FrameSync.sendOp(
+                        "civ.giftGold", mapOf("cityState" to otherCiv.civName, "amount" to giftAmount))
+                } else {
+                    otherCiv.cityStateFunctions.receiveGoldGift(viewingCiv, giftAmount)
+                }
                 diplomacyScreen.updateLeftSideTable(otherCiv)
                 diplomacyScreen.updateRightSide(otherCiv)
             }
@@ -374,16 +387,25 @@ class CityStateDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
                 if (improvableTile.tileResource!!.isImprovedBy(tileImprovement.name)
                     && improvableTile.improvementFunctions.canBuildImprovement(tileImprovement, otherCiv.state)
                 ) {
-                    val improveTileButton =
-                        "Build [${tileImprovement}] on [${improvableTile.tileResource}] (200 Gold)".toTextButton()
-                    improveTileButton.onClick {
+            val improveTileButton =
+                    "Build [${tileImprovement}] on [${improvableTile.tileResource}] (200 Gold)".toTextButton()
+                improveTileButton.onClick {
+                    // UncivGC 帧同步: 服务器权威 (扣款+建改良+资源刷新由广播同步; 纯本地会被回滚)
+                    if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                        val pos = improvableTile.position
+                        com.unciv.ui.screens.worldscreen.FrameSync.sendOp("civ.cityStateImproveGift", mapOf(
+                            "cityState" to otherCiv.civName,
+                            "tileX" to (pos.x ?: 0), "tileY" to (pos.y ?: 0),
+                            "improvement" to tileImprovement.name))
+                    } else {
                         viewingCiv.addGold(-200)
                         improvableTile.stopWorkingOnImprovement()
                         improvableTile.setImprovement(tileImprovement)
                         otherCiv.cache.updateCivResources()
-                        diplomacyScreen.rightSideTable.clear()
-                        diplomacyScreen.rightSideTable.add(ScrollPane(getCityStateDiplomacyTable(otherCiv)))
                     }
+                    diplomacyScreen.rightSideTable.clear()
+                    diplomacyScreen.rightSideTable.add(ScrollPane(getCityStateDiplomacyTable(otherCiv)))
+                }
                     if (viewingCiv.gold < 200)
                         improveTileButton.disable()
                     improvementGiftTable.add(improveTileButton).row()
@@ -420,7 +442,12 @@ class CityStateDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
 
         val demandGoldButton = "Take [${otherCiv.cityStateFunctions.goldGainedByTribute()}] gold (-15 Influence)".toTextButton()
         demandGoldButton.onClick {
-            otherCiv.cityStateFunctions.tributeGold(viewingCiv)
+            if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                // UncivGC 帧同步: 服务器权威 (金币/影响力/被欺凌状态由广播同步)
+                com.unciv.ui.screens.worldscreen.FrameSync.sendTribute(otherCiv.civName, worker = false)
+            } else {
+                otherCiv.cityStateFunctions.tributeGold(viewingCiv)
+            }
             diplomacyScreen.rightSideTable.clear()
             diplomacyScreen.rightSideTable.add(ScrollPane(getCityStateDiplomacyTable(otherCiv)))
         }
@@ -429,7 +456,12 @@ class CityStateDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
 
         val demandWorkerButton = "Take worker (-50 Influence)".toTextButton()
         demandWorkerButton.onClick {
-            otherCiv.cityStateFunctions.tributeWorker(viewingCiv)
+            if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                // UncivGC 帧同步: 服务器权威
+                com.unciv.ui.screens.worldscreen.FrameSync.sendTribute(otherCiv.civName, worker = true)
+            } else {
+                otherCiv.cityStateFunctions.tributeWorker(viewingCiv)
+            }
             diplomacyScreen.rightSideTable.clear()
             diplomacyScreen.rightSideTable.add(ScrollPane(getCityStateDiplomacyTable(otherCiv)))
         }

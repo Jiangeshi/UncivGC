@@ -10,6 +10,7 @@ import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.civilization.PopupAlert
 import com.unciv.logic.civilization.diplomacy.*
 import com.unciv.logic.trade.TradeOffer
+import com.unciv.ui.screens.worldscreen.FrameSync
 import com.unciv.logic.trade.TradeOfferType
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.translations.fillPlaceholders
@@ -130,16 +131,23 @@ class MajorCivDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
         val denounceButton = "Denounce ([30] turns)".toTextButton()
         denounceButton.onClick {
             ConfirmPopup(diplomacyScreen, "Denounce [${otherCiv.civName}]?", "Denounce ([30] turns)") {
-                diplomacyManager.denounce()
-                diplomacyScreen.updateLeftSideTable(otherCiv)
-                diplomacyScreen.setRightSideFlavorText(
-                    otherCiv,
-                    if (otherCiv.nation.denounced.isNotEmpty()) otherCiv.nation.denounced else "We will remember this.",
-                    "Very well."
-                )
+                if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                    // 帧同步: 服务器权威执行; 本地乐观标记 + 刷新界面 (按钮立即消失, 广播同步幂等)
+                    FrameSync.sendDenounce(otherCiv.civID)
+                    diplomacyManager.setFlag(DiplomacyFlags.Denunciation, 30)
+                    diplomacyScreen.updateLeftSideTable(otherCiv)
+                } else {
+                    diplomacyManager.denounce()
+                    diplomacyScreen.updateLeftSideTable(otherCiv)
+                    diplomacyScreen.setRightSideFlavorText(
+                        otherCiv,
+                        if (otherCiv.nation.denounced.isNotEmpty()) otherCiv.nation.denounced else "We will remember this.",
+                        "Very well."
+                    )
 
-                val music = UncivGame.Current.musicController
-                music.playVoice("${otherCiv.nation.name}.denounced")
+                    val music = UncivGame.Current.musicController
+                    music.playVoice("${otherCiv.nation.name}.denounced")
+                }
             }.open()
         }
         if (diplomacyScreen.isNotPlayersTurn()) denounceButton.disable()
@@ -150,12 +158,19 @@ class MajorCivDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
         val declareFriendshipButton =
             "Offer Declaration of Friendship ([30] turns)".toTextButton()
         declareFriendshipButton.onClick {
-            otherCiv.popupAlerts.add(
-                PopupAlert(
-                    AlertType.DeclarationOfFriendship,
-                    viewingCiv.civID
+            if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                // 帧同步: 服务器在对方 popupAlerts 挂提议并定向广播; 本地乐观标记 (对方拒绝时广播纠正)
+                FrameSync.sendFriendshipOffer(otherCiv.civID)
+                viewingCiv.getDiplomacyManager(otherCiv)!!.setFlag(DiplomacyFlags.DeclarationOfFriendship, 30)
+                diplomacyScreen.updateLeftSideTable(otherCiv)
+            } else {
+                otherCiv.popupAlerts.add(
+                    PopupAlert(
+                        AlertType.DeclarationOfFriendship,
+                        viewingCiv.civID
+                    )
                 )
-            )
+            }
             declareFriendshipButton.disable()
         }
         if (diplomacyScreen.isNotPlayersTurn() || otherCiv.popupAlerts
@@ -234,7 +249,12 @@ class MajorCivDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
                 button.disable()
             } else {
                 button.onClick {
-                    otherCiv.popupAlerts.add(PopupAlert(demand.demandAlert, viewingCiv.civID))
+                    if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                        // 帧同步: 服务器在对方 popupAlerts 挂要求并定向广播
+                        FrameSync.sendDemand(otherCiv.civID, demand.name)
+                    } else {
+                        otherCiv.popupAlerts.add(PopupAlert(demand.demandAlert, viewingCiv.civID))
+                    }
                     button.disable()
                 }
             }

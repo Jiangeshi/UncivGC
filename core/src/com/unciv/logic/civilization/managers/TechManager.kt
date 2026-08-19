@@ -119,6 +119,19 @@ class TechManager : IsPartOfGameInfoSerialization {
         return techCost.toInt()
     }
 
+    /** UncivGC 朝鲜科技加成: 当前可研究科技的科研需求(实际成本)的中位数的一半 */
+    @Readonly
+    fun getHalfMedianScienceCostOfResearchableTechs(): Int {
+        val costs = getRuleset().technologies.values
+            .filter { canBeResearched(it.name) }
+            .map { costOfTech(it.name) }
+            .sorted()
+        if (costs.isEmpty()) return 0
+        val mid = costs.size / 2
+        val median = if (costs.size % 2 == 1) costs[mid] else (costs[mid - 1] + costs[mid]) / 2
+        return median / 2
+    }
+
     @Readonly
     fun currentTechnology(): Technology? {
         val currentTechnologyName = currentTechnologyName() ?: return null

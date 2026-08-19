@@ -1,5 +1,7 @@
 package com.unciv.ui.screens.pickerscreens
 
+import com.unciv.ui.screens.worldscreen.FrameSync
+
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.scenes.scene2d.Actor
 import com.badlogic.gdx.scenes.scene2d.InputEvent
@@ -60,13 +62,27 @@ class ImprovementPickerScreen(
     fun accept(improvement: TileImprovement?, secondImprovement: TileImprovement? = null) {
         if (improvement == null || tileMarkedForCreatesOneImprovement) return
         if (improvement.name == Constants.cancelImprovementOrder) {
-            tile.stopWorkingOnImprovement()
+            if (FrameSync.isFsMode(currentPlayerCiv.gameInfo)) {
+                // 帧同步: 服务器权威取消改良
+                FrameSync.sendOp("unit.stopImprovement", mapOf("unitId" to unit.id))
+            } else {
+                tile.stopWorkingOnImprovement()
+            }
             // no onAccept() - Worker can stay selected
         } else {
             if (improvement.name != tile.improvementInProgress) {
-                tile.startWorkingOnImprovement(improvement, currentPlayerCiv, unit)
-                if (secondImprovement != null)
-                    tile.queueImprovement(secondImprovement, currentPlayerCiv, unit)
+                // UncivGC 帧同步: 服务器权威, 本地不执行 (统一服务器广播)
+                if (FrameSync.isFsMode(currentPlayerCiv.gameInfo)) {
+                    FrameSync.sendOp("unit.buildImprovement", mapOf(
+                        "unitId" to unit.id,
+                        "tileX" to tile.position.x,
+                        "tileY" to tile.position.y,
+                        "improvement" to improvement.name))
+                } else {
+                    tile.startWorkingOnImprovement(improvement, currentPlayerCiv, unit)
+                    if (secondImprovement != null)
+                        tile.queueImprovement(secondImprovement, currentPlayerCiv, unit)
+                }
             }
             unit.action = null // this is to "wake up" the worker if it's sleeping
             onAccept()
@@ -180,12 +196,15 @@ class ImprovementPickerScreen(
         //Warn when the current improvement will increase a stat for the tile,
         // but the tile is outside of the range (> 3 tiles from any city center) that can be
         // worked by a city's population
+        // 帧同步注意: 同时回合下 currentPlayerCiv 可能不是操作者 → 用建造单位所属文明判断
+        // (否则自己一环地块会误报 "Not in city work range" — 当前回合轮到别人时)
+        val builderCiv = if (FrameSync.isFsMode(gameInfo)) unit.civ else currentPlayerCiv
         if (tile.owningCity != null
             && !improvement.isRoad()
             && stats.max() > 0f
             && !improvement.name.startsWith(Constants.remove)
-            && !tile.getTilesInDistance(currentPlayerCiv.modConstants.cityWorkRange)
-                .any { it.isCityCenter() && it.getCity()!!.civ == currentPlayerCiv }
+            && !tile.getTilesInDistance(builderCiv.modConstants.cityWorkRange)
+                .any { it.isCityCenter() && it.getCity()!!.civ == builderCiv }
         )
             labelText += "\n" + "Not in city work range".tr()
 

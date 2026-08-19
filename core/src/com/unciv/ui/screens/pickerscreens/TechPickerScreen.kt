@@ -17,6 +17,7 @@ import com.unciv.models.ruleset.tech.Technology
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.translations.tr
 import com.unciv.ui.components.NonTransformGroup
+import com.unciv.ui.screens.worldscreen.FrameSync
 import com.unciv.ui.components.extensions.colorFromRGB
 import com.unciv.ui.components.extensions.darken
 import com.unciv.ui.components.extensions.disable
@@ -122,6 +123,20 @@ class TechPickerScreen(
             val freeTech = selectedTech!!.name
             // More evil people fast-clicking to cheat - #4977
             if (!researchableTechs.contains(freeTech)) return
+        }
+        // UncivGC 帧同步: 服务器权威, 本地不执行 (统一服务器广播 — 避免双执行/回滚)
+        // 免费科技 (freeTechPick) 同样走服务器 (防重载回滚)
+        if (FrameSync.isFsMode(civInfo.gameInfo)) {
+            if (freeTechPick) {
+                FrameSync.sendOp("civ.chooseTech", mapOf("techs" to ArrayList(listOf(selectedTech!!.name)), "free" to true))
+            } else {
+                FrameSync.sendOp("civ.chooseTech", mapOf("techs" to ArrayList(tempTechsToResearch)))
+            }
+            game.settings.addCompletedTutorialTask("Pick technology")
+            game.popScreen()
+            return
+        }
+        if (freeTechPick) {
             civTech.getFreeTechnology(selectedTech!!.name)
         }
         else civTech.techsToResearch = tempTechsToResearch

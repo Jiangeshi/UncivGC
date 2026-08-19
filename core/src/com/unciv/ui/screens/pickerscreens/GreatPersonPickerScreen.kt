@@ -46,6 +46,15 @@ class GreatPersonPickerScreen(val worldScreen: WorldScreen, val civInfo: Civiliz
     }
 
     private fun confirmAction(useMayaLongCount: Boolean) {
+        // UncivGC 帧同步: 服务器权威 — 本地不执行 (原版 addUnit + 计数-- 只在本地,
+        // 服务器不知情 → 下次全量同步删掉伟人/恢复计数 → 界面反复弹出)。发 op 等广播:
+        // freeGreatPeople 归零同步后自动关页 (FrameSync 检测计数变化关 GreatPersonPickerScreen)
+        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(civInfo.gameInfo)) {
+            val theChosen = theChosenOne ?: return
+            com.unciv.ui.screens.worldscreen.FrameSync.sendOp(
+                "greatPerson.pick", mapOf("unitName" to theChosen.name))
+            return
+        }
         civInfo.units.addUnit(theChosenOne!!, civInfo.getCapital())
         civInfo.greatPeople.freeGreatPeople--
         if (useMayaLongCount) {

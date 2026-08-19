@@ -11,14 +11,17 @@ import com.unciv.logic.map.mapunit.MapUnit
 import com.unciv.models.UnitAction
 import com.unciv.models.UnitActionType
 import com.unciv.models.UpgradeUnitAction
+import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.ui.components.extensions.brighten
 import com.unciv.ui.components.extensions.disable
 import com.unciv.ui.components.input.keyShortcuts
 import com.unciv.ui.components.input.onActivation
 import com.unciv.ui.images.IconTextButton
 import com.unciv.ui.popups.AnimatedMenuPopup.Companion.addContextMenu
+import com.unciv.ui.popups.ConfirmPopup
 import com.unciv.ui.popups.UnitUpgradeMenu
 import com.unciv.ui.screens.worldscreen.WorldScreen
+import com.unciv.ui.screens.worldscreen.FrameSync
 import yairm210.purity.annotations.Readonly
 
 class UnitActionsTable(val worldScreen: WorldScreen) : Table() {
@@ -194,6 +197,26 @@ class UnitActionsTable(val worldScreen: WorldScreen) : Table() {
     }
 
     private fun activateAction(unitAction: UnitAction, unit: MapUnit) {
+        // UncivGC: "by consuming this unit" 词条行动会消耗单位 → 执行前先弹确认框
+        val associatedUnique = unitAction.associatedUnique
+        if (associatedUnique != null && associatedUnique.hasModifier(UniqueType.UnitActionConsumeUnit)) {
+            ConfirmPopup(
+                worldScreen,
+                "This action will consume the unit. Continue?",
+                "Consume unit",
+                action = { doActivateAction(unitAction, unit) }
+            ).open(force = true)
+            return
+        }
+        doActivateAction(unitAction, unit)
+    }
+
+    private fun doActivateAction(unitAction: UnitAction, unit: MapUnit) {
+        // UncivGC 帧同步: 未单独拦截的 action 类型统一走服务器 (本地不执行, 状态由广播/重载同步)
+        if (FrameSync.tryInterceptGenericAction(worldScreen, unit, unitAction)) {
+            worldScreen.shouldUpdate = true
+            return
+        }
         unitAction.action!!.invoke()
         worldScreen.shouldUpdate = true
         // We keep the unit action/selection overlay from the previous unit open even when already selecting another unit
@@ -201,7 +224,7 @@ class UnitActionsTable(val worldScreen: WorldScreen) : Table() {
         // overlay, since the user definitely wants to interact with the new unit.
         worldScreen.mapHolder.removeUnitActionOverlay()
         if (!UncivGame.Current.settings.autoUnitCycle) return
-        if (unit.isDestroyed || 
+        if (unit.isDestroyed ||
             unitAction.type.isSkippingToNextUnit && (!unit.isMoving() || !unit.hasMovement()))
             worldScreen.switchToNextUnit()
         else worldScreen.bottomUnitTable.shouldUpdate = true

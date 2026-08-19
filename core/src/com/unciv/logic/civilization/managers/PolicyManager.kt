@@ -35,6 +35,12 @@ class PolicyManager : IsPartOfGameInfoSerialization {
     internal val adoptedPolicies = HashSet<String>()
     private var numberOfAdoptedPolicies = 0
 
+    /** UncivGC 帧同步: 服务器权威同步已购政策数 (影响下一政策所需文化) */
+    fun getNumberOfAdoptedPoliciesForSync() = numberOfAdoptedPolicies
+    fun setNumberOfAdoptedPoliciesForSync(count: Int) {
+        numberOfAdoptedPolicies = count
+    }
+
     private var cultureOfLast8Turns = IntArray(8)
 
     /** Indicates whether we should *check* if policy is adoptible, and if so open */
@@ -114,6 +120,17 @@ class PolicyManager : IsPartOfGameInfoSerialization {
         for (policyName in adoptedPolicies) addPolicyToTransients(
             getPolicyByName(policyName)
         )
+    }
+
+    /** UncivGC 帧同步: 服务器同步 adoptedPolicies 列表后重建 policyUniques 缓存 —
+     *  只同步列表不重建 → 战斗/产量计算 (civ.getMatchingUniques → policies.policyUniques)
+     *  用旧 uniques → 政策效果 (如 Honor 对蛮族 +33% 力量) 下回合才生效 */
+    fun rebuildPolicyUniquesFromAdopted() {
+        policyUniques.clear()
+        for (policyName in adoptedPolicies) {
+            val policy = civInfo.gameInfo.ruleset.policies[policyName] ?: continue
+            addPolicyToTransients(policy)
+        }
     }
 
     private fun addPolicyToTransients(policy: Policy) {

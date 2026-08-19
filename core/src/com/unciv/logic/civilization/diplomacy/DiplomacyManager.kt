@@ -465,8 +465,12 @@ class DiplomacyManager() : IsPartOfGameInfoSerialization {
 
     @VisibleForTesting
     fun setInfluenceWithoutSideEffects(amount: Float) {
-        influence =amount
+        influence = amount
     }
+
+    /** 帧同步: 读取原始 influence (getInfluence 含战争修正 MINIMUM_INFLUENCE, 回写会失真) */
+    @Readonly
+    fun getInfluenceForSync(): Float = influence
 
     @Readonly
     fun getInfluence() = if (civInfo.isAtWarWith(otherCiv)) MINIMUM_INFLUENCE else influence

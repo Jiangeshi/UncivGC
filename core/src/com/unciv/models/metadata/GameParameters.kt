@@ -32,6 +32,10 @@ class GameParameters : IsPartOfGameInfoSerialization { // Default values are the
     var godMode = false
     var nuclearWeaponsEnabled = true
     var espionageEnabled = false
+    /** UncivGC 帧同步: 同时回合 (实时联机, Civ6 模式) — 房间设置开关, 服务器权威 */
+    var simultaneousTurns = false
+    /** UncivGC 帧同步: 每段回合保底时长 (分钟) — 5 段 [0-25, 26-50, 51-75, 76-100, 100+]; null=服务器默认 */
+    var fsTurnTimes: Array<Float>? = null
     var noStartBias = false
     var shufflePlayerOrder = false
 
@@ -92,6 +96,7 @@ class GameParameters : IsPartOfGameInfoSerialization { // Default values are the
         // godMode intentionally reset on clone
         parameters.nuclearWeaponsEnabled = nuclearWeaponsEnabled
         parameters.espionageEnabled = espionageEnabled
+        parameters.simultaneousTurns = simultaneousTurns
         parameters.noStartBias = noStartBias
         parameters.shufflePlayerOrder = shufflePlayerOrder
         parameters.victoryTypes = ArrayList(victoryTypes)
@@ -123,6 +128,7 @@ class GameParameters : IsPartOfGameInfoSerialization { // Default values are the
             if (noBarbarians) yield("No barbs")
             if (ragingBarbarians) yield("Raging barbs")
             if (oneCityChallenge) yield("OCC")
+            if (simultaneousTurns) yield("Simultaneous Turns")
             if (!nuclearWeaponsEnabled) yield("No nukes")
             if (godMode) yield("God mode")
             yield("Enabled Victories: " + victoryTypes.joinToString())

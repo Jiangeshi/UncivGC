@@ -3,6 +3,7 @@ package com.unciv.ui.screens.diplomacyscreen
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.unciv.Constants
 import com.unciv.logic.civilization.Civilization
+import com.unciv.logic.civilization.diplomacy.DiplomaticStatus
 import com.unciv.logic.trade.TradeLogic
 import com.unciv.logic.trade.TradeRequest
 import com.unciv.logic.trade.TradeOfferType
@@ -11,6 +12,7 @@ import com.unciv.ui.components.extensions.isEnabled
 import com.unciv.ui.components.extensions.toTextButton
 import com.unciv.ui.components.input.onClick
 import com.unciv.ui.screens.basescreen.BaseScreen
+import com.unciv.ui.screens.worldscreen.FrameSync
 
 class TradeTable(
     private val civ: Civilization,
@@ -47,10 +49,20 @@ class TradeTable(
 
         if (isTradeOffered()) offerButton.setText("Retract offer".tr())
         else offerButton.apply { isEnabled = false }.setText(offerTradeText.tr())
+        // UncivGC 帧同步: 每回合同文明最多 3 次贸易申请 — 达上限按钮灰显 (服务器同样拒绝, 双保险)
+        // 战争状态不能贸易 (原版行为: 宣战后 trades/tradeRequests 全清, 按钮应禁用)
+        updateOfferButtonState()
 
         offerButton.onClick {
             if (isTradeOffered()) {
-                retractOffer()
+                if (FrameSync.isFsMode(civ.gameInfo)) {
+                    // 帧同步: 服务器撤回提议
+                    FrameSync.sendTradeRetract(otherCivilization.civID)
+                    otherCivilization.tradeRequests.removeAll { it.requestingCiv == civ.civID }
+                    offerButton.setText(offerTradeText.tr())
+                } else {
+                    retractOffer()
+                }
                 return@onClick
             }
             // If there is a research agreement trade, make sure both civilizations should be able to pay for it.
@@ -74,9 +86,16 @@ class TradeTable(
                 }
             }
 
-            otherCivilization.tradeRequests.add(TradeRequest(civ.civID, tradeLogic.currentTrade.reverse()))
-            civ.cache.updateCivResources()
-            offerButton.setText("Retract offer".tr())
+            if (FrameSync.isFsMode(civ.gameInfo)) {
+                // 帧同步: 发服务器 (服务器挂起 + 广播给对方), 本地标记已提交 (UI 显示 Retract)
+                FrameSync.sendTradeOffer(otherCivilization.civID, tradeLogic.currentTrade)
+                otherCivilization.tradeRequests.add(TradeRequest(civ.civID, tradeLogic.currentTrade.reverse()))
+                offerButton.setText("Retract offer".tr())
+            } else {
+                otherCivilization.tradeRequests.add(TradeRequest(civ.civID, tradeLogic.currentTrade.reverse()))
+                civ.cache.updateCivResources()
+                offerButton.setText("Retract offer".tr())
+            }
         }
 
         lowerTable.add(offerButton)
@@ -90,7 +109,26 @@ class TradeTable(
     private fun onChange() {
         offerColumnsTable.update()
         retractOffer()
-        offerButton.isEnabled = !(tradeLogic.currentTrade.theirOffers.size == 0 && tradeLogic.currentTrade.ourOffers.size == 0)
+        updateOfferButtonState()
+    }
+
+    /** 贸易按钮可点性: 非空提议 + 未达每回合上限 + 不在战争状态 (帧同步服务器权威计数) */
+    private fun updateOfferButtonState() {
+        val hasOffers = tradeLogic.currentTrade.theirOffers.isNotEmpty() || tradeLogic.currentTrade.ourOffers.isNotEmpty()
+        if (!hasOffers) {
+            offerButton.isEnabled = false
+            return
+        }
+        if (FrameSync.isFsMode(civ.gameInfo)) {
+            // 议和 (和平条约) 场景: 战争状态下也要能发送和平提议 — 不禁用
+            val isPeaceTreaty = tradeLogic.currentTrade.ourOffers.any { it.type == TradeOfferType.Treaty } ||
+                tradeLogic.currentTrade.theirOffers.any { it.type == TradeOfferType.Treaty }
+            val atWar = civ.getDiplomacyManager(otherCivilization)?.diplomaticStatus == DiplomaticStatus.War
+            val sent = FrameSync.tradeSentCount(civ.civID, otherCivilization.civID)
+            offerButton.isEnabled = (isPeaceTreaty || !atWar) && sent < 3
+        } else {
+            offerButton.isEnabled = true
+        }
     }
 
     fun enableOfferButton(isEnabled: Boolean) {

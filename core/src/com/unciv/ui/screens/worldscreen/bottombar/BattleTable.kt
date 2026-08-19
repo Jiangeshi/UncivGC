@@ -1,5 +1,7 @@
 package com.unciv.ui.screens.worldscreen.bottombar
 
+import com.unciv.ui.screens.worldscreen.FrameSync
+
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.math.Interpolation
 import com.badlogic.gdx.scenes.scene2d.Touchable
@@ -348,6 +350,28 @@ class BattleTable(val worldScreen: WorldScreen) : Table() {
         defender: ICombatant,
         attackableTile: AttackableTile
     ) {
+        // UncivGC 帧同步: 攻击按钮也走服务器 (本地不执行) — 否则本地掉血但服务器不更新, 重载回滚
+        val attackerUnit = (attacker as? MapUnitCombatant)?.unit
+        val attackerCity = (attacker as? CityCombatant)?.city
+        if (attackerUnit != null && FrameSync.tryInterceptOp(worldScreen, "unit.attack", mapOf(
+                "unitId" to attackerUnit.id,
+                "toX" to attackableTile.tileToAttack.position.x,
+                "toY" to attackableTile.tileToAttack.position.y
+            ))) {
+            worldScreen.mapHolder.removeUnitActionOverlay()
+            worldScreen.shouldUpdate = true
+            return
+        }
+        // 城市攻击 (城炮) 同样走服务器
+        if (attackerCity != null && FrameSync.tryInterceptOp(worldScreen, "city.attack", mapOf(
+                "cityId" to attackerCity.id,
+                "toX" to attackableTile.tileToAttack.position.x,
+                "toY" to attackableTile.tileToAttack.position.y
+            ))) {
+            worldScreen.mapHolder.removeUnitActionOverlay()
+            worldScreen.shouldUpdate = true
+            return
+        }
         val canStillAttack = Battle.movePreparingAttack(attacker, attackableTile)
         worldScreen.mapHolder.removeUnitActionOverlay() // the overlay was one of attacking
         // There was a direct worldScreen.update() call here, removing its 'private' but not the comment justifying the modifier.

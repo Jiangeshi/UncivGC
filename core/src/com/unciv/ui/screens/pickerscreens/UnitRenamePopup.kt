@@ -16,8 +16,14 @@ class UnitRenamePopup(val screen: BaseScreen, val unit: MapUnit, val actionOnClo
             defaultText = unit.instanceName ?: unit.baseUnit.name.tr(hideIcons = true),
             validate = { it != unit.name },
             actionOnOk = { userInput ->
-                //If the user inputs an empty string, clear the unit instanceName so the base name is used
-                unit.instanceName = if (userInput == "") null else userInput
+                // UncivGC 帧同步: 服务器权威 (instanceName 随 MapUnit 序列化广播, 防重载回滚)
+                if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(unit.civ.gameInfo)) {
+                    com.unciv.ui.screens.worldscreen.FrameSync.sendUnitRename(unit.id,
+                        if (userInput == "") "" else userInput)
+                } else {
+                    //If the user inputs an empty string, clear the unit instanceName so the base name is used
+                    unit.instanceName = if (userInput == "") null else userInput
+                }
                 actionOnClose()
             }
         ).open()

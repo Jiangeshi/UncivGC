@@ -38,7 +38,12 @@ class DiplomaticVoteResultScreen(
         descriptionLabel.setText(winnerText.tr())
 
         rightSideButton.onActivation(UncivSound.Click) {
-            viewingCiv.addFlag(CivFlags.ShowDiplomaticVotingResults.name, -1)
+            if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                // UncivGC 帧同步: 服务器清除 flag (本地清会被广播回滚 → 结果页反复弹)
+                com.unciv.ui.screens.worldscreen.FrameSync.sendVoteResultSeen()
+            } else {
+                viewingCiv.addFlag(CivFlags.ShowDiplomaticVotingResults.name, -1)
+            }
             game.popScreen()
         }
         rightSideButton.keyShortcuts.add(KeyCharAndCode.BACK)

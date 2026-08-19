@@ -1,5 +1,7 @@
 package com.unciv.ui.screens.pickerscreens
 
+import com.unciv.ui.screens.worldscreen.FrameSync
+
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.math.Vector2
 import com.badlogic.gdx.scenes.scene2d.Actor
@@ -118,8 +120,17 @@ class PromotionPickerScreen private constructor(
         val path = tree.getPathTo(button.node.promotion)
         SoundPlayer.playRepeated(UncivSound.Promote, path.size.coerceAtMost(2))
 
-        for (promotion in path)
-            unit.promotions.addPromotion(promotion.name)
+        // UncivGC 帧同步: 服务器权威, 本地不执行 (统一服务器广播)
+        if (FrameSync.isFsMode(unit.civ.gameInfo)) {
+            FrameSync.sendOp("unit.promote", mapOf("unitId" to unit.id, "promotions" to path.map { it.name }))
+            // 本地乐观显示 (与政策选择同款模式): 立即生效并刷新界面 (按钮灰/下一晋升显示),
+            // 服务器广播同步纠正 (经验值等以服务器为准)
+            for (promotion in path)
+                unit.promotions.addPromotion(promotion.name)
+        } else {
+            for (promotion in path)
+                unit.promotions.addPromotion(promotion.name)
+        }
 
         onChange?.invoke()
 
@@ -215,6 +226,12 @@ class PromotionPickerScreen private constructor(
         if (!saveUnitPromotion)  return
         val unitCurrentCity = unit.currentTile.getCity()
         if (unitCurrentCity != null) {
+            if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(unit.civ.gameInfo)) {
+                // UncivGC 帧同步: 服务器权威保存 (unitToPromotions 随广播同步, 防回滚)
+                com.unciv.ui.screens.worldscreen.FrameSync.sendCitySaveUnitPromotions(
+                    unitCurrentCity.id, unit.baseUnit.name, unit.promotions.promotions)
+                return
+            }
             // If you are clicked the save baseUnit promotion, you want the next baseUnit to have the same promotion.
             unitCurrentCity.unitShouldUseSavedPromotion[unit.baseUnit.name] = true
             unitCurrentCity.unitToPromotions[unit.baseUnit.name] = unit.promotions

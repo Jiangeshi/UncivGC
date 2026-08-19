@@ -28,7 +28,7 @@ import com.unciv.ui.popups.AskTextPopup
 class ReligiousBeliefsPickerScreen (
     choosingCiv: Civilization,
     numberOfBeliefsCanChoose: Counter<BeliefType>,
-    pickIconAndName: Boolean
+    val pickIconAndName: Boolean
 ): ReligionPickerScreenCommon(choosingCiv, disableScroll = true) {
     // Roughly follows the layout of the original (although I am not very good at UI designing, so please improve this)
 
@@ -77,9 +77,18 @@ class ReligiousBeliefsPickerScreen (
             if (pickIconAndName) "Choose a Religion"
             else "Enhance [${currentReligion.getReligionDisplayName()}]"
         ) {
-            if (civInfo.religionManager.religionState == ReligionState.FoundingReligion)
-                civInfo.religionManager.foundReligion(displayName!!, religionName!!)
-            chooseBeliefs(beliefsToChoose.map { it.belief!! }, usingFreeBeliefs())
+            // UncivGC 帧同步: 服务器权威 (创立宗教的名字/教义一并发送, 防重载回滚)
+            if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(civInfo.gameInfo)) {
+                com.unciv.ui.screens.worldscreen.FrameSync.sendOp("civ.chooseBeliefs", mapOf(
+                    "beliefs" to beliefsToChoose.map { it.belief!!.name },
+                    "free" to usingFreeBeliefs(),
+                    "religionName" to religionName,
+                    "displayName" to displayName))
+            } else {
+                if (civInfo.religionManager.religionState == ReligionState.FoundingReligion)
+                    civInfo.religionManager.foundReligion(displayName!!, religionName!!)
+                chooseBeliefs(beliefsToChoose.map { it.belief!! }, usingFreeBeliefs())
+            }
         }
     }
 

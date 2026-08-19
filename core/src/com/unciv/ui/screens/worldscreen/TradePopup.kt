@@ -85,19 +85,33 @@ class TradePopup(worldScreen: WorldScreen) : Popup(worldScreen) {
         addGoodSizedLabel(nation.tradeRequest).pad(15f).row()
 
         addButton("Sounds good!", 'y') {
-            val tradeLogic = TradeLogic(viewingCiv, requestingCiv)
-            tradeLogic.currentTrade.set(trade)
-            tradeLogic.acceptTrade()
-            close()
-            TradeThanksPopup(leaderIntroTable, worldScreen)
-            requestingCiv.addNotification("[${viewingCiv.civName}] has accepted your trade request", NotificationCategory.Trade, viewingCiv.civName, NotificationIcon.Trade)
+            if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                // 帧同步: 服务器权威接受 (转移/条约在服务器执行, 状态广播同步)
+                FrameSync.sendTradeAccept(tradeRequest.requestingCiv)
+                viewingCiv.tradeRequests.remove(tradeRequest)
+                close()
+            } else {
+                val tradeLogic = TradeLogic(viewingCiv, requestingCiv)
+                tradeLogic.currentTrade.set(trade)
+                tradeLogic.acceptTrade()
+                close()
+                TradeThanksPopup(leaderIntroTable, worldScreen)
+                requestingCiv.addNotification("[${viewingCiv.civName}] has accepted your trade request", NotificationCategory.Trade, viewingCiv.civName, NotificationIcon.Trade)
+            }
         }.row()
 
         addButton("Not this time.", 'n') {
-            tradeRequest.decline(viewingCiv)
-            close()
-            requestingCiv.addNotification("[${viewingCiv.civName}] has denied your trade request", NotificationCategory.Trade, viewingCiv.civName, NotificationIcon.Trade)
-            worldScreen.shouldUpdate = true
+            if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                // 帧同步: 服务器移除挂起提议
+                FrameSync.sendTradeReject(tradeRequest.requestingCiv)
+                viewingCiv.tradeRequests.remove(tradeRequest)
+                close()
+            } else {
+                tradeRequest.decline(viewingCiv)
+                close()
+                requestingCiv.addNotification("[${viewingCiv.civName}] has denied your trade request", NotificationCategory.Trade, viewingCiv.civName, NotificationIcon.Trade)
+                worldScreen.shouldUpdate = true
+            }
         }.row()
 
         addButton("How about something else...", 'e') {

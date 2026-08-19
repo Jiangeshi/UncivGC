@@ -33,6 +33,7 @@ import com.unciv.ui.components.tilegroups.citybutton.InfluenceTable
 import com.unciv.ui.images.ImageGetter
 import com.unciv.ui.popups.ConfirmPopup
 import com.unciv.ui.screens.basescreen.BaseScreen
+import com.unciv.ui.screens.worldscreen.FrameSync
 import com.unciv.ui.screens.basescreen.RecreateOnResize
 import kotlin.math.floor
 import com.unciv.ui.components.widgets.AutoScrollPane as ScrollPane
@@ -77,7 +78,7 @@ class DiplomacyScreen(
 
     private val closeButton = getCloseButton(closeButtonSize) { game.popScreen() }
 
-    internal fun isNotPlayersTurn() = !GUI.isAllowedChangeState()
+    internal fun isNotPlayersTurn() = !GUI.isAllowedChangeState() && !FrameSync.isFsMode(viewingCiv.gameInfo)
 
     init {
         // In cramped conditions, start the left side with enough width for nation icon and padding, but allow it to get squeezed until just the icon fits.
@@ -317,12 +318,17 @@ class DiplomacyScreen(
         }
         declareWarButton.onClick {
             ConfirmPopup(this, getDeclareWarButtonText(otherCiv), "Declare war") {
-                diplomacyManager.declareWar()
-                setRightSideFlavorText(otherCiv, otherCiv.nation.attacked, "Very well.")
-                updateLeftSideTable(otherCiv)
-                val music = UncivGame.Current.musicController
-                music.chooseTrack(otherCiv.civName, MusicMood.War, MusicTrackChooserFlags.setSpecific)
-                music.playVoice("${otherCiv.civName}.attacked")
+                if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                    // 帧同步: 服务器权威执行 (宣战状态由状态广播同步)
+                    FrameSync.sendDeclareWar(otherCiv.civID)
+                } else {
+                    diplomacyManager.declareWar()
+                    setRightSideFlavorText(otherCiv, otherCiv.nation.attacked, "Very well.")
+                    updateLeftSideTable(otherCiv)
+                    val music = UncivGame.Current.musicController
+                    music.chooseTrack(otherCiv.civName, MusicMood.War, MusicTrackChooserFlags.setSpecific)
+                    music.playVoice("${otherCiv.civName}.attacked")
+                }
             }.open()
         }
         if (isNotPlayersTurn()) declareWarButton.disable()

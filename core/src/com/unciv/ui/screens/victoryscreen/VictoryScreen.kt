@@ -17,6 +17,7 @@ import com.unciv.ui.audio.MusicMood
 import com.unciv.ui.audio.MusicTrackChooserFlags
 import com.unciv.ui.components.widgets.TabbedPager
 import com.unciv.ui.components.extensions.areSecretKeysPressed
+import com.unciv.ui.components.extensions.disable
 import com.unciv.ui.components.extensions.enable
 import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.components.input.KeyCharAndCode
@@ -194,6 +195,11 @@ class VictoryScreen(
         }
 
         closeButton.setText("One more turn...!".tr())
+        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo)) {
+            // UncivGC 帧同步: 服务器权威 — One More Turn 是本地 flag, 广播会回滚导致胜利屏反复弹; 隐藏
+            closeButton.disable()
+            closeButton.setText("One more turn... (unavailable in real-time)".tr())
+        }
         closeButton.onClick {
             gameInfo.oneMoreTurnMode = true
             game.popScreen()

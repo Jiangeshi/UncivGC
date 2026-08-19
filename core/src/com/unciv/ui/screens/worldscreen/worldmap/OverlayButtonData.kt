@@ -133,6 +133,18 @@ class ConnectRoadOverlayButtonData(val unit: MapUnit, val tile: Tile) : OverlayB
     }
 
     private fun connectRoadToTargetTile(worldMapHolder: WorldMapHolder, selectedUnit: MapUnit, targetTile: Tile) {
+        // UncivGC 帧同步: 服务器权威 (自动化+连路目标由广播同步; 纯本地会被回滚)
+        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(selectedUnit.civ.gameInfo)) {
+            val dest = targetTile.position
+            com.unciv.ui.screens.worldscreen.FrameSync.sendOp("unit.automate", mapOf(
+                "unitId" to selectedUnit.id, "on" to true,
+                "destX" to (dest.x ?: 0), "destY" to (dest.y ?: 0)))
+            SoundPlayer.play(UncivSound("wagon"))
+            worldMapHolder.worldScreen.shouldUpdate = true
+            worldMapHolder.removeUnitActionOverlay()
+            worldMapHolder.worldScreen.bottomUnitTable.selectedUnitIsConnectingRoad = false
+            return
+        }
         selectedUnit.automatedRoadConnectionDestination = targetTile.position
         selectedUnit.automatedRoadConnectionPath = null
         selectedUnit.action = UnitActionType.ConnectRoad.value

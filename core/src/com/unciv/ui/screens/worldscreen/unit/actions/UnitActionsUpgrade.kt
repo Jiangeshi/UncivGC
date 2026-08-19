@@ -66,7 +66,13 @@ object UnitActionsUpgrade {
                 goldCostOfUpgrade = goldCostOfUpgrade,
                 newResourceRequirements = resourceRequirementsDelta,
                 action = {
-                    unit.upgrade.performUpgrade(upgradedUnit, isFree, goldCostOfUpgrade)
+                    if (!isFree && com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(unit.civ.gameInfo)) {
+                        // UncivGC 帧同步: 服务器权威 — 本地不执行, 升级结果由广播同步 (防重载回滚)
+                        com.unciv.ui.screens.worldscreen.FrameSync.sendOp(
+                            "unit.upgrade", mapOf("unitId" to unit.id, "upgradesTo" to upgradedUnit.name))
+                    } else {
+                        unit.upgrade.performUpgrade(upgradedUnit, isFree, goldCostOfUpgrade)
+                    }
                 }.takeIf {
                     isFree || (
                         unit.civ.gold >= goldCostOfUpgrade

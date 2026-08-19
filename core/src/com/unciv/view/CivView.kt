@@ -51,10 +51,18 @@ class CivView(civ: Civilization,
     @Readonly fun hasExplored(tileView: TileView): Boolean = civ.hasExplored(tileView.getTile())
 
     fun tryDisableCivConstruction(name: String) {
+        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(civ.gameInfo)) {
+            com.unciv.ui.screens.worldscreen.FrameSync.sendCivSetConstructionDisabled(name, disable = true)
+            return
+        }
         civ.cities.forEach { it.disabledConstructions.add(name) }
         civ.disabledCityConstructions.add(name)
     }
     fun tryEnableCivConstruction(name: String) {
+        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(civ.gameInfo)) {
+            com.unciv.ui.screens.worldscreen.FrameSync.sendCivSetConstructionDisabled(name, disable = false)
+            return
+        }
         civ.cities.forEach { it.disabledConstructions.remove(name) }
         civ.disabledCityConstructions.remove(name)
     }

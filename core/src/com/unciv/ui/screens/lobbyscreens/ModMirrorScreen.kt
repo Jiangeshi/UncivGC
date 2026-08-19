@@ -1,6 +1,7 @@
 package com.unciv.ui.screens.lobbyscreens
 
 import com.badlogic.gdx.scenes.scene2d.ui.Table
+import com.unciv.UncivGame
 import com.unciv.logic.lobby.LobbyApi
 import com.unciv.logic.lobby.ModMirrorEntry
 import com.unciv.models.translations.tr
@@ -137,6 +138,9 @@ class ModMirrorScreen : PickerScreen() {
                     ToastPopup((if (isUpdate) "[${entry.name}] update complete" else "[${entry.name}] installed").tr(), this@ModMirrorScreen)
                     // 立即重新加载规则集缓存, 游戏里马上能选到这个模组 (否则要重启 App)
                     RulesetCache.loadRulesets()
+                    // 刷新翻译缓存: loadRulesets 只更新规则集, 不重读 mod 翻译 — 不刷则 mod 翻译
+                    // 显示英文原串, 直到开一局/进 Mod 管理器才触发重读 (官方 Mod 管理器 L711 有这行)
+                    UncivGame.Current.translations.tryReadTranslationForCurrentLanguage()
                 }
                 refresh()
             }

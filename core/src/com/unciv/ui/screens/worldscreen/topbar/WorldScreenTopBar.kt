@@ -25,6 +25,8 @@ import com.unciv.ui.screens.basescreen.BaseScreen
 import com.unciv.ui.screens.overviewscreen.EmpireOverviewCategories
 import com.unciv.ui.screens.worldscreen.BackgroundActor
 import com.unciv.ui.screens.worldscreen.WorldScreen
+import com.unciv.utils.Concurrency
+import com.unciv.utils.launchOnGLThread
 import com.unciv.ui.screens.worldscreen.mainmenu.WorldScreenMenuPopup
 import kotlin.math.max
 
@@ -71,6 +73,11 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
     private val leftFiller: BackgroundActor
     private val rightFiller: BackgroundActor
     private var baseHeight = 0f
+    /** UncivGC 帧同步: 暂停按钮 (顶栏自持, 生命周期随顶栏 — 重载后随顶栏重建, 无竞态) */
+    private var fsPauseButton: com.badlogic.gdx.scenes.scene2d.ui.TextButton? = null
+
+    /** UncivGC 帧同步: 玩家状态按钮 (在线/过回合/文明) — 放暂停按钮左边 */
+    private var fsStatusButton: com.badlogic.gdx.scenes.scene2d.ui.TextButton? = null
 
     companion object {
         /** When the "fillers" are used, this is added to the required height, alleviating the "gap" problem a little. */
@@ -92,6 +99,24 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
         leftFiller = BackgroundActor(leftFillerBG, Align.topLeft)
         val rightFillerBG = BaseScreen.skinStrings.getUiBackground("WorldScreen/TopBar/RightAttachment", BaseScreen.skinStrings.roundedEdgeRectangleShape, backColor)
         rightFiller = BackgroundActor(rightFillerBG, Align.topRight)
+
+        // UncivGC 帧同步: 创建暂停按钮 (放概览按钮旁边; 事件走 FrameSync) — 观战者不创建 (不能暂停)
+        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo)
+            && !worldScreen.viewingCiv.isSpectator()) {
+            val btn = com.badlogic.gdx.scenes.scene2d.ui.TextButton("Pause".tr(), BaseScreen.skin)
+            btn.onClick { com.unciv.ui.screens.worldscreen.FrameSync.togglePause() }
+            btn.pack()
+            fsPauseButton = btn
+            com.unciv.ui.screens.worldscreen.FrameSync.registerFsPauseButton(btn)
+        }
+
+        // UncivGC 帧同步: 玩家状态按钮 (在线/过回合/文明) — 观战者也能看
+        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo)) {
+            val btn = com.badlogic.gdx.scenes.scene2d.ui.TextButton("Status".tr(), BaseScreen.skin)
+            btn.onClick { showPlayerStatusPopup() }
+            btn.pack()
+            fsStatusButton = btn
+        }
     }
 
     internal fun update(civInfo: Civilization) {
@@ -162,6 +187,107 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
         overviewButton.setPosition(targetWidth - overviewWidth, (centerButtonsToHeight - overviewHeight) / 2f)
         addActor(selectedCivTable) // needs to be after size
         addActor(overviewButton)
+        // UncivGC 帧同步: 暂停按钮放概览按钮旁边 (顶栏子 actor; updateLayout 的 clear() 会清掉 → 每次重新挂载+定位)
+        fsPauseButton?.let { btn ->
+            if (btn.parent !== this) addActor(btn)
+            btn.setPosition(overviewButton.x - btn.width - 5f, (centerButtonsToHeight - btn.height) / 2f)
+        }
+        // UncivGC 帧同步: 状态按钮放暂停按钮左边 (状态 | 暂停 | 概览)
+        fsStatusButton?.let { btn ->
+            if (btn.parent !== this) addActor(btn)
+            val anchorX = fsPauseButton?.let { it.x - btn.width - 5f } ?: (overviewButton.x - btn.width - 5f)
+            btn.setPosition(anchorX, (centerButtonsToHeight - btn.height) / 2f)
+        }
+    }
+
+    /** 玩家状态弹窗: 表格排版 — 文明头像 | 昵称 | 文明 | 状态 | 回合 (纯文字, 无 emoji — 游戏字体不支持) */
+    private fun showPlayerStatusPopup() {
+        val fs = com.unciv.ui.screens.worldscreen.FrameSync
+        val popup = com.unciv.ui.popups.Popup(worldScreen)
+        popup.addGoodSizedLabel("Players".tr()).row()
+        val table = com.badlogic.gdx.scenes.scene2d.ui.Table()
+        popup.add(table).pad(10f).row()
+        popup.addCloseButton()
+        popup.open()
+
+        // 实时刷新: 每秒重建表格内容 (在线/过回合状态变化立即可见, 不用关掉重开)
+        // popup 关闭 (isVisible=false) 即停止循环
+        fun buildTable() {
+            table.clear()
+            val online = fs.onlinePlayers.toSet()
+            val ready = fs.turnReadyPlayers.toSet()
+            // 我方文明排最前 (城邦不显示)
+            val myCiv = worldScreen.viewingCiv
+            val civs = if (myCiv.isSpectator())
+                worldScreen.gameInfo.civilizations.filter { !it.isBarbarian && !it.isSpectator() && !it.isCityState }
+            else
+                listOf(myCiv) + worldScreen.gameInfo.civilizations.filter {
+                    !it.isBarbarian && !it.isSpectator() && !it.isCityState && it.civID != myCiv.civID
+                }
+            // 表头: 头像 | 昵称 | 文明 | 状态 | 回合
+            table.add("".toLabel(fontSize = 12)).padRight(8f)
+            table.add("Nickname".tr().toLabel(fontSize = 12)).padRight(12f)
+            table.add("Civilization".tr().toLabel(fontSize = 12)).padRight(12f)
+            table.add("Status".tr().toLabel(fontSize = 12)).padRight(12f)
+            table.add("Turn".tr().toLabel(fontSize = 12)).row()
+            for (civ in civs) {
+                val pid = civ.playerId
+                val nick = if (pid.isNullOrEmpty()) null else fs.playerNicknames[pid]
+                val isOnline = pid != null && pid in online
+                val isReady = pid != null && pid in ready
+                val isMe = civ.civID == myCiv.civID && !myCiv.isSpectator()
+                // 文明头像
+                val portrait = com.unciv.ui.images.ImageGetter.getNationPortrait(civ.nation, 32f)
+                table.add(portrait).padRight(8f)
+                // 昵称列 (独立列, 不再拼进文明名; 自己无昵称时显示 "You")
+                val nickText = when {
+                    nick != null && nick.isNotBlank() && nick != pid -> nick
+                    isMe -> ("You").tr()
+                    else -> "-"
+                }
+                val nickLabel = nickText.toLabel(fontSize = 16)
+                if (isMe) nickLabel.setColor(com.badlogic.gdx.graphics.Color.YELLOW)
+                table.add(nickLabel).padRight(12f)
+                // 文明名 (文明名单独 tr — 整体 tr 会因拼接无翻译键而失败显示英文)
+                val civNameTr = civ.civName.tr()
+                val nameLabel = civNameTr.toLabel(fontSize = 16)
+                if (isMe) nameLabel.setColor(com.badlogic.gdx.graphics.Color.YELLOW)
+                table.add(nameLabel).padRight(12f)
+                // 状态 (纯文字): 战败优先, 其次 AI (玩家退出/托管), 再在线/离线
+                val statusText = when {
+                    civ.isDefeated() -> "Defeated".tr()
+                    civ.isAI() || pid.isNullOrEmpty() -> "AI".tr()
+                    isOnline -> "Online".tr()
+                    else -> "Offline".tr()
+                }
+                table.add(statusText.toLabel(fontSize = 14)).padRight(12f)
+                // 回合状态 (纯文字): 战败/AI 也标注 (用户要求加两个参数)
+                val turnText = when {
+                    civ.isDefeated() -> "Defeated".tr()
+                    civ.isAI() || pid.isNullOrEmpty() -> "AI".tr()
+                    isReady -> "Done".tr()
+                    isOnline -> "Thinking".tr()
+                    else -> "-"
+                }
+                table.add(turnText.toLabel(fontSize = 14)).row()
+            }
+            table.invalidateHierarchy()
+            table.pack()
+        }
+
+        com.unciv.utils.Concurrency.run("PlayerStatusUpdater") {
+            while (popup.isVisible && worldScreen.stage != null) {
+                try {
+                    launchOnGLThread {
+                        if (popup.isVisible && worldScreen.stage != null) {
+                            buildTable()
+                        }
+                    }
+                } catch (ignored: Exception) {
+                }
+                Thread.sleep(1000)
+            }
+        }
     }
 
     private class OverviewAndSupplyTable(worldScreen: WorldScreen) : Table(BaseScreen.skin) {

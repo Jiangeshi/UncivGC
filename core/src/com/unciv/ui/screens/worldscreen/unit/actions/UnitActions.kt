@@ -13,6 +13,7 @@ import com.unciv.models.translations.tr
 import com.unciv.ui.popups.ConfirmPopup
 import com.unciv.ui.popups.hasOpenPopups
 import com.unciv.ui.screens.pickerscreens.PromotionPickerScreen
+import com.unciv.ui.screens.worldscreen.FrameSync
 import com.unciv.ui.screens.worldscreen.unit.actions.UnitActions.getActionDefaultPage
 import com.unciv.ui.screens.worldscreen.unit.actions.UnitActions.getPagingActions
 import com.unciv.ui.screens.worldscreen.unit.actions.UnitActions.getUnitActions
@@ -139,13 +140,23 @@ object UnitActions {
         // General actions
         addAutomateActions(unit)
         if (unit.isMoving())
-            yield(UnitAction(UnitActionType.StopMovement, 20f) { unit.action = null })
+            yield(UnitAction(UnitActionType.StopMovement, 20f) {
+                // UncivGC 帧同步: 统一服务器广播 + 本地乐观 (立即反馈, 广播纠正)
+                if (FrameSync.tryInterceptOp(FrameSync.currentWorldScreenOrNull(), "unit.stopMovement", mapOf("unitId" to unit.id)))
+                    unit.action = null
+            })
         if (unit.isExploring())
-            yield(UnitAction(UnitActionType.StopExploration, 20f) { unit.action = null })
+            yield(UnitAction(UnitActionType.StopExploration, 20f) {
+                if (FrameSync.tryInterceptOp(FrameSync.currentWorldScreenOrNull(), "unit.explore", mapOf("unitId" to unit.id, "on" to false)))
+                    unit.action = null
+            })
         if (unit.isAutomated())
             yield(UnitAction(UnitActionType.StopAutomation, 10f) {
-                unit.action = null
-                unit.automated = false
+                if (FrameSync.tryInterceptOp(FrameSync.currentWorldScreenOrNull(), "unit.automate", mapOf("unitId" to unit.id, "on" to false)))
+                    unit.run {
+                        action = null
+                        automated = false
+                    }
             })
 
         addPromoteActions(unit)
@@ -191,14 +202,17 @@ object UnitActions {
                 type = UnitActionType.EscortFormation,
                 useFrequency = 50f,
                 action = {
-                    unit.startEscorting()
+                    // UncivGC 帧同步: 统一服务器广播
+                    if (!FrameSync.tryInterceptOp(worldScreen, "unit.escort", mapOf("unitId" to unit.id, "on" to true)))
+                        unit.startEscorting()
                 }))
         } else {
             yield(UnitAction(
                 type = UnitActionType.StopEscortFormation,
                 useFrequency = 50f,
                 action = {
-                    unit.stopEscorting()
+                    if (FrameSync.tryInterceptOp(worldScreen, "unit.escort", mapOf("unitId" to unit.id, "on" to false)))
+                        unit.stopEscorting()
                 }))
         }
     }
@@ -238,11 +252,14 @@ object UnitActions {
                         "Disband this unit for [${unit.baseUnit.getDisbandGold(unit.civ)}] gold?".tr()
                     else "Do you really want to disband this unit?".tr()
                     ConfirmPopup(worldScreen, disbandText, "Disband unit") {
-                        unit.disband()
-                        unit.civ.updateStatsForNextTurn() // less upkeep!
-                        GUI.setUpdateWorldOnNextRender()
-                        if (GUI.getSettings().autoUnitCycle)
-                            worldScreen.switchToNextUnit()
+                        // UncivGC 帧同步: 发服务器执行
+                        if (!FrameSync.tryInterceptOp(worldScreen, "unit.disband", mapOf("unitId" to unit.id))) {
+                            unit.disband()
+                            unit.civ.updateStatsForNextTurn() // less upkeep!
+                            GUI.setUpdateWorldOnNextRender()
+                            if (GUI.getSettings().autoUnitCycle)
+                                worldScreen.switchToNextUnit()
+                        }
                     }.open()
                 }
             }.takeIf { unit.hasMovement() }
@@ -264,12 +281,16 @@ object UnitActions {
         if (unit.baseUnit.movesLikeAirUnits) return
         if (unit.isExploring()) return
         yield(UnitAction(UnitActionType.Explore, 5f) {
-            unit.action = UnitActionType.Explore.value
-            if (unit.hasMovement()) UnitAutomation.automatedExplore(unit)
+            // UncivGC 帧同步: 统一服务器广播
+            if (!FrameSync.tryInterceptOp(FrameSync.currentWorldScreenOrNull(), "unit.explore", mapOf("unitId" to unit.id, "on" to true))) {
+                unit.action = UnitActionType.Explore.value
+                if (unit.hasMovement()) UnitAutomation.automatedExplore(unit)
+            }
         })
     }
 
     private suspend fun SequenceScope<UnitAction>.addFortifyActions(unit: MapUnit) {
+        val worldScreen = FrameSync.currentWorldScreenOrNull()
         if (unit.isFortified()) {
             yield(UnitAction(
                 type = if (unit.isActionUntilHealed())
@@ -285,31 +306,46 @@ object UnitActions {
         if (!unit.canFortify() || !unit.hasMovement()) return
 
         yield(UnitAction(UnitActionType.Fortify,
-            action = { unit.fortify() }.takeIf { !unit.isFortified() || unit.isFortifyingUntilHealed() },
+            action = {
+                // UncivGC 帧同步: 发服务器执行
+                if (!FrameSync.tryInterceptOp(worldScreen, "unit.fortify", mapOf("unitId" to unit.id)))
+                    unit.fortify()
+            }.takeIf { !unit.isFortified() || unit.isFortifyingUntilHealed() },
             useFrequency = 30f
         ))
 
         if (unit.health == 100) return
         yield(UnitAction(UnitActionType.FortifyUntilHealed,
-            action = { unit.fortifyUntilHealed() }
+            action = {
+                if (!FrameSync.tryInterceptOp(worldScreen, "unit.fortifyUntilHealed", mapOf("unitId" to unit.id)))
+                    unit.fortifyUntilHealed()
+            }
                 .takeIf { !unit.isFortifyingUntilHealed() && unit.canHealInCurrentTile() },
             useFrequency = 45f
         ))
     }
 
     private suspend fun SequenceScope<UnitAction>.addSleepActions(unit: MapUnit, tile: Tile) {
+        val worldScreen = FrameSync.currentWorldScreenOrNull()
         if (unit.isFortified() || unit.canFortify() || unit.isGuarding() || !unit.hasMovement()) return
         if (tile.hasImprovementInProgress() && unit.canBuildImprovement(tile.getTileImprovementInProgress()!!)) return
 
         yield(UnitAction(UnitActionType.Sleep,
             useFrequency = if (!unit.isSleeping()) 29f else 21f,
-            action = { unit.action = UnitActionType.Sleep.value }.takeIf { !unit.isSleeping() || unit.isSleepingUntilHealed() }
+            action = {
+                // UncivGC 帧同步: 发服务器执行
+                if (!FrameSync.tryInterceptOp(worldScreen, "unit.sleep", mapOf("unitId" to unit.id)))
+                    unit.action = UnitActionType.Sleep.value
+            }.takeIf { !unit.isSleeping() || unit.isSleepingUntilHealed() }
         ))
 
         if (unit.health == 100) return
         yield(UnitAction(UnitActionType.SleepUntilHealed,
             useFrequency = if (!unit.isSleepingUntilHealed()) 44f else 20f,
-            action = { unit.action = UnitActionType.SleepUntilHealed.value }
+            action = {
+                if (!FrameSync.tryInterceptOp(worldScreen, "unit.sleepUntilHealed", mapOf("unitId" to unit.id)))
+                    unit.action = UnitActionType.SleepUntilHealed.value
+            }
                 .takeIf { !unit.isSleepingUntilHealed() && unit.canHealInCurrentTile() }
         ))
     }
@@ -342,27 +378,33 @@ object UnitActions {
         }
 
         val giftAction = {
-            if (recipient.isCityState) {
-                for (unique in unit.getMatchingUniques(
-                    UniqueType.GainInfluenceWithUnitGiftToCityState,
-                    checkCivInfoUniques = true
-                )) {
-                    if (unit.matchesFilter(unique.params[1])) {
-                        recipient.getDiplomacyManager(unit.civ)!!
-                            .addInfluence(unique.params[0].toFloat() - 5f)
-                        break
+            if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(unit.civ.gameInfo)) {
+                // UncivGC 帧同步: 服务器权威执行 (influence/单位转移防回滚)
+                com.unciv.ui.screens.worldscreen.FrameSync.sendOp("unit.giftUnit",
+                    mapOf("unitId" to unit.id, "recipient" to recipient.civID))
+            } else {
+                if (recipient.isCityState) {
+                    for (unique in unit.getMatchingUniques(
+                        UniqueType.GainInfluenceWithUnitGiftToCityState,
+                        checkCivInfoUniques = true
+                    )) {
+                        if (unit.matchesFilter(unique.params[1])) {
+                            recipient.getDiplomacyManager(unit.civ)!!
+                                .addInfluence(unique.params[0].toFloat() - 5f)
+                            break
+                        }
                     }
-                }
 
-                recipient.getDiplomacyManager(unit.civ)!!.addInfluence(5f)
-            } else recipient.getDiplomacyManager(unit.civ)!!
-                .addModifier(DiplomaticModifiers.GaveUsUnits, 5f)
+                    recipient.getDiplomacyManager(unit.civ)!!.addInfluence(5f)
+                } else recipient.getDiplomacyManager(unit.civ)!!
+                    .addModifier(DiplomaticModifiers.GaveUsUnits, 5f)
 
-            if (recipient.isCityState && unit.isGreatPerson())
-                unit.destroy()  // City states don't get GPs
-            else
-                unit.gift(recipient)
-            GUI.setUpdateWorldOnNextRender()
+                if (recipient.isCityState && unit.isGreatPerson())
+                    unit.destroy()  // City states don't get GPs
+                else
+                    unit.gift(recipient)
+                GUI.setUpdateWorldOnNextRender()
+            }
         }
         yield(UnitAction(UnitActionType.GiftUnit, 5f, action = giftAction))
     }
@@ -373,8 +415,11 @@ object UnitActions {
             isCurrentAction = unit.isAutomated(),
             useFrequency = 25f,
             action = {
-                unit.automated = true
-                UnitAutomation.automateUnitMoves(unit)
+                // UncivGC 帧同步: 统一服务器广播 — 本地不执行, 状态由广播同步显示
+                if (!FrameSync.tryInterceptOp(FrameSync.currentWorldScreenOrNull(), "unit.automate", mapOf("unitId" to unit.id, "on" to true))) {
+                    unit.automated = true
+                    UnitAutomation.automateUnitMoves(unit)
+                }
             }.takeIf { unit.hasMovement() }
         ))
     }
@@ -385,7 +430,9 @@ object UnitActions {
             type = UnitActionType.Skip,
             useFrequency = 0f, // Last on first page (defaultPage=0)
             action = {
-                unit.due = !unit.due
+                // UncivGC 帧同步: 统一服务器广播
+                if (!FrameSync.tryInterceptOp(FrameSync.currentWorldScreenOrNull(), "unit.skip", mapOf("unitId" to unit.id)))
+                    unit.due = !unit.due
                 // If it's on, skips to next unit due to worldScreen.switchToNextUnit() in activateAction
                 // We don't want to switch twice since then we skip units :)
                 if (!unit.due && !UncivGame.Current.settings.autoUnitCycle)

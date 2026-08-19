@@ -162,7 +162,16 @@ class ConstructionInfoTable(val cityScreen: CityScreen) : Table() {
     }
 
     private fun sellBuildingConfirmed(construction: Building) {
-        cityView.trySellBuilding(construction)
+        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(cityView.viewingCiv().civ.gameInfo)) {
+            // 帧同步: 服务器权威卖建筑; 本地乐观移除 (界面立即消失, 广播同步纠正)
+            com.unciv.ui.screens.worldscreen.FrameSync.sendSellBuilding(cityView.city.id, construction.name)
+            // 用 removeBuilding 而非只删 builtBuildings HashSet:
+            // 列表渲染读的是缓存 builtBuildingObjects (getBuiltBuildings), 只删 HashSet 界面不消失
+            cityView.city.cityConstructions.removeBuilding(construction.name)
+            cityView.city.hasSoldBuildingThisTurn = true
+        } else {
+            cityView.trySellBuilding(construction)
+        }
         cityScreen.clearSelection()
         cityScreen.update()
     }

@@ -19,6 +19,13 @@ class GoldenAgeManager : IsPartOfGameInfoSerialization {
     private var numberOfGoldenAges = 0
     var turnsLeftForCurrentGoldenAge = 0
 
+    /** UncivGC 帧同步: 服务器权威黄金时代同步 (开启后客户端立即生效, 不等重载) */
+    fun setTurnsLeftForSync(value: Int) {
+        turnsLeftForCurrentGoldenAge = value
+        // 黄金时代影响城市产出 (+"1" 产能/金币等) — 同步后立即重算, 否则面板显示旧值到下回合
+        for (city in civInfo.cities) city.cityStats.update()
+    }
+
     fun clone(): GoldenAgeManager {
         val toReturn = GoldenAgeManager()
         toReturn.numberOfGoldenAges = numberOfGoldenAges

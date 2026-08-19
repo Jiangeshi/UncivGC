@@ -16,6 +16,7 @@ import com.unciv.ui.images.ImageGetter
 import com.unciv.ui.popups.AnimatedMenuPopup.Companion.addContextMenu
 import com.unciv.ui.popups.hasOpenPopups
 import com.unciv.ui.screens.basescreen.BaseScreen
+import com.unciv.ui.screens.worldscreen.FrameSync
 import com.unciv.ui.screens.worldscreen.WorldScreen
 import com.unciv.ui.screens.worldscreen.status.NextTurnAction.Default
 import com.unciv.utils.Concurrency
@@ -42,7 +43,9 @@ class NextTurnButton(
         nextTurnAction = getNextTurnAction(worldScreen)
         updateButton(nextTurnAction)
         val autoPlay = worldScreen.autoPlay
-        if (autoPlay.shouldContinueAutoPlaying() && worldScreen.isPlayersTurn
+        // UncivGC 帧同步: 禁 autoPlay — automateTurn 会在本地跑单位操作, 绕过服务器拦截
+        val fsMode = FrameSync.isFsMode(worldScreen.gameInfo)
+        if (!fsMode && autoPlay.shouldContinueAutoPlaying() && worldScreen.isPlayersTurn
             && !worldScreen.waitingForAutosave && !worldScreen.isNextTurnUpdateRunning()) {
             autoPlay.runAutoPlayJobInNewThread("MultiturnAutoPlay", worldScreen, false) {
                 TurnManager(worldScreen.viewingCiv).automateTurn()
@@ -53,6 +56,10 @@ class NextTurnButton(
 
         isEnabled = nextTurnAction.getText(worldScreen) == "AutoPlay"
             || ((worldScreen.isPlayersTurn || worldScreen.failedUpload) && !worldScreen.waitingForAutosave && !worldScreen.isNextTurnUpdateRunning())
+        // UncivGC 帧同步: 已点“完成回合”后禁用 (等待剩余玩家, 结算后广播复位)
+        if (FrameSync.isFsMode(worldScreen.gameInfo) && FrameSync.myTurnFinished) isEnabled = false
+        // UncivGC 帧同步: 观战者不能点完成回合
+        if (FrameSync.isFsMode(worldScreen.gameInfo) && worldScreen.viewingCiv.isSpectator()) isEnabled = false
         if (isEnabled) {
             addTooltip(KeyboardBinding.NextTurn)
         } else {
@@ -65,7 +72,9 @@ class NextTurnButton(
     internal fun updateButton(nextTurnAction: NextTurnAction) {
         label.setText(nextTurnAction.getText(worldScreen).tr())
         label.color = nextTurnAction.color
-        if (nextTurnAction.icon != null && ImageGetter.imageExists(nextTurnAction.icon!!))
+        // UncivGC 帧同步: 等待剩余玩家状态不显示图标 (圆形回合图标会跑到按钮外)
+        val fsWaiting = FrameSync.isFsMode(worldScreen.gameInfo) && FrameSync.myTurnFinished
+        if (!fsWaiting && nextTurnAction.icon != null && ImageGetter.imageExists(nextTurnAction.icon!!))
             iconCell.setActor(ImageGetter.getImage(nextTurnAction.icon).apply {
                 setSize(30f)
                 color = nextTurnAction.color

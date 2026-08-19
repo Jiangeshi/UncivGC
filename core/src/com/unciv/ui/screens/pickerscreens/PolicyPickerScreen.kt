@@ -1,5 +1,7 @@
 package com.unciv.ui.screens.pickerscreens
 
+import com.unciv.ui.screens.worldscreen.FrameSync
+
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.scenes.scene2d.Actor
 import com.badlogic.gdx.scenes.scene2d.Group
@@ -75,7 +77,7 @@ private enum class PolicyColors(
 
 @Readonly
 private fun Policy.isPickable(viewingCiv: Civilization, canChangeState: Boolean) =
-    viewingCiv.isCurrentPlayer()
+    (viewingCiv.isCurrentPlayer() || FrameSync.isFsMode(viewingCiv.gameInfo))
         && canChangeState
         && !viewingCiv.isDefeated()
         && !viewingCiv.policies.isAdopted(this.name)
@@ -643,8 +645,16 @@ class PolicyPickerScreen(
                     this,
                     "Are you sure you want to adopt [${branch.name}]?",
                     "Adopt", true, action = {
-                        viewingCiv.policies.adopt(branch, false)
-                        game.replaceCurrentScreen(recreate())
+                        // UncivGC 帧同步: 服务器权威执行 + 本地乐观显示 (按钮立即灰, 广播同步纠正);
+                        // 界面保留 (与原版一致: 选完留在政策界面, 可继续选/看状态)
+                        if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                            FrameSync.sendOp("civ.choosePolicy", mapOf("policy" to branch.name))
+                            applyOptimisticPolicy(viewingCiv, branch.name)
+                            game.replaceCurrentScreen(recreate())
+                        } else {
+                            viewingCiv.policies.adopt(branch, false)
+                            game.replaceCurrentScreen(recreate())
+                        }
                     }
                 ).open(force = true)
         }
@@ -660,13 +670,37 @@ class PolicyPickerScreen(
         return button
     }
 
+    /** 帧同步乐观显示: 本地扣减文化/免费政策 + 标记已采用 (按钮立即灰; 服务器广播同步纠正) */
+    private fun applyOptimisticPolicy(civ: Civilization, policyName: String) {
+        val policies = civ.policies
+        if (policies.freePolicies > 0) {
+            policies.freePolicies--
+        } else if (!civ.gameInfo.gameParameters.godMode) {
+            val needed = policies.getCultureNeededForNextPolicy()
+            if (needed <= policies.storedCulture) {
+                policies.storedCulture -= needed
+                policies.setNumberOfAdoptedPoliciesForSync(policies.getNumberOfAdoptedPoliciesForSync() + 1)
+            }
+        }
+        policies.adoptedPolicies.add(policyName)
+    }
+
     private fun confirmAction() {
         val policy = selectedPolicyButton!!.policy
 
         // Evil people clicking on buttons too fast to confuse the screen - #4977
         if (!policy.isPickable(viewingCiv, canChangeState)) return
 
-        viewingCiv.policies.adopt(policy)
+        // UncivGC 帧同步: 服务器权威执行 + 本地乐观显示 (按钮立即灰, 广播同步纠正); 界面保留
+        if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+            FrameSync.sendOp("civ.choosePolicy", mapOf("policy" to policy.name))
+            applyOptimisticPolicy(viewingCiv, policy.name)
+            if (game.screen is PolicyPickerScreen) game.replaceCurrentScreen(recreate())
+            else game.popScreen()
+            return
+        } else {
+            viewingCiv.policies.adopt(policy)
+        }
 
         // If we've moved to another screen in the meantime (great person pick, victory screen) ignore this
         // update policies

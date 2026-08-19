@@ -19,7 +19,7 @@ import com.unciv.ui.screens.civilopediascreen.MarkupRenderer
 
 /** Renders an [Event] for [AlertPopup] or a floating tutorial task on [WorldScreen] */
 class RenderEvent(
-    event: Event,
+    val event: Event,
     val worldScreen: WorldScreen,
     val unit: MapUnit? = null,
     val onChoice: (EventChoice) -> Unit
@@ -34,7 +34,12 @@ class RenderEvent(
     init {
         defaults().fillX().center().pad(5f)
 
-        val gameContext = GameContext(gameInfo.currentPlayerCiv, unit = unit)
+        // UncivGC 帧同步: 同时回合模式下 currentPlayerCiv 不一定是事件目标玩家
+        // (服务器回合轮转的当前玩家 vs 弹窗所属文明) → 用 viewingCiv 计算选项条件,
+        // 否则 "Only available <for [Human player] Civilizations>" 等条件全错 → 时代奖励选项缺失
+        val eventCiv = if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo))
+            worldScreen.viewingCiv else gameInfo.currentPlayerCiv
+        val gameContext = GameContext(eventCiv, unit = unit)
         val choices = event.getMatchingChoices(gameContext)
         isValid = choices != null
         if (isValid) {
@@ -58,8 +63,18 @@ class RenderEvent(
 
         val button = choice.text.toTextButton()
         button.onActivation {
-            onChoice(choice)
-            choice.triggerChoice(gameInfo.currentPlayerCiv, unit)
+            if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo)) {
+                // UncivGC 帧同步: 选择回传服务器执行 (triggerChoice 服务器权威, 防重载回滚)
+                com.unciv.ui.screens.worldscreen.FrameSync.sendOp("civ.eventChoice",
+                    mapOf("event" to event.name, "choice" to choice.text,
+                          "unitId" to (unit?.id ?: -1)))
+                // 已选择 → 不再重新挂起 (防存档重载后重复弹窗)
+                com.unciv.ui.screens.worldscreen.FrameSync.markEventResolved(event.name)
+                onChoice(choice)  // 关闭弹窗 + 移除本地 popupAlert
+            } else {
+                onChoice(choice)
+                choice.triggerChoice(gameInfo.currentPlayerCiv, unit)
+            }
         }
         val key = KeyCharAndCode.parse(choice.keyShortcut)
         if (key != KeyCharAndCode.UNKNOWN) {

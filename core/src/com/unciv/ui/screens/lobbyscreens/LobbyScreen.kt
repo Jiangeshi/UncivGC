@@ -44,7 +44,37 @@ class LobbyScreen : PickerScreen() {
         get() = UncivGame.Current.settings.multiplayer.getUserId()
 
     init {
+        // 回到大厅: 允许重新进入房间 (跨实例防重标志重置)
+        LobbyRoomScreen.enteredGameForRoom = null
+        // 大厅关闭按钮: 正常 pop 回上一屏 (主菜单); 若栈里没有主菜单 (对局结束/异常路径 replace 进来,
+        // 栈深 1 时 popScreen 会弹"退出游戏"确认框 — 注意该确认框挂在 stage 上, 不是 screen,
+        // 无法从 screen 层关掉 → 必须从源头避免触发 (栈深 1 直接 replace 回主菜单)
         setDefaultCloseAction()
+        // 关键: onActivation 是追加语义 — setDefaultCloseAction 已注册 Tap→popScreen, 不先清除则点击时
+        // 旧 popScreen 先执行 (栈深 1 弹"退出游戏"确认框!) 再执行下面新逻辑 → 弹窗残留。
+        // 与 LobbyRoomScreen 的 Leave room 按钮同款处理
+        com.unciv.ui.components.input.ActorAttachments.get(pickerPane.closeButton)
+            .clearActivationActions(com.unciv.ui.components.input.ActivationTypes.Tap)
+        pickerPane.closeButton.onActivation {
+            // 栈里有主菜单 → 逐个 pop 到主菜单上方 (栈深 >1, popScreen 正常返回, 不会触发退出确认)
+            // 栈里没有主菜单 (对局结束/异常路径 replace 进来, 栈深 1) → 绝不 popScreen, 直接回主菜单
+            val mm = game.getScreensOfType(com.unciv.ui.screens.mainmenuscreen.MainMenuScreen::class).firstOrNull()
+            if (mm == null) {
+                // 清理房间残留 (当前大厅将被 replace 替换)
+                try {
+                    game.removeScreensOfType(com.unciv.ui.screens.lobbyscreens.LobbyRoomScreen::class)
+                } catch (ignored: Exception) {
+                }
+                game.replaceCurrentScreen(com.unciv.ui.screens.mainmenuscreen.MainMenuScreen())
+            } else {
+                var s = game.popScreen()
+                while (s != null && s !is com.unciv.ui.screens.mainmenuscreen.MainMenuScreen) {
+                    s = game.popScreen()
+                }
+            }
+        }
+        pickerPane.closeButton.keyShortcuts.clear()
+        pickerPane.closeButton.keyShortcuts.add(com.unciv.ui.components.input.KeyCharAndCode.BACK)
 
         // UncivGC: 进大厅时申请通知权限 (Android 13+, 每进程一次; 回合提醒用)
         if (!notificationPermissionAsked) {
@@ -85,8 +115,9 @@ class LobbyScreen : PickerScreen() {
                     autoJoinDone = true
                     rightSideButton.enable()
                     if (!closed && myRoom != null) {
-                        if (myRoom.status == "playing" && !myRoom.gameId.isNullOrEmpty()) {
-                            // 游戏已开始 → 直接进入游戏
+                        if (myRoom.status == "playing" && !myRoom.gameId.isNullOrEmpty()
+                            && LobbyRoomScreen.enteredGameForRoom != myRoom.id) {
+                            // 游戏已开始 → 直接进入游戏 (未进入过该房间才进, 防与 LobbyPoll 双触发)
                             LobbyRoomScreen.enterLobbyGame(myRoom.gameId!!, myRoom, this@LobbyScreen)
                         } else {
                             // 在房间里 → 直接进入房间
@@ -114,7 +145,8 @@ class LobbyScreen : PickerScreen() {
                             lastAutoRejoinMs = now
                             launchOnGLThread {
                                 if (!closed && game.screen == this@LobbyScreen) {
-                                    if (myRoom.status == "playing" && !myRoom.gameId.isNullOrEmpty()) {
+                                    if (myRoom.status == "playing" && !myRoom.gameId.isNullOrEmpty()
+                                        && LobbyRoomScreen.enteredGameForRoom != myRoom.id) {
                                         LobbyRoomScreen.enterLobbyGame(myRoom.gameId!!, myRoom, this@LobbyScreen)
                                     } else {
                                         game.pushScreen(LobbyRoomScreen(myRoom.id, myRoom.name))
@@ -184,7 +216,14 @@ class LobbyScreen : PickerScreen() {
             }
         }
         createButton.keyShortcuts.add(KeyCharAndCode.RETURN)
-        popup.add(createButton)
+        // 取消按钮: 不想创建可直接关弹窗 (之前只有 Create, 误点后无法反悔; BACK 键也可关)
+        val cancelButton = "Cancel".toTextButton()
+        cancelButton.onActivation { popup.close() }
+        cancelButton.keyShortcuts.add(KeyCharAndCode.BACK)
+        val buttonRow = com.badlogic.gdx.scenes.scene2d.ui.Table()
+        buttonRow.add(cancelButton).padRight(10f)
+        buttonRow.add(createButton)
+        popup.add(buttonRow)
         popup.open()
     }
 
@@ -237,7 +276,8 @@ class LobbyScreen : PickerScreen() {
     /** 房间的规则集+模组显示文本 (列表摘要字段) */
     private fun lobbyModsText(room: LobbyRoom): String {
         val base = room.baseRuleset ?: return ""
-        val mods = room.mods
+        // 模组型基础规则集 (如 LM2) 已在 "Ruleset:" 里显示, mods 里再列就重复 → 过滤掉
+        val mods = room.mods.filter { it != base }
         return if (mods.isEmpty()) "Ruleset: [$base]".tr()
         else "Ruleset: [$base]  Mods: [${mods.joinToString(", ")}]".tr()
     }
@@ -326,7 +366,8 @@ class LobbyScreen : PickerScreen() {
                 val myRoom = rooms.firstOrNull { room -> room.memberIds.any { it == playerId } }
                 launchOnGLThread {
                     if (!closed && myRoom != null && game.screen !is LobbyRoomScreen) {
-                        if (myRoom.status == "playing" && !myRoom.gameId.isNullOrEmpty()) {
+                        if (myRoom.status == "playing" && !myRoom.gameId.isNullOrEmpty()
+                            && LobbyRoomScreen.enteredGameForRoom != myRoom.id) {
                             LobbyRoomScreen.enterLobbyGame(myRoom.gameId!!, myRoom, this@LobbyScreen)
                         } else {
                             game.pushScreen(LobbyRoomScreen(myRoom.id, myRoom.name))

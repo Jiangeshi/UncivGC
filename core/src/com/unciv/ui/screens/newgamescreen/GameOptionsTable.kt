@@ -47,6 +47,8 @@ class GameOptionsTable(
     private val showOnlineMultiplayer: Boolean = true,
     /** UncivGC 联机大厅: 高级设置默认展开 (非房主看不到折叠开关, 需默认展开) */
     private val advancedOpenByDefault: Boolean = false,
+    /** UncivGC 联机大厅模式: 显示「同时回合 (实时联机)」帧同步开关 */
+    private val lobbyMode: Boolean = false,
 ) : Table(BaseScreen.skin) {
     private var gameParameters = previousScreen.gameSetupInfo.gameParameters
     private var ruleset = previousScreen.ruleset
@@ -136,6 +138,13 @@ class GameOptionsTable(
             it.addRagingBarbariansCheckbox()
             it.addOneCityChallengeCheckbox()
             it.addReRollableRandomCheckbox()
+            if (lobbyMode) {
+                it.addSimultaneousTurnsCheckbox()
+                // UncivGC 帧同步: 开启同步回合模式后, 下方直接展开 5 段保底时长下拉 (缩进, 仿 Show Civ Stats 子选项)
+                if (gameParameters.simultaneousTurns) {
+                    addFsTurnTimeTable(it)
+                }
+            }
             it.addNuclearWeaponsCheckbox()
             it.addEnableEspionageCheckbox()
             it.addNoStartBiasCheckbox()
@@ -199,6 +208,15 @@ class GameOptionsTable(
             addCheckbox("Allow random re-roll on reload (results may vary)", gameParameters.reRollableRandom)
             { gameParameters.reRollableRandom = it }
 
+    /** UncivGC 帧同步: 同时回合 (实时联机) 开关 — 仅大厅房间显示; 开启后回合内全员同时操作,
+     *  单位移动实时可见, 服务器权威结算 (详见帧同步设计) */
+    private fun Table.addSimultaneousTurnsCheckbox() =
+            addCheckbox("Simultaneous Turns (Real-time multiplayer)", gameParameters.simultaneousTurns)
+            {
+                gameParameters.simultaneousTurns = it
+                update()  // UncivGC 帧同步: 重建表格 — 同步回合子选项 (5 段保底时长下拉) 随开关显示/隐藏
+            }
+
     private fun Table.addNuclearWeaponsCheckbox() =
             addCheckbox("Enable Nuclear Weapons", gameParameters.nuclearWeaponsEnabled)
             { gameParameters.nuclearWeaponsEnabled = it }
@@ -220,9 +238,14 @@ class GameOptionsTable(
                 gameParameters.anyoneCanSpectate = it
             }
 
-    private fun Table.addEnableEspionageCheckbox() =
-        addCheckbox("Enable Espionage", gameParameters.espionageEnabled)
+    private fun Table.addEnableEspionageCheckbox() {
+        // UncivGC 帧同步: 间谍功能未实现 — 同步回合 (实时联机) 模式下强制关闭并禁用选项
+        val fsEspionageDisabled = lobbyMode && gameParameters.simultaneousTurns
+        if (fsEspionageDisabled) gameParameters.espionageEnabled = false
+        val checkbox = addCheckbox("Enable Espionage", gameParameters.espionageEnabled)
         { gameParameters.espionageEnabled = it }
+        if (fsEspionageDisabled) checkbox.isDisabled = true
+    }
 
     private fun Table.addRandomNationsPoolCheckbox() {
         randomNationsPoolCheckbox = addCheckbox(
@@ -470,6 +493,47 @@ class GameOptionsTable(
         val eras = ruleset.eras.keys
         addSelectBox("{Starting Era}:", eras, gameParameters.startingEra)
         { gameParameters.startingEra = it; null }
+    }
+
+    /** UncivGC 帧同步: 5 段保底时长下拉 (同步回合模式开启时展开; 缩进, 仿 Show Civ Stats 子选项) */
+    private fun addFsTurnTimeTable(target: Table) {
+        val table = Table().apply { defaults().growX().left().padLeft(30f).padBottom(10f) }
+        table.add("Turn time per stage (minutes)".tr().toLabel(hideIcons = true))
+            .colspan(2).left().padBottom(4f).row()
+        val segments = arrayOf("0-25", "26-50", "51-75", "76-100", "100+")
+        val options = arrayOf(
+            arrayOf(0.5f, 1f, 2f, 3f),
+            arrayOf(2f, 3f, 4f, 5f),
+            arrayOf(3f, 4f, 5f, 7f),
+            arrayOf(4f, 5f, 7f, 10f),
+            arrayOf(5f, 7f, 10f, 15f)
+        )
+        for (i in 0..4) {
+            val cur = gameParameters.fsTurnTimes?.getOrNull(i) ?: DEFAULT_FS_TURN_TIMES[i]
+            val box = SelectBox<String>(BaseScreen.skin)
+            box.setItems(*options[i].map { fmtMinutes(it) }.toTypedArray())
+            val curText = fmtMinutes(cur)
+            box.selected = if (options[i].any { fmtMinutes(it) == curText }) curText else fmtMinutes(DEFAULT_FS_TURN_TIMES[i])
+            box.onChange {
+                val v = options[i][box.selectedIndex]
+                val arr = gameParameters.fsTurnTimes?.copyOf() ?: Array(5) { DEFAULT_FS_TURN_TIMES[it] }
+                arr[i] = v
+                gameParameters.fsTurnTimes = arr
+            }
+            table.add("Turn ${segments[i]}:".tr().toLabel(hideIcons = true)).right().padRight(6f)
+            table.add(box).left().row()
+        }
+        target.add(table).left().row()
+    }
+
+    private fun fmtMinutes(v: Float): String {
+        val num = if (v % 1f == 0f) v.toInt().toString() else v.toString()
+        return "$num ${("min").tr()}"
+    }
+
+    private companion object {
+        /** 5 段默认保底 (分钟): [0-25, 26-50, 51-75, 76-100, 100+] — 与服务器默认一致 */
+        val DEFAULT_FS_TURN_TIMES = arrayOf(1f, 3f, 4f, 5f, 7f)
     }
 
     private fun Table.addDurationSelectBox(

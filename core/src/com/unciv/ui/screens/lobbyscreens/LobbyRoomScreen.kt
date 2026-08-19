@@ -70,8 +70,9 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
     ), RecreateOnResize {
 
     companion object {
-        /** UncivGC 自建存档服务器 (与 gen_lobby.py 一致): 存档上传/下载都走这里 */
-        const val SP_SERVER_URL = "http://110.40.151.9:30123"
+        /** UncivGC 自建存档服务器 (与 gen_lobby.py 一致): 存档上传/下载都走这里; 本地联调用 -Duncivgc.spUrl 覆盖 */
+        val SP_SERVER_URL: String
+            get() = System.getProperty("uncivgc.spUrl") ?: "http://110.40.151.9:30123"
 
         /** 当前所在房间 ID (游戏内菜单「退出房间」用) */
         var activeRoomId: String? = null
@@ -81,6 +82,8 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         var promptedOutdatedMods = ""
         /** 当前用户是否房主 (游戏内菜单「跳海」用, 随同步更新) */
         var activeAmOwner = false
+        /** 已进入游戏的房间 (跨 recreate 实例防重复进入 — 实例标志会在重建时丢失导致双加载) */
+        var enteredGameForRoom: String? = null
         /** 是否正在通过菜单主动退出 (监视器不重复导航) */
         var leavingGame = false
         /** 游戏内房间监视器是否在跑 (防止重复启动) */
@@ -292,6 +295,9 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                         ToastPopup(errors.joinToString("\n"), screen)
                     } else {
                         RulesetCache.loadRulesets()
+                        // 刷新翻译缓存: loadRulesets 不重读 mod 翻译 (官方 Mod 管理器 L711 同款);
+                        // 漏了则 LM2 等 mod 的翻译不生效 (显示英文原串)
+                        UncivGame.Current.translations.tryReadTranslationForCurrentLanguage()
                         ToastPopup("Mod download complete".tr(), screen)
                         onDone()
                     }
@@ -301,6 +307,8 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
 
         /** 直接进入大厅游戏 (房间监视器/自动进房/正常开局共用入口); 开局前强制检查模组齐全 */
         fun enterLobbyGame(gameId: String, room: LobbyRoom, screen: BaseScreen?) {
+            // 统一设置"已进入该房间"标志 (所有进入路径共用, 防 LobbyAutoJoin/LobbyPoll 双触发)
+            enteredGameForRoom = room.id
             val missing = missingModsOf(room.settings)
             if (missing.isNotEmpty()) {
                 if (screen != null) {
@@ -409,15 +417,32 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                             Thread.sleep(3000)
                             val confirmed = LobbyApi.getRoom(roomId)
                             since = confirmed.version
-                            if (confirmed.status == "waiting") {
+                            // 跳海生成可能 >3s: 再等一轮确认 (总共 ~11s) — 否则成员在生成完成前
+                            // 判定 waiting 回房间界面, 而房间已 playing → 卡在旧房间界面“无法开房”
+                            var finalStatus = confirmed.status
+                            var finalGameId = confirmed.gameId
+                            if (finalStatus == "waiting") {
+                                Thread.sleep(8000)
+                                try {
+                                    val confirmed2 = LobbyApi.getRoom(roomId)
+                                    since = confirmed2.version
+                                    finalStatus = confirmed2.status
+                                    finalGameId = confirmed2.gameId
+                                } catch (e: Exception) {
+                                }
+                            }
+                            if (finalStatus == "waiting") {
                                 // 重新开始: 回房间界面 (已自动准备, 房主点开始)
+                                // 重置进房标记: 旧局已结束, 房间可再次开始 (否则同房间再 start 时
+                                // LobbyRoomPoll 的 enteredGameForRoom != room.id 不成立 → 卡在房间界面)
+                                enteredGameForRoom = null
                                 launchOnGLThread {
                                     UncivGame.Current.replaceCurrentScreen(LobbyRoomScreen(roomId, confirmed.name))
                                 }
                                 break
                             }
                             // 跳海进行中 (starting/playing): 给成员可见的提示, 然后等新图切图
-                            if (confirmed.status == "starting") {
+                            if (finalStatus == "starting") {
                                 launchOnGLThread {
                                     UncivGame.Current.worldScreen?.let { ws ->
                                         ToastPopup("Host is restarting the game, generating a new map...".tr(), ws)
@@ -425,9 +450,9 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                                 }
                             }
                             // 跳海: 等待期间新局已开 → 立即切图 (不能 continue 等下一次变化, 会永远等不到)
-                            if (confirmed.status == "playing" && !confirmed.gameId.isNullOrEmpty()
-                                && confirmed.gameId != myGameId) {
-                                val newGameId = confirmed.gameId!!
+                            if (finalStatus == "playing" && !finalGameId.isNullOrEmpty()
+                                && finalGameId != myGameId) {
+                                val newGameId = finalGameId!!
                                 try {
                                     UncivGame.Current.onlineMultiplayer.downloadGame(newGameId)
                                     myGameId = newGameId  // 下载成功才更新 — 失败则循环重试, 否则永远不再切图
@@ -510,9 +535,15 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                 if (arr != null) g.victoryTypes = ArrayList(arr)
             }
             g.espionageEnabled = gp.b("espionageEnabled", g.espionageEnabled)
+            g.simultaneousTurns = gp.b("simultaneousTurns", g.simultaneousTurns)
+            gp["fsTurnTimes"]?.let { arr ->
+                val list = (arr as? JsonArray)?.mapNotNull { it.jsonPrimitive.floatOrNull }
+                if (list != null && list.size == 5) g.fsTurnTimes = list.toTypedArray()
+            }
             g.noStartBias = gp.b("noStartBias", g.noStartBias)
             g.noBarbarians = gp.b("noBarbarians", g.noBarbarians)
             g.ragingBarbarians = gp.b("ragingBarbarians", g.ragingBarbarians)
+            g.reRollableRandom = gp.b("reRollableRandom", g.reRollableRandom)
             g.oneCityChallenge = gp.b("oneCityChallenge", g.oneCityChallenge)
             g.nuclearWeaponsEnabled = gp.b("nuclearWeaponsEnabled", g.nuclearWeaponsEnabled)
             g.godMode = gp.b("godMode", g.godMode)
@@ -524,9 +555,20 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                 val m = setup.mapParameters
                 m.type = mp.s("type") ?: m.type
                 m.shape = mp.s("shape") ?: m.shape
-                // mapSize 是 MapSize 类型, 需要从名称转换
+                // mapSize 是 MapSize 类型: 预定义按名称转换; 自定义 (Custom) 用半径/宽/高重建
                 mp.s("mapSize")?.let { sizeName ->
-                    MapSize.Predefined.values().firstOrNull { it.name == sizeName }?.let { m.mapSize = MapSize(it) }
+                    if (sizeName == com.unciv.logic.map.MapSize.custom) {
+                        val w = mp.i("customMapSizeWidth", m.mapSize.width)
+                        val h = mp.i("customMapSizeHeight", m.mapSize.height)
+                        val r = mp.i("customMapSizeRadius", m.mapSize.radius)
+                        m.mapSize = when {
+                            w > 0 && h > 0 -> com.unciv.logic.map.MapSize(w, h)
+                            r > 0 -> com.unciv.logic.map.MapSize(r)
+                            else -> m.mapSize
+                        }
+                    } else {
+                        MapSize.Predefined.values().firstOrNull { it.name == sizeName }?.let { m.mapSize = MapSize(it) }
+                    }
                 }
                 m.mapResources = mp.s("mapResources") ?: m.mapResources
                 m.mirroring = mp.s("mirroring") ?: m.mirroring
@@ -552,7 +594,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
     /** 设置局部刷新: 只更新设置表格内容, 不重建整个界面 (消闪烁) */
     private fun refreshSettingsTables() {
         newGameOptionsTable.update()
-        mapOptionsTable.refreshFromMapParameters()
+        mapOptionsTable.syncFullFromMapParameters()
         // 成员/文明列由 syncRoom 刷新
     }
 
@@ -582,6 +624,96 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
     private val readyButton = "Ready".toTextButton()
     private val startLobbyButton = "Start game".toTextButton().apply { color = Color.GREEN }
 
+    // ---- UncivGC 房间聊天 ----------------
+    private val chatButton = "Chat".toTextButton()
+    private val chatMessages = ArrayList<com.unciv.logic.lobby.LobbyChatMessage>()
+    private var lastChatSeq = 0
+    private var chatUnread = 0
+    private var chatPopup: Popup? = null
+    private var chatPopupMessagesTable: Table? = null
+    private var chatPopupScroll: com.badlogic.gdx.scenes.scene2d.ui.ScrollPane? = null
+
+    private fun openChatPopup() {
+        if (chatPopup != null) { chatPopup!!.close(); chatPopup = null }
+        val popup = Popup(this)
+        popup.addGoodSizedLabel("Room chat".tr()).row()
+        val messagesTable = Table()
+        val scroll = com.badlogic.gdx.scenes.scene2d.ui.ScrollPane(messagesTable)
+        scroll.setOverscroll(false, false)
+        scroll.fadeScrollBars = false
+        popup.add(scroll).width(560f).height(280f).padBottom(6f).row()
+        val inputRow = Table()
+        val inputField = com.unciv.ui.components.widgets.UncivTextField("")
+        val sendButton = "Send".toTextButton()
+        fun doSend() {
+            val text = inputField.text.trim()
+            if (text.isEmpty()) return
+            inputField.text = ""
+            Concurrency.run("LobbyChatSend") {
+                try {
+                    LobbyApi.sendChat(roomId, nickname, playerId, text)
+                    // 服务器 version bump → waitRoom 长轮询会立即返回新消息, 自己也能看到
+                } catch (e: Exception) {
+                    launchOnGLThread {
+                        ToastPopup("Failed to send message".tr() + ": " + (e.message ?: ""), this@LobbyRoomScreen)
+                    }
+                }
+            }
+        }
+        sendButton.onActivation { doSend() }
+        sendButton.keyShortcuts.add(KeyCharAndCode.RETURN)
+        inputField.onActivation { doSend() }
+        inputRow.add(inputField).width(460f).padRight(8f)
+        inputRow.add(sendButton)
+        popup.add(inputRow).row()
+        popup.addButton("Close".tr()) { popup.close() }
+        chatPopup = popup
+        chatPopupMessagesTable = messagesTable
+        chatPopupScroll = scroll
+        popup.closeListeners.add {
+            chatPopup = null
+            chatPopupMessagesTable = null
+            chatPopupScroll = null
+        }
+        chatUnread = 0
+        updateChatButtonText()
+        refreshChatPopupMessages()
+        popup.open()
+    }
+
+    private fun updateChatButtonText() {
+        chatButton.setText(
+            if (chatUnread > 0) "Chat".tr() + " ($chatUnread)" else "Chat".tr()
+        )
+    }
+
+    private fun refreshChatPopupMessages() {
+        val messagesTable = chatPopupMessagesTable ?: return
+        messagesTable.clearChildren()
+        for (m in chatMessages) {
+            val isMe = m.playerId == playerId
+            val label = "[${m.nickname}]: ${m.text}".toLabel(fontSize = 14)
+            label.color = if (isMe) Color.GREEN else Color.WHITE
+            messagesTable.add(label).left().pad(2f).row()
+        }
+        // 滚到底部 (最新消息)
+        chatPopupScroll?.let { scroll ->
+            messagesTable.pack()
+            scroll.layout()
+            scroll.scrollY = scroll.maxY
+        }
+    }
+
+    private fun appendChatMessages(newMessages: List<com.unciv.logic.lobby.LobbyChatMessage>) {
+        if (newMessages.isEmpty()) return
+        chatMessages.addAll(newMessages)
+        lastChatSeq = newMessages.last().seq
+        val ownNew = newMessages.count { it.playerId == playerId }
+        chatUnread += newMessages.size - ownNew
+        updateChatButtonText()
+        if (chatPopup != null) refreshChatPopupMessages()
+    }
+
     init {
         activeRoomId = roomId
 
@@ -592,6 +724,8 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         readyButton.enable()
         bar.add(readyButton).width(150f).fillX()
         bar.add(startLobbyButton).width(230f).fillX()
+        bar.add(chatButton).width(120f).fillX()
+        chatButton.onClick { openChatPopup() }
         rightSideGroup.addActor(bar)
         // 固定到最右边: 去掉 rightSideGroup 单元格的右内边距, 组内靠右
         rightSideGroup.align(com.badlogic.gdx.utils.Align.right)
@@ -609,7 +743,15 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                 } catch (e: Exception) {
                     // 房间可能已解散, 直接返回
                 }
-                launchOnGLThread { game.popScreen() }
+                launchOnGLThread {
+                    // 栈里有主菜单 → 正常 pop 回上一屏 (大厅/主菜单)
+                    // 栈里没有主菜单 (对局结束/异常路径 replace 进房间, 栈深 1) → popScreen 会弹
+                    // "退出游戏"确认框 (挂在 stage 上关不掉) → 直接回大厅, 大厅退出按钮再回主菜单
+                    val hasMainMenu = game.getScreensOfType(
+                        com.unciv.ui.screens.mainmenuscreen.MainMenuScreen::class).any()
+                    if (hasMainMenu) game.popScreen()
+                    else game.replaceCurrentScreen(LobbyScreen())
+                }
             }
         }
         closeButton.keyShortcuts.add(KeyCharAndCode.BACK)
@@ -726,7 +868,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                                                     applyServerSettings(gameSetupInfo, room.settings)
                                                     tryUpdateRuleset(updateUI = true)
                                                     updateTables()
-                                                    mapOptionsTable.refreshFromMapParameters()
+                                                    mapOptionsTable.syncFullFromMapParameters()
                                                 }
                                             }.open()
                                         }
@@ -739,7 +881,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                                         applyServerSettings(gameSetupInfo, room.settings)
                                         tryUpdateRuleset(updateUI = true)
                                         updateTables()
-                                        mapOptionsTable.refreshFromMapParameters()
+                                        mapOptionsTable.syncFullFromMapParameters()
                                     }
                                 }
                             }
@@ -753,8 +895,10 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                         }
                     }
                     launchOnGLThread { syncRoom(room) }
-                    if (room.status == "playing" && !room.gameId.isNullOrEmpty() && !enteredGame) {
+                    if (room.status == "playing" && !room.gameId.isNullOrEmpty() && !enteredGame
+                        && enteredGameForRoom != room.id) {
                         enteredGame = true
+                        enteredGameForRoom = room.id
                         enterGame(room.gameId!!)
                         break
                     }
@@ -762,7 +906,11 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                     if (!voluntarilyLeft && room.status != "playing" && room.members.none { it.playerId == playerId }) {
                         launchOnGLThread {
                             ToastPopup("You have been kicked by the host".tr(), this@LobbyRoomScreen)
-                            game.popScreen()
+                            // 栈深 1 (异常路径 replace 进房间) → popScreen 会弹"退出游戏"确认 → 直接回大厅
+                            if (game.getScreensOfType(com.unciv.ui.screens.mainmenuscreen.MainMenuScreen::class).any())
+                                game.popScreen()
+                            else
+                                game.replaceCurrentScreen(LobbyScreen())
                         }
                         break
                     }
@@ -772,7 +920,11 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                         if (!voluntarilyLeft) {
                             launchOnGLThread {
                                 ToastPopup("The room has been disbanded".tr(), this@LobbyRoomScreen)
-                                game.popScreen()
+                                // 栈深 1 (异常路径 replace 进房间) → popScreen 会弹"退出游戏"确认 → 直接回大厅
+                                if (game.getScreensOfType(com.unciv.ui.screens.mainmenuscreen.MainMenuScreen::class).any())
+                                    game.popScreen()
+                                else
+                                    game.replaceCurrentScreen(LobbyScreen())
                             }
                         }
                         break
@@ -790,6 +942,11 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         if (room.version == lastRoomVersion) return
         lastRoomVersion = room.version
         currentRoom = room
+        // ---- 房间聊天: 按 seq 增量接收 (自己发的消息也走这里回来, 保证顺序一致) ----
+        val newChat = room.chat.filter { it.seq > lastChatSeq }
+        if (newChat.isNotEmpty()) {
+            appendChatMessages(newChat)
+        }
         val existing = gameSetupInfo.gameParameters.players
         val newPlayers = ArrayList<Player>()
         for (m in room.members) {
@@ -856,7 +1013,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                     applyServerSettings(gameSetupInfo, room.settings)
                     tryUpdateRuleset(updateUI = true)
                     updateTables()
-                    mapOptionsTable.refreshFromMapParameters()
+                    mapOptionsTable.syncFullFromMapParameters()
                 }
             }.open()
         } else if (missing.isEmpty() && room.settings.isNotEmpty()) {
@@ -890,6 +1047,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                                                     } else {
                                                         // 重载规则集缓存, 让当前房间立即用上新版模组
                                                         RulesetCache.loadRulesets()
+                                                        UncivGame.Current.translations.tryReadTranslationForCurrentLanguage()
                                                         ToastPopup("Mod update complete".tr(), this@LobbyRoomScreen)
                                                     }
                                                 }
@@ -928,9 +1086,12 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             put("startingEra", gp.startingEra)
             put("victoryTypes", JsonArray(gp.victoryTypes.map { JsonPrimitive(it) }))
             put("espionageEnabled", gp.espionageEnabled)
+            put("simultaneousTurns", gp.simultaneousTurns)
+            gp.fsTurnTimes?.let { put("fsTurnTimes", JsonArray(it.map { JsonPrimitive(it) })) }
             put("noStartBias", gp.noStartBias)
             put("noBarbarians", gp.noBarbarians)
             put("ragingBarbarians", gp.ragingBarbarians)
+            put("reRollableRandom", gp.reRollableRandom)
             put("oneCityChallenge", gp.oneCityChallenge)
             put("nuclearWeaponsEnabled", gp.nuclearWeaponsEnabled)
             put("godMode", gp.godMode)
@@ -942,6 +1103,10 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             put("type", mp.type)
             put("shape", mp.shape)
             put("mapSize", mp.mapSize.name)
+            // 自定义地图大小: 半径/宽/高单独传 (mapSize.name 只有 "Custom", 不带尺寸)
+            put("customMapSizeRadius", mp.mapSize.radius)
+            put("customMapSizeWidth", mp.mapSize.width)
+            put("customMapSizeHeight", mp.mapSize.height)
             put("mapResources", mp.mapResources)
             put("mirroring", mp.mirroring)
             put("worldWrap", mp.worldWrap)

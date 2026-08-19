@@ -17,6 +17,7 @@ import com.unciv.ui.screens.pickerscreens.PantheonPickerScreen
 import com.unciv.ui.screens.pickerscreens.PolicyPickerScreen
 import com.unciv.ui.screens.pickerscreens.ReligiousBeliefsPickerScreen
 import com.unciv.ui.screens.pickerscreens.TechPickerScreen
+import com.unciv.ui.screens.worldscreen.FrameSync
 import com.unciv.ui.screens.worldscreen.WorldScreen
 import com.unciv.utils.Concurrency
 import com.unciv.utils.launchOnGLThread
@@ -73,6 +74,10 @@ enum class NextTurnAction(protected val text: String, val color: Color) {
         override fun action(worldScreen: WorldScreen) {
             worldScreen.game.pushScreen(PolicyPickerScreen(worldScreen.selectedCiv, worldScreen.canChangeState))
             worldScreen.viewingCiv.policies.shouldOpenPolicyPicker = false
+            // UncivGC 帧同步: 同步服务器清除提示标志 (否则重载后一直提示)
+            if (FrameSync.isFsMode(worldScreen.gameInfo)) {
+                FrameSync.sendOp("civ.policyPickerSeen", emptyMap())
+            }
         }
     },
     MoveSpies("Move Spies", Color.WHITE) {
@@ -140,10 +145,25 @@ enum class NextTurnAction(protected val text: String, val color: Color) {
     NextTurn("Next turn", Color.WHITE) {
         override fun isChoice(worldScreen: WorldScreen) =
             true  // When none of the others is active..
-        override fun action(worldScreen: WorldScreen) =
+        override fun getText(worldScreen: WorldScreen): String {
+            // UncivGC 帧同步: 「完成回合」/「等待剩余玩家…」 (点击后本地立即变等待, 结算后广播复位)
+            if (FrameSync.isFsMode(worldScreen.gameInfo)) {
+                return if (FrameSync.myTurnFinished) "Waiting for remaining players..."
+                else "Finish turn"
+            }
+            return text
+        }
+        override fun action(worldScreen: WorldScreen) {
+            // UncivGC 帧同步: 点完成回合 → 通知服务器 (不再走本地结算)
+            if (FrameSync.isFsMode(worldScreen.gameInfo)) {
+                FrameSync.sendNextTurn()
+                return
+            }
             worldScreen.confirmedNextTurn()
+        }
         override fun getSubText(worldScreen: WorldScreen): String? =
-            getIdleUnitsText(worldScreen)
+            if (FrameSync.isFsMode(worldScreen.gameInfo)) null
+            else getIdleUnitsText(worldScreen)
     },
 
     ;
@@ -187,6 +207,13 @@ enum class NextTurnAction(protected val text: String, val color: Color) {
         }
 
         private fun moveAutomatedUnits(worldScreen: WorldScreen) {
+            // UncivGC 帧同步: 自动化由服务器执行 — 发 op 让服务器立即移动我方自动化/探索/移动中单位,
+            // 结果广播回来渲染 (本地不移动, 防重载回滚)
+            if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo)) {
+                com.unciv.ui.screens.worldscreen.FrameSync.sendOp("unit.automateAll", emptyMap())
+                worldScreen.viewingCiv.hasMovedAutomatedUnits = true
+                return
+            }
             // Don't allow double-click of 'n' to spawn 2 processes trying to automate units
             if (!worldScreen.isPlayersTurn) return
 

@@ -57,6 +57,9 @@ import kotlin.reflect.KClass
  */
 open class UncivGame(val isConsoleMode: Boolean = false) : Game(), PlatformSpecific {
 
+    /** UncivGC 帧同步服务器 (headless): 无世界屏幕, 人类玩家操作由服务器模拟 — Battle 等引擎逻辑据此走服务器分支 */
+    var headlessServerMode = false
+
     var deepLinkedMultiplayerGame: String? = null
     override var customDataDirectory: String? = null
 
@@ -278,6 +281,9 @@ open class UncivGame(val isConsoleMode: Boolean = false) : Game(), PlatformSpeci
         withGLContext {
             ImageGetter.setNewRuleset(newGameInfo.ruleset, true)
         }
+        // UncivGC 帧同步: 进局前强制刷新翻译 — 镜像下载 mod 后只 loadRulesets 不重读 mod 翻译时,
+        // 这里兜底补上 (LM2 等 mod 翻译/图标名立即生效, 不等重进 Mod 管理器)
+        translations.tryReadTranslationForCurrentLanguage()
         val fullModList = newGameInfo.gameParameters.getModsAndBaseRuleset()
         musicController.setModList(fullModList)
     }

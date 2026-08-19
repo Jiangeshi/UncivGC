@@ -211,6 +211,10 @@ class Civilization : IsPartOfGameInfoSerialization {
     var disabledCityConstructions = HashSet<String>()
         private set
 
+    /** UncivGC: 朝鲜科技加成严格一次 — 记录本文明曾经建过的所有建筑/奇观名
+     *  (卖了/被摧毁后重建也不得再次触发科技奖励; 随存档/帧同步 stateJson 持久化) */
+    var techBoostEverBuiltBuildings = HashSet<String>()
+
     // Limit camera within explored region
     var exploredRegion = ExploredRegion()
 

@@ -37,6 +37,7 @@ import com.unciv.ui.components.tilegroups.citybutton.CityButton
 import com.unciv.ui.components.widgets.UnitIconGroup
 import com.unciv.ui.components.widgets.ZoomableScrollPane
 import com.unciv.ui.screens.basescreen.UncivStage
+import com.unciv.ui.screens.worldscreen.FrameSync
 import com.unciv.ui.screens.worldscreen.UndoHandler.Companion.recordUndoCheckpoint
 import com.unciv.ui.screens.worldscreen.WorldScreen
 import com.unciv.ui.screens.worldscreen.bottombar.BattleTableHelpers.battleAnimationDeferred
@@ -257,6 +258,16 @@ class WorldMapHolder(
                     .firstOrNull { it.tileToAttack == tile }
             if (unit.canAttack() && attackableTile != null) {
                 /** ****** Right-click Attack ****** */
+                // UncivGC 帧同步: 攻击发服务器执行 (结果经状态广播同步)
+                if (FrameSync.tryInterceptOp(worldScreen, "unit.attack", mapOf(
+                        "unitId" to unit.id,
+                        "toX" to attackableTile.tileToAttack.position.x,
+                        "toY" to attackableTile.tileToAttack.position.y
+                    ))) {
+                    localShouldUpdate = false
+                    worldScreen.shouldUpdate = localShouldUpdate
+                    return
+                }
                 val attacker = MapUnitCombatant(unit)
                 if (!Battle.movePreparingAttack(attacker, attackableTile)) return
                 if (!SoundPlayer.play(UncivSound(attacker.getName())))
@@ -313,6 +324,33 @@ class WorldMapHolder(
                 return@run // can't move here
             }
 
+            // UncivGC 帧同步 (同时回合): 移动不本地执行 — 发给服务器, 由服务器权威执行后广播状态回来再渲染
+            if (FrameSync.isFsMode(worldScreen.gameInfo)) {
+                // 双目标: toX/toY=本回合可达格 (服务器必能移动, 不报"无法到达"),
+                // destX/destY=最终目标 (跨回合寻路: 服务器记录 moveTo, 回合结算续走)
+                FrameSync.sendOp(
+                    "unit.move",
+                    mapOf(
+                        "unitId" to selectedUnit.id,
+                        "toX" to tileToMoveTo.position.x,
+                        "toY" to tileToMoveTo.position.y,
+                        "destX" to targetTile.position.x,
+                        "destY" to targetTile.position.y
+                    )
+                )
+                // 跨回合寻路: 目标没走到 → 保留 moveTo action (服务器端同样记录, 回合结算继续走;
+                // 本地也设, 立即显示移动箭头/状态, 服务器广播会确认/纠正)
+                if (tileToMoveTo.position != targetTile.position && selectedUnit.hasMovement())
+                    selectedUnit.action = "moveTo ${targetTile.position.x},${targetTile.position.y}"
+                else if (tileToMoveTo.position == targetTile.position && selectedUnit.isMoving())
+                    selectedUnit.action = null
+                // 保持选中 (与原版一致): 刷新单位面板/移动力显示; 防进城市中心后选中状态丢失
+                if (selectedUnit.hasMovement()) worldScreen.bottomUnitTable.selectUnit(selectedUnit)
+                if (selectedUnits.size > 1) { // 多单位连续移动: 逐个发操作
+                    moveUnitToTargetTile(selectedUnits.subList(1, selectedUnits.size), targetTile)
+                }
+                return@run
+            }
 
             worldScreen.recordUndoCheckpoint()
 
@@ -407,8 +445,44 @@ class WorldMapHolder(
         )
     }
 
+    /** 帧同步 (服务器权威): 按服务器状态落位单位并播放移动动画.
+     *  数据先落位 (tile 注册表), 显示层沿路径平滑移动 — 动画期间不触发重渲染,
+     *  动画结束时 shouldUpdate=true 让单位在目标格正确渲染. */
+    fun animateServerUnitMove(unit: MapUnit, targetTile: Tile) {
+        val previousTile = unit.getTile()
+        if (previousTile == targetTile || unit.isDestroyed) return
+        val path = try {
+            unit.movement.getDistanceToTiles().getPathToTile(targetTile)
+        } catch (ex: Exception) {
+            // 本地状态与服务器不一致时路径计算可能失败 — 退化为直接落位
+            null
+        }
+        // 数据层落位 (直接改 tile 注册表, 绕过 canMoveTo/移动力消耗)
+        previousTile.removeUnit(unit)
+        unit.currentTile = targetTile
+        when {
+            unit.baseUnit.movesLikeAirUnits -> targetTile.airUnits.add(unit)
+            unit.isCivilian() -> targetTile.civilianUnit = unit
+            else -> targetTile.militaryUnit = unit
+        }
+        if (path.isNullOrEmpty()) {
+            worldScreen.shouldUpdate = true
+            return
+        }
+        animateMovement(previousTile, unit, targetTile, path)
+    }
+
     internal fun swapMoveUnitToTargetTile(selectedUnit: MapUnit, targetTile: Tile) {
         markUnitMoveTutorialComplete(selectedUnit)
+        // UncivGC 帧同步: 换位发服务器执行
+        if (FrameSync.tryInterceptOp(worldScreen, "unit.swap", mapOf(
+                "unitId" to selectedUnit.id,
+                "toX" to targetTile.position.x,
+                "toY" to targetTile.position.y
+            ))) {
+            worldScreen.shouldUpdate = true
+            return
+        }
         selectedUnit.movement.swapMoveToTile(targetTile, keepEscorting = true)
 
         if (selectedUnit.isExploring() || selectedUnit.isMoving())
@@ -462,8 +536,23 @@ class WorldMapHolder(
                 if (UncivGame.Current.settings.singleTapMove && turnsToGetThere == 1) {
                     // single turn instant move
                     val selectedUnit = unitsWhoCanMoveThere.keys.first()
-                    for (unit in unitsWhoCanMoveThere.keys) {
-                        unit.movement.headTowards(tile)
+                    if (FrameSync.isFsMode(worldScreen.gameInfo)) {
+                        // UncivGC 帧同步: 单击移动 (headTowards 本地执行会绕过拦截 → 服务器不知道, 重载回滚)
+                        // 发 unit.move op, 服务器校验并广播; 多单位逐个发
+                        for (unit in unitsWhoCanMoveThere.keys) {
+                            FrameSync.sendOp(
+                                "unit.move",
+                                mapOf(
+                                    "unitId" to unit.id,
+                                    "toX" to tile.position.x,
+                                    "toY" to tile.position.y
+                                )
+                            )
+                        }
+                    } else {
+                        for (unit in unitsWhoCanMoveThere.keys) {
+                            unit.movement.headTowards(tile)
+                        }
                     }
                     worldScreen.bottomUnitTable.selectUnit(selectedUnit) // keep moved unit selected
                 } else {
