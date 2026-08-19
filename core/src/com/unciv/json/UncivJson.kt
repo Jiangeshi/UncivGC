@@ -61,7 +61,7 @@ fun <T> Json.fromJsonFile(tClass: Class<T>, file: FileHandle): T {
     }
 }
 
-/** 剥离 JSON 注释 (行注释 // 和块注释 /* *​/) — 跳过字符串内的内容 (https:// 等不受影响) */
+/** 剥离 JSON 注释 (行注释 // 和块注释 /* ... */) — 跳过字符串内的内容 (https:// 等不受影响) */
 private fun stripJsonComments(text: String): String {
     val sb = StringBuilder(text.length)
     var inString = false
