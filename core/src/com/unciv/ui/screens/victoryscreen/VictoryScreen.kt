@@ -186,12 +186,22 @@ class VictoryScreen(
     private fun displayWonOrLost(vararg descriptions: String) {
         descriptionLabel.setText(descriptions.joinToString("\n") { it.tr() })
 
-        rightSideButton.setText("Start new game".tr())
-        rightSideButton.enable()
-        rightSideButton.onClick {
-            val newGameSetupInfo = GameSetupInfo(gameInfo)
-            newGameSetupInfo.mapParameters.reseed()
-            game.pushScreen(NewGameScreen(newGameSetupInfo))
+        // UncivGC 帧同步: 对局结束 (胜利/战败) → 按钮为「回到大厅」— 胜利/失败界面不再跳新游戏
+        // (多人对局打完回房间/大厅, 新游戏在房间界面重新开); 玩家自己点, 不自动踢出
+        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo)) {
+            rightSideButton.setText("Back to lobby".tr())
+            rightSideButton.enable()
+            rightSideButton.onClick {
+                com.unciv.ui.screens.worldscreen.mainmenu.WorldScreenMenuPopup.leaveLobbyGameNow(worldScreen)
+            }
+        } else {
+            rightSideButton.setText("Start new game".tr())
+            rightSideButton.enable()
+            rightSideButton.onClick {
+                val newGameSetupInfo = GameSetupInfo(gameInfo)
+                newGameSetupInfo.mapParameters.reseed()
+                game.pushScreen(NewGameScreen(newGameSetupInfo))
+            }
         }
 
         closeButton.setText("One more turn...!".tr())
