@@ -254,8 +254,19 @@ class ImagesEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
         statusLabel.setText("Choosing file...".tr())
         // JFileChooser 是阻塞模态对话框：放后台线程，避免卡死渲染线程
         com.unciv.utils.Concurrency.runOnNonDaemonThreadPool("ImportImage") {
-            val path = impl.chooseImageFile()
+            var path: String? = null
+            var pickError: String? = null
+            try {
+                path = impl.chooseImageFile()
+            } catch (e: Throwable) {
+                pickError = e.stackTraceToString()
+                com.unciv.utils.Log.debug("ModEditor chooseImageFile crashed: " + e.message, e)
+            }
             Gdx.app.postRunnable {
+                if (pickError != null) {
+                    statusLabel.setText("Import failed".tr() + ": " + pickError)
+                    return@postRunnable
+                }
                 if (path == null) {
                     statusLabel.setText("")
                     return@postRunnable
