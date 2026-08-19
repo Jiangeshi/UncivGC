@@ -122,7 +122,8 @@ class TradePopup(worldScreen: WorldScreen) : Popup(worldScreen) {
     }
 
     override fun close() {
-        viewingCiv.tradeRequests.remove(tradeRequest)
+        // 清掉该发起方的所有请求 (含广播重复/补推替换后的新引用) — 防“关闭后残留再弹”
+        viewingCiv.tradeRequests.removeAll { it.requestingCiv == tradeRequest.requestingCiv }
         super.close()
     }
 

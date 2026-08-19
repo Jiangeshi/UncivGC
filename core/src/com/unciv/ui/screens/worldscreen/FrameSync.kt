@@ -960,6 +960,9 @@ object FrameSync {
             if (gameInfo.gameId != gameId) return@runOnGLThread
             val trade = parseTrade(tradeJson, gameInfo) ?: return@runOnGLThread
             try {
+                // 重复广播/重连补推同一内容 → 跳过 (保持原请求引用, 防弹窗关闭后残留再弹/再生效)
+                val existing = worldScreen.viewingCiv.tradeRequests.firstOrNull { it.requestingCiv == requestingCiv }
+                if (existing != null && existing.trade.equalTrade(trade)) return@runOnGLThread
                 worldScreen.viewingCiv.tradeRequests.removeAll { it.requestingCiv == requestingCiv }
                 worldScreen.viewingCiv.tradeRequests.add(TradeRequest(requestingCiv, trade))
                 worldScreen.shouldUpdate = true
