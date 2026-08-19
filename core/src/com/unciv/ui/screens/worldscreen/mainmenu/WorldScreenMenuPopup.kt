@@ -179,7 +179,9 @@ class WorldScreenMenuPopup(
         val myId = worldScreen.game.settings.multiplayer.getUserId()
         val myCivName = worldScreen.gameInfo.civilizations
             .firstOrNull { it.playerId == myId }?.civName
-        val isSpectator = myCivName == null
+        // 观战者: 存档无匹配文明, 或匹配到 Spectator (战败转观战后) — 都不是真玩家
+        val isSpectator = myCivName == null || myCivName == "Spectator"
+        val isFrameSync = com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo)
         val confirmText = if (isSpectator)
             "Leave the room?"
         else
@@ -189,7 +191,9 @@ class WorldScreenMenuPopup(
             Concurrency.run("LobbyLeaveGame") {
                 var leaveError: String? = null
                 try {
-                    if (!isSpectator) {
+                    // 帧同步: 不需要 resign/AI 托管 — fs_server 把退出/掉线玩家视为已结束, 不阻塞全员结算;
+                    // resign 走官方多人存档流程, 帧同步存档在 fs 服务器, 可能失败 → 卡在房间退不出去
+                    if (!isSpectator && !isFrameSync) {
                         val onlineMultiplayer = worldScreen.game.onlineMultiplayer
                         val preview = onlineMultiplayer.multiplayerFiles.getGameByGameId(worldScreen.gameInfo.gameId)
                         if (preview == null) {
