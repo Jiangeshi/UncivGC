@@ -48,9 +48,48 @@ fun <T> Json.fromJsonFile(tClass: Class<T>, file: FileHandle): T {
     try {
         return fromJson(tClass, file)
     } catch (exception: Exception) {
-        val jsonText = file.readString(Charsets.UTF_8.name())
-        throw Exception("Could not parse json of file ${file.name()}", exception)
+        // 兼容 JSONC (jsons 带 // 或 /* */ 注释): 标准解析失败时剥离注释重试 —
+        // 部分老模组 (如 Alpha Frontier) 的 jsons 带注释, 直接解析会失败导致模组不加载
+        try {
+            val text = file.readString(Charsets.UTF_8.name())
+            val stripped = stripJsonComments(text)
+            return fromJson(tClass, stripped)
+        } catch (e: Exception) {
+            val jsonText = file.readString(Charsets.UTF_8.name())
+            throw Exception("Could not parse json of file ${file.name()}", exception)
+        }
     }
+}
+
+/** 剥离 JSON 注释 (行注释 // 和块注释 /* *​/) — 跳过字符串内的内容 (https:// 等不受影响) */
+private fun stripJsonComments(text: String): String {
+    val sb = StringBuilder(text.length)
+    var inString = false
+    var i = 0
+    while (i < text.length) {
+        val c = text[i]
+        when {
+            inString -> {
+                sb.append(c)
+                if (c == '\\' && i + 1 < text.length) { sb.append(text[i + 1]); i += 2; continue }
+                if (c == '"') inString = false
+                i++
+            }
+            c == '"' -> { inString = true; sb.append(c); i++ }
+            c == '/' && i + 1 < text.length && text[i + 1] == '/' -> {
+                while (i < text.length && text[i] != '\n') i++
+                sb.append('\n')
+            }
+            c == '/' && i + 1 < text.length && text[i + 1] == '*' -> {
+                i += 2
+                while (i + 1 < text.length && !(text[i] == '*' && text[i + 1] == '/')) i++
+                i += 2
+                sb.append(' ')
+            }
+            else -> { sb.append(c); i++ }
+        }
+    }
+    return sb.toString()
 }
 
 private class StringInterningSerializer : Json.Serializer<String> {
