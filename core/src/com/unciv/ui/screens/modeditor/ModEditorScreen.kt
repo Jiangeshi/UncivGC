@@ -14,7 +14,9 @@ import com.unciv.ui.components.input.keyShortcuts
 import com.unciv.ui.components.input.onActivation
 import com.unciv.ui.components.widgets.AutoScrollPane
 import com.unciv.ui.components.widgets.UncivTextField
+import com.unciv.ui.popups.ConfirmPopup
 import com.unciv.ui.popups.Popup
+import com.unciv.ui.popups.ToastPopup
 import com.unciv.ui.screens.basescreen.BaseScreen
 
 /** S1 模组工作台：选择/新建模组 */
@@ -51,16 +53,19 @@ class ModEditorScreen : BaseScreen() {
         println("[ModEditor] modsFolder=" + modsFolder.path() + " exists=" + modsFolder.exists()
                 + " visible=" + (visibleFolder?.path() ?: "null"))
 
-        // 内部 + 外部(可见) 两个目录的 mod 全部列出 (同名也各自显示, 标注位置 —
-        // 之前按名去重内部优先, 用户以为在编辑外部 mod 实际写到了内部副本, 外部内容永远不变)
+        // 内部 + 外部(可见) 两个目录的 mod 列出; 同名时只保留外部 (外部是源, 内部是自动同步的副本,
+        // 编辑外部→保存→自动同步内部→游戏生效, 显示两条反而混淆)
         val entries = ArrayList<Pair<com.badlogic.gdx.files.FileHandle, Boolean>>()  // (modDir, isVisible)
         if (modsFolder.exists()) {
             for (mod in modsFolder.list().filter { it.isDirectory && !it.name().startsWith("temp-") }.sortedBy { it.name() })
                 entries.add(mod to false)
         }
         if (visibleFolder != null && visibleFolder.exists() && visibleFolder.path() != modsFolder.path()) {
-            for (mod in visibleFolder.list().filter { it.isDirectory && !it.name().startsWith("temp-") }.sortedBy { it.name() })
-                entries.add(mod to true)
+            for (mod in visibleFolder.list().filter { it.isDirectory && !it.name().startsWith("temp-") }.sortedBy { it.name() }) {
+                val idx = entries.indexOfFirst { it.first.name() == mod.name() }
+                if (idx >= 0) entries[idx] = mod to true   // 外部同名覆盖内部
+                else entries.add(mod to true)
+            }
         }
         println("[ModEditor] found mods: " + entries.map { it.first.name() })
 
@@ -85,6 +90,20 @@ class ModEditorScreen : BaseScreen() {
             val openButton = "Open".toTextButton()
             openButton.onActivation { game.pushScreen(ModModulesScreen(mod)) }
             row.add(openButton)
+            val deleteButton = "Delete".toTextButton()
+            deleteButton.onActivation {
+                ConfirmPopup(this,
+                    "Delete [name]?".tr().replace("[name]", mod.name()) + "\n" + "整个模组文件夹将被删除，无法恢复".tr(),
+                    "Delete".tr()) {
+                    try {
+                        if (mod.exists()) mod.deleteDirectory()
+                        refreshList()
+                    } catch (e: Exception) {
+                        ToastPopup("删除失败: " + (e.message ?: ""), this)
+                    }
+                }.open(force = true)
+            }
+            row.add(deleteButton).padLeft(6f)
             row.touchable = Touchable.enabled
             row.onActivation { game.pushScreen(ModModulesScreen(mod)) }
             listTable.add(row).fillX().pad(4f, 12f, 4f, 12f).row()

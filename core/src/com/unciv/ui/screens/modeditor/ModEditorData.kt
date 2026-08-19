@@ -1402,9 +1402,13 @@ object ModEditorData {
             val internalMod = UncivGame.Current.files.getModFolder(modName)
             if (modFolder.file().absolutePath != internalMod.file().absolutePath) {
                 try {
-                    internalMod.parent().mkdirs()
+                    // 原子同步: 先复制到临时目录, 成功后再替换内部 — 直接 deleteDirectory+copyTo
+                    // 若复制失败, 内部被删空 → 游戏里 mod 内容全部丢失 ("进游戏都没了")
+                    val temp = UncivGame.Current.files.getModFolder(modName + ".tmp-sync")
+                    if (temp.exists()) temp.deleteDirectory()
+                    modFolder.copyTo(temp)
                     if (internalMod.exists()) internalMod.deleteDirectory()
-                    modFolder.copyTo(internalMod)
+                    temp.moveTo(internalMod)
                 } catch (e: Exception) {
                     result.add(Triple("同步外部模组到内部失败: ${e.message}", true, null))
                 }
@@ -1412,6 +1416,13 @@ object ModEditorData {
             // 重新加载该模组到缓存（否则校验的是保存前的旧数据）
             val reloadErrors = RulesetCache.reloadSingleRuleset(modName)
             for (line in reloadErrors) result.add(Triple(line, true, null))
+            // 保存后全量重载 (等效大退): 游戏内 Mods 列表/新游戏界面立即用最新内容,
+            // 避免"编辑器保存了但进游戏没生效" (用户大退才生效的缓存刷新问题)
+            try {
+                RulesetCache.loadRulesets()
+                com.unciv.ui.images.ImageGetter.reloadImages()
+            } catch (ignored: Throwable) {
+            }
             val baseChoice = readBaseRulesetChoice(modFolder).ifBlank { BaseRuleset.Civ_V_GnK.fullName }
             val (_, errors) = RulesetCache.checkCombinedModLinks(linkedSetOf(modName), baseChoice)
             for (e in errors) {
