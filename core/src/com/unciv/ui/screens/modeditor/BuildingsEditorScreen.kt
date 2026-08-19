@@ -922,18 +922,21 @@ class BuildingsEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
         modFolder.child("Images/BuildingIcons/${currentBuilding().name}.png")
 
     private fun chooseImage() {
-        val path = ModEditorPlatformHolder.impl?.chooseImageFile() ?: return
+        val impl = ModEditorPlatformHolder.impl ?: return
         if (currentBuilding().name.isBlank()) {
             showMessage("Enter a building name first, then choose an image.")
             return
         }
         val dest = imageFile()
-        try {
-            dest.parent().mkdirs()
-            Gdx.files.absolute(path).copyTo(dest)
-            imageStatusLabel.setText("Image copied to".tr() + ": " + dest.path())
-        } catch (e: Exception) {
-            showMessage("Image copy failed:".tr() + " " + (e.message ?: ""))
+        impl.chooseImageFileAsync { path ->
+            if (path == null) return@chooseImageFileAsync
+            try {
+                dest.parent().mkdirs()
+                Gdx.files.absolute(path).copyTo(dest)
+                imageStatusLabel.setText("Image copied to".tr() + ": " + dest.path())
+            } catch (e: Exception) {
+                showMessage("Image copy failed:".tr() + " " + (e.message ?: ""))
+            }
         }
     }
 

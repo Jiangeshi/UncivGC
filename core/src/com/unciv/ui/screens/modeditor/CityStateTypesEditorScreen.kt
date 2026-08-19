@@ -638,19 +638,22 @@ class CityStateTypesEditorScreen(private val modFolder: FileHandle) : BaseScreen
         modFolder.child("Images/CityStateIcons/${currentItem().name}.png")
 
     private fun chooseImage() {
-        val path = ModEditorPlatformHolder.impl?.chooseImageFile() ?: return
+        val impl = ModEditorPlatformHolder.impl ?: return
         val item = currentItem()
         if (item.name.isBlank()) {
             showMessage("Enter a name first, then choose an icon")
             return
         }
         val dest = iconFile()
-        try {
-            dest.parent().mkdirs()
-            Gdx.files.absolute(path).copyTo(dest)
-            imageStatusLabel.setText("Image copied to".tr() + ": " + dest.path())
-        } catch (e: Exception) {
-            showMessage("Image copy failed:".tr() + " " + (e.message ?: ""))
+        impl.chooseImageFileAsync { path ->
+            if (path == null) return@chooseImageFileAsync
+            try {
+                dest.parent().mkdirs()
+                Gdx.files.absolute(path).copyTo(dest)
+                imageStatusLabel.setText("Image copied to".tr() + ": " + dest.path())
+            } catch (e: Exception) {
+                showMessage("Image copy failed:".tr() + " " + (e.message ?: ""))
+            }
         }
     }
 

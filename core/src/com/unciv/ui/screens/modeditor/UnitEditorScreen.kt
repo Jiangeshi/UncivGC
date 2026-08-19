@@ -746,7 +746,8 @@ class UnitEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
     }
 
     private fun chooseImage(isTileArt: Boolean) {
-        val path = ModEditorPlatformHolder.impl?.chooseImageFile() ?: return
+        val impl = ModEditorPlatformHolder.impl
+        if (impl == null) return
         if (currentUnit().name.isBlank()) {
             showMessage("Enter a unit name first, then choose an image.")
             return
@@ -756,12 +757,15 @@ class UnitEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
             return
         }
         val dest = if (isTileArt) tileArtFile() else iconFile()
-        try {
-            dest.parent().mkdirs()
-            Gdx.files.absolute(path).copyTo(dest)
-            imageStatusLabel.setText("Image copied to".tr() + ": " + dest.path())
-        } catch (e: Exception) {
-            showMessage("Image copy failed:".tr() + " " + (e.message ?: ""))
+        impl.chooseImageFileAsync { path ->
+            if (path == null) return@chooseImageFileAsync
+            try {
+                dest.parent().mkdirs()
+                Gdx.files.absolute(path).copyTo(dest)
+                imageStatusLabel.setText("Image copied to".tr() + ": " + dest.path())
+            } catch (e: Exception) {
+                showMessage("Image copy failed:".tr() + " " + (e.message ?: ""))
+            }
         }
     }
 

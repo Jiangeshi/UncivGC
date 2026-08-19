@@ -124,7 +124,7 @@ class ImagesEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
         }
 
         val body = Table(BaseScreen.skin)
-        body.add(leftPanel).width(max(240f, stage.width / 5)).growY().pad(4f)
+        body.add(leftPanel).width(max(300f, stage.width / 4)).growY().pad(4f)
         body.addSeparatorVertical(ImageGetter.CHARCOAL, 2f)
         body.add(rightScroll).expand().grow().pad(4f)
         root.add(body).grow()
@@ -147,8 +147,10 @@ class ImagesEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
                 if (category == currentCategory) Color(0.2f, 0.5f, 0.9f, 1f)
                 else BaseScreen.skinStrings.skinConfig.baseColor)
             val count = countImages(category)
-            row.add(category.toLabel(fontSize = 18,
-                fontColor = if (category == currentCategory) Color.WHITE else Color(1f, 1f, 1f, 0.85f)))
+            val catLabel = category.toLabel(fontSize = 18,
+                fontColor = if (category == currentCategory) Color.WHITE else Color(1f, 1f, 1f, 0.85f))
+            catLabel.setEllipsis("…")
+            row.add(catLabel)
                 .left().expandX()
             row.add(count.toString().toLabel(fontSize = 13, fontColor = Color(1f, 1f, 1f, 0.4f)))
                 .right().padRight(6f)

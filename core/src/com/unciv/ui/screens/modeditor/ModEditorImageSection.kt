@@ -73,14 +73,17 @@ class ModEditorImageSection(
             statusLabel.setText(check)
             return
         }
-        val path = ModEditorPlatformHolder.impl?.chooseImageFile() ?: return
-        try {
-            val dest = targetFile()
-            dest.parent().mkdirs()
-            Gdx.files.absolute(path).copyTo(dest)
-            statusLabel.setText("Image copied to".tr() + ": " + dest.path())
-        } catch (e: Exception) {
-            statusLabel.setText("Image copy failed:".tr() + " " + (e.message ?: ""))
+        val impl = ModEditorPlatformHolder.impl ?: return
+        impl.chooseImageFileAsync { path ->
+            if (path == null) return@chooseImageFileAsync
+            try {
+                val dest = targetFile()
+                dest.parent().mkdirs()
+                Gdx.files.absolute(path).copyTo(dest)
+                statusLabel.setText("Image copied to".tr() + ": " + dest.path())
+            } catch (e: Exception) {
+                statusLabel.setText("Image copy failed:".tr() + " " + (e.message ?: ""))
+            }
         }
     }
 

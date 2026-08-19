@@ -948,7 +948,7 @@ class NationsEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
         modFolder.child("Images/LeaderIcons/${currentNation().getString("leaderName")}.png")
 
     private fun chooseImage(isLeader: Boolean) {
-        val path = ModEditorPlatformHolder.impl?.chooseImageFile() ?: return
+        val impl = ModEditorPlatformHolder.impl ?: return
         val nation = currentNation()
         if (isLeader) {
             if (nation.getString("leaderName").isBlank()) {
@@ -960,12 +960,15 @@ class NationsEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
             return
         }
         val dest = if (isLeader) leaderPortraitFile() else iconFile()
-        try {
-            dest.parent().mkdirs()
-            Gdx.files.absolute(path).copyTo(dest)
-            imageStatusLabel.setText("Image copied to".tr() + ": " + dest.path())
-        } catch (e: Exception) {
-            showMessage("Image copy failed:".tr() + " " + (e.message ?: ""))
+        impl.chooseImageFileAsync { path ->
+            if (path == null) return@chooseImageFileAsync
+            try {
+                dest.parent().mkdirs()
+                Gdx.files.absolute(path).copyTo(dest)
+                imageStatusLabel.setText("Image copied to".tr() + ": " + dest.path())
+            } catch (e: Exception) {
+                showMessage("Image copy failed:".tr() + " " + (e.message ?: ""))
+            }
         }
     }
 

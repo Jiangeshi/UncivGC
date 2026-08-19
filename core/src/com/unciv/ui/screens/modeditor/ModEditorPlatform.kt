@@ -9,6 +9,15 @@ interface ModEditorPlatform {
     fun packAtlases(modFolderPath: String): String?
 }
 
+/** 后台线程选图 + GL 线程回调 — 直接调 [chooseImageFile] 会阻塞 GL 线程 (latch.await),
+ *  安卓上长时间无响应 → ANR → 进程被杀闪退 (无崩溃界面)。所有 UI 调用点必须走这里。 */
+fun ModEditorPlatform.chooseImageFileAsync(onResult: (String?) -> Unit) {
+    com.unciv.utils.Concurrency.runOnNonDaemonThreadPool("ModEditorPickImage") {
+        val path = try { chooseImageFile() } catch (e: Throwable) { null }
+        com.badlogic.gdx.Gdx.app.postRunnable { onResult(path) }
+    }
+}
+
 object ModEditorPlatformHolder {
     var impl: ModEditorPlatform? = null
 }
