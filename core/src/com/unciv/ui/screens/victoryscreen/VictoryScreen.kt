@@ -186,12 +186,18 @@ class VictoryScreen(
     private fun displayWonOrLost(vararg descriptions: String) {
         descriptionLabel.setText(descriptions.joinToString("\n") { it.tr() })
 
-        // UncivGC 帧同步: 对局结束 (胜利/战败) → 按钮为「回到大厅」— 胜利/失败界面不再跳新游戏
+        // UncivGC 帧同步: 对局结束 (胜利/战败) → 只能回大厅 — 胜利/失败界面不再跳新游戏/不再关回世界视图
         // (多人对局打完回房间/大厅, 新游戏在房间界面重新开); 玩家自己点, 不自动踢出
         if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo)) {
             rightSideButton.setText("Back to lobby".tr())
             rightSideButton.enable()
             rightSideButton.onClick {
+                com.unciv.ui.screens.worldscreen.mainmenu.WorldScreenMenuPopup.leaveLobbyGameNow(worldScreen)
+            }
+            // 规定: 战败/战胜后只能回大厅 — 关闭按钮也改为回大厅 (防 back 键/关闭回世界视图再被拉回)
+            closeButton.setText("Back to lobby".tr())
+            closeButton.enable()
+            closeButton.onClick {
                 com.unciv.ui.screens.worldscreen.mainmenu.WorldScreenMenuPopup.leaveLobbyGameNow(worldScreen)
             }
         } else {
@@ -202,17 +208,12 @@ class VictoryScreen(
                 newGameSetupInfo.mapParameters.reseed()
                 game.pushScreen(NewGameScreen(newGameSetupInfo))
             }
-        }
 
-        closeButton.setText("One more turn...!".tr())
-        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo)) {
-            // UncivGC 帧同步: 服务器权威 — One More Turn 是本地 flag, 广播会回滚导致胜利屏反复弹; 隐藏
-            closeButton.disable()
-            closeButton.setText("One more turn... (unavailable in real-time)".tr())
-        }
-        closeButton.onClick {
-            gameInfo.oneMoreTurnMode = true
-            game.popScreen()
+            closeButton.setText("One more turn...!".tr())
+            closeButton.onClick {
+                gameInfo.oneMoreTurnMode = true
+                game.popScreen()
+            }
         }
     }
 
