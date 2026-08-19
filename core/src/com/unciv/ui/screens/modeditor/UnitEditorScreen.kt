@@ -874,6 +874,15 @@ class UnitEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
             return
         }
         statusLabel.setText("Saved".tr())
+        // 诊断: 外部文件 / 内部副本 / 缓存 单位数 (定位"保存后开新局没内容" — 安卓外部→内部同步或 reload 断点)
+        try {
+            val extUnits = ModEditorData.loadObjects(modFolder, "Units.json").size
+            val intFile = com.unciv.UncivGame.Current.files.getModFolder(modFolder.name()).child("jsons/Units.json")
+            val intUnits = if (intFile.exists()) ModEditorData.loadObjects(intFile.parent(), "Units.json").size else -1
+            val cacheUnits = com.unciv.models.ruleset.RulesetCache.get(modFolder.name())?.units?.size ?: -1
+            statusLabel.setText("Saved (ext=" + extUnits + " int=" + intUnits + " cache=" + cacheUnits + ")")
+        } catch (ignored: Throwable) {
+        }
         refreshList()
         if (gameProblems.isNotEmpty()) showGameProblemsPopup(gameProblems, saved = true)
     }
