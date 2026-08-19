@@ -61,6 +61,39 @@ fun <T> Json.fromJsonFile(tClass: Class<T>, file: FileHandle): T {
     }
 }
 
+/** 已输出内容最后一个非空白字符是否为值结尾 (需要逗号分隔) */
+private fun prevValueEnded(sb: StringBuilder): Boolean {
+    for (k in sb.length - 1 downTo 0) {
+        val ch = sb[k]
+        if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r') continue
+        return ch == '"' || ch == '}' || ch == ']'
+    }
+    return false
+}
+
+/** 注释后第一个非空白字符是否为值开始 (需要逗号分隔) — 正确跳过后续行注释/块注释 */
+private fun nextStartsValue(text: String, commentStart: Int): Boolean {
+    var k = commentStart
+    while (k < text.length) {
+        val ch = text[k]
+        if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r') { k++; continue }
+        if (ch == '/' && k + 1 < text.length && text[k + 1] == '/') {
+            while (k < text.length && text[k] != '\n') k++
+            continue
+        }
+        if (ch == '/' && k + 1 < text.length && text[k + 1] == '*') {
+            k += 2
+            while (k + 1 < text.length && !(text[k] == '*' && text[k + 1] == '/')) k++
+            k += 2
+            continue
+        }
+        break
+    }
+    if (k >= text.length) return false
+    val ch = text[k]
+    return ch == '"' || ch == '{' || ch == '[' || ch == '-' || ch.isDigit() || ch == 't' || ch == 'f' || ch == 'n'
+}
+
 /** 剥离 JSON 注释 (行注释 // 和块注释 /* ... */) — 跳过字符串内的内容 (https:// 等不受影响) */
 private fun stripJsonComments(text: String): String {
     val sb = StringBuilder(text.length)
@@ -75,18 +108,53 @@ private fun stripJsonComments(text: String): String {
                 if (c == '"') inString = false
                 i++
             }
-            c == '"' -> { inString = true; sb.append(c); i++ }
+            c == '"' -> {
+                // 字符串也是值开始 — 前一值结尾缺逗号时补 (Alpha Frontier 手写 jsons)
+                if (prevValueEnded(sb)) sb.append(',')
+                inString = true; sb.append(c); i++
+            }
             c == '/' && i + 1 < text.length && text[i + 1] == '/' -> {
+                // JSONC 用注释做分隔符时元素间省略逗号 (如 Alpha Frontier) — 前一值结尾 + 后一值开始 → 补逗号
+                if (prevValueEnded(sb) && nextStartsValue(text, i)) sb.append(',')
                 while (i < text.length && text[i] != '\n') i++
                 sb.append('\n')
             }
             c == '/' && i + 1 < text.length && text[i + 1] == '*' -> {
+                if (prevValueEnded(sb) && nextStartsValue(text, i)) sb.append(',')
                 i += 2
                 while (i + 1 < text.length && !(text[i] == '*' && text[i + 1] == '/')) i++
                 i += 2
                 sb.append(' ')
             }
-            else -> { sb.append(c); i++ }
+            c == ',' -> {
+                // 尾随逗号 (JSONC): 逗号后 (跳过空白和注释) 是 } 或 ] → 丢弃
+                var j = i + 1
+                while (j < text.length) {
+                    val ch = text[j]
+                    if (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r') { j++; continue }
+                    if (ch == '/' && j + 1 < text.length && text[j + 1] == '/') {
+                        while (j < text.length && text[j] != '\n') j++
+                        continue
+                    }
+                    if (ch == '/' && j + 1 < text.length && text[j + 1] == '*') {
+                        j += 2
+                        while (j + 1 < text.length && !(text[j] == '*' && text[j + 1] == '/')) j++
+                        j += 2
+                        continue
+                    }
+                    break
+                }
+                if (j < text.length && (text[j] == '}' || text[j] == ']')) i++ else { sb.append(c); i++ }
+            }
+            else -> {
+                // 通用容错 (Alpha Frontier 等手写 jsons 元素间缺逗号): 值结尾直接跟值开始 → 补逗号。
+                // 仅标准解析失败后的重试路径生效, 合法 JSON 值间必有逗号, 不会误触发。
+                if ((c == '"' || c == '{' || c == '[' || c == '-' || c.isDigit() || c == 't' || c == 'f' || c == 'n')
+                    && prevValueEnded(sb)) sb.append(',')
+                // 字符串外的反斜杠是编辑残留 (如 \"hiddenInVictoryScreen) — 合法 JSON 字符串外无反斜杠, 丢弃
+                if (c != '\\') sb.append(c)
+                i++
+            }
         }
     }
     return sb.toString()
