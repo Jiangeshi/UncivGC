@@ -1397,6 +1397,18 @@ object ModEditorData {
         val modName = modFolder.name()
         val result = mutableListOf<Triple<String, Boolean, String?>>()
         try {
+            // 外部 mod: 先同步到内部目录 — 游戏 RulesetCache 只认内部 mods (filesDir/mods),
+            // 不同步的话 reloadSingleRuleset 报 "No such mod"
+            val internalMod = UncivGame.Current.files.getModFolder(modName)
+            if (modFolder.file().absolutePath != internalMod.file().absolutePath) {
+                try {
+                    internalMod.parent().mkdirs()
+                    if (internalMod.exists()) internalMod.deleteDirectory()
+                    modFolder.copyTo(internalMod)
+                } catch (e: Exception) {
+                    result.add(Triple("同步外部模组到内部失败: ${e.message}", true, null))
+                }
+            }
             // 重新加载该模组到缓存（否则校验的是保存前的旧数据）
             val reloadErrors = RulesetCache.reloadSingleRuleset(modName)
             for (line in reloadErrors) result.add(Triple(line, true, null))
