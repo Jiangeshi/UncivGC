@@ -148,8 +148,11 @@ class CityView(city: City,
     @Readonly private fun getTile(tileView: TileView) = tileView.getTile()
 
     // ACTIONS
+    // 帧同步: 完成回合后 (myTurnFinished) 禁止城市配置操作 — 结算已按旧配置入账,
+    // 再改配置 → 服务器状态变但本回合产出已入账 → 显示与入账不符 (用户反馈: 粮取max产取max)
     private fun canChangeState() = city.civ === viewer &&
-            (viewer.isCurrentPlayer() || FrameSync.isFsMode(viewer.gameInfo))
+            (viewer.isCurrentPlayer() || FrameSync.isFsMode(viewer.gameInfo)) &&
+            !(FrameSync.isFsMode(viewer.gameInfo) && FrameSync.myTurnFinished)
 
     fun tryLockTile(tileView: TileView): Boolean {
         if (!canChangeState()) return false
