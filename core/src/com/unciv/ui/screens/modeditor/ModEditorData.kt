@@ -1427,6 +1427,17 @@ object ModEditorData {
                     com.unciv.UncivGame.Current.translations.tryReadTranslationForCurrentLanguage()
                 } catch (ignored: Throwable) {
                 }
+                // 诊断日志: 保存后缓存里该模组各文件对象数 (定位"保存后开新局没内容"问题)
+                try {
+                    val rc = RulesetCache.get(modName)
+                    if (rc != null) {
+                        println("[ModEditor] 保存后 reload OK: mod=$modName units=" + rc.getUnits().size
+                            + " buildings=" + rc.getBuildings().size + " nations=" + rc.getNations().size)
+                    } else {
+                        println("[ModEditor] 保存后 reload 失败: mod=$modName 不在 RulesetCache!")
+                    }
+                } catch (ignored: Throwable) {
+                }
             } catch (ignored: Throwable) {
             }
             val baseChoice = readBaseRulesetChoice(modFolder).ifBlank { BaseRuleset.Civ_V_GnK.fullName }
