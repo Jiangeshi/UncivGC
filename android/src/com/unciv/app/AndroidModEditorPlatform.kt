@@ -123,7 +123,7 @@ class AndroidModEditorPlatform(private val activity: Activity) : ModEditorPlatfo
             UncivGame.Current.mirrorAtlasToVisible(modName)
             msg
         } catch (e: Throwable) {
-            "Pack failed: ${e.message}"
+            "Pack failed: ${e::class.java.simpleName}: ${e.message}\n${e.stackTraceToString().lines().take(3).joinToString("\n")}"
         }
     }
 }

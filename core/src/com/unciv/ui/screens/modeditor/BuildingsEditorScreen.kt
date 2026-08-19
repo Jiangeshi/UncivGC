@@ -487,7 +487,7 @@ class BuildingsEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
         formTable.add(sectionHeader("Image (Images/BuildingIcons/)".tr())).fillX().row()
 
         val imageRow = Table(BaseScreen.skin)
-        val chooseImageButton = "Choose image…".toTextButton()
+        val chooseImageButton = (if (imageFile().exists()) "Replace image…" else "Choose image…").toTextButton()
         chooseImageButton.onActivation { chooseImage() }
         imageRow.add(chooseImageButton).pad(6f)
         val removeImageButton = "Remove image".toTextButton()
@@ -934,6 +934,7 @@ class BuildingsEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
                 dest.parent().mkdirs()
                 Gdx.files.absolute(path).copyTo(dest)
                 imageStatusLabel.setText("Image copied to".tr() + ": " + dest.path())
+                rebuildForm()
             } catch (e: Exception) {
                 showMessage("Image copy failed:".tr() + " " + (e.message ?: ""))
             }
@@ -944,6 +945,7 @@ class BuildingsEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
         val file = imageFile()
         if (file.exists()) file.delete()
         imageStatusLabel.setText("Image removed".tr())
+        rebuildForm()
     }
 
     // ------------------------------------------------------------------

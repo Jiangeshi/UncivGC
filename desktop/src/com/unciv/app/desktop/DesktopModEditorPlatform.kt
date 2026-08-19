@@ -19,7 +19,7 @@ class DesktopModEditorPlatform : ModEditorPlatform {
         return try {
             ImagePacker.packModAtlases(modFolderPath)
         } catch (e: Throwable) {
-            "Pack failed: ${e.message}"
+            "Pack failed: ${e::class.java.simpleName}: ${e.message}\n${e.stackTraceToString().lines().take(3).joinToString("\n")}"
         }
     }
 }

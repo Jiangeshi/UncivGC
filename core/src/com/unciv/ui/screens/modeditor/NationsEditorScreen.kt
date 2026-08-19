@@ -600,7 +600,7 @@ class NationsEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
         formTable.add(sectionHeader("Images")).fillX().row()
 
         val iconRow = Table(BaseScreen.skin)
-        val chooseIconButton = "Choose image…".toTextButton()
+        val chooseIconButton = (if (iconFile().exists()) "Replace image…" else "Choose image…").toTextButton()
         chooseIconButton.onActivation { chooseImage(isLeader = false) }
         iconRow.add(chooseIconButton).pad(6f)
         val removeIconButton = "Remove image".toTextButton()
@@ -614,7 +614,7 @@ class NationsEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
 
         val leaderRow = Table(BaseScreen.skin)
         if (!isCityState) {
-            val chooseLeaderButton = "Choose image…".toTextButton()
+            val chooseLeaderButton = (if (leaderPortraitFile().exists()) "Replace image…" else "Choose image…").toTextButton()
             chooseLeaderButton.onActivation { chooseImage(isLeader = true) }
             leaderRow.add(chooseLeaderButton).pad(6f)
             val removeLeaderButton = "Remove image".toTextButton()
@@ -966,6 +966,7 @@ class NationsEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
                 dest.parent().mkdirs()
                 Gdx.files.absolute(path).copyTo(dest)
                 imageStatusLabel.setText("Image copied to".tr() + ": " + dest.path())
+                rebuildForm()
             } catch (e: Exception) {
                 showMessage("Image copy failed:".tr() + " " + (e.message ?: ""))
             }
@@ -976,6 +977,7 @@ class NationsEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
         val file = if (isLeader) leaderPortraitFile() else iconFile()
         if (file.exists()) file.delete()
         imageStatusLabel.setText("Image removed".tr())
+        rebuildForm()
     }
 
     // ------------------------------------------------------------------

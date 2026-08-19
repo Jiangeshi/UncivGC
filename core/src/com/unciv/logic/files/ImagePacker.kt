@@ -135,8 +135,11 @@ object ImagePacker {
             }
         }
         val listFile = File(output, atlasListFileName)
-        if (atlasList.isEmpty()) listFile.delete()
-        else listFile.writeText(atlasList.sorted().joinToString(",","[","]"))
+        // 只写实际打包成功的目录 (atlas 文件存在 = 成功) — 失败的目录不写进 Atlases.json,
+        // 否则游戏加载报 "Atlases.json contains X but there is no corresponding atlas file"
+        val validList = atlasList.filter { File(output, "$it.atlas").exists() }
+        if (validList.isEmpty()) listFile.delete()
+        else listFile.writeText(validList.sorted().joinToString(",","[","]"))
     }
 
     // Process one Image folder, checking for atlas older than contained images first
@@ -170,7 +173,8 @@ object ImagePacker {
     // Iterator providing all Image folders to process with the destination atlas name
     private data class ImageFolderResult(val folder: String, val atlasName: String)
     private fun imageFolders(parent: File) = sequence {
-        for (folder in parent.listFiles()!!) {
+        // listFiles() 可能返回 null (目录不存在/IO 错误) — 直接空序列, 防 NPE (否则编辑器打包报 "Pack failed: null")
+        for (folder in parent.listFiles()?.asSequence() ?: emptySequence()) {
             if (!folder.isDirectory) continue
             if (folder.nameWithoutExtension != imagesPathBase) continue
             val atlasName = if (folder.name == imagesPathBase) "game" else folder.extension

@@ -264,7 +264,7 @@ class CityStateTypesEditorScreen(private val modFolder: FileHandle) : BaseScreen
         // ── Image ──
         formTable.add(sectionHeader("Image (CityStateIcons)" )).fillX().row()
         val imageRow = Table(BaseScreen.skin)
-        val chooseIconButton = "Choose image…".toTextButton()
+        val chooseIconButton = (if (iconFile().exists()) "Replace image…" else "Choose image…").toTextButton()
         chooseIconButton.onActivation { chooseImage() }
         imageRow.add(chooseIconButton).pad(6f)
         val removeIconButton = "Remove image".toTextButton()
@@ -651,6 +651,7 @@ class CityStateTypesEditorScreen(private val modFolder: FileHandle) : BaseScreen
                 dest.parent().mkdirs()
                 Gdx.files.absolute(path).copyTo(dest)
                 imageStatusLabel.setText("Image copied to".tr() + ": " + dest.path())
+                rebuildForm()
             } catch (e: Exception) {
                 showMessage("Image copy failed:".tr() + " " + (e.message ?: ""))
             }
@@ -661,6 +662,7 @@ class CityStateTypesEditorScreen(private val modFolder: FileHandle) : BaseScreen
         val file = iconFile()
         if (file.exists()) file.delete()
         imageStatusLabel.setText("Image removed".tr())
+        rebuildForm()
     }
 
     private fun showMessage(message: String) {

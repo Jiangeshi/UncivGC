@@ -42,10 +42,12 @@ class ModEditorImageSection(
     fun targetFile(): FileHandle =
         modFolder.child("Images/$subDirectory/${fileName()}.png")
 
+    private var chooseButton: com.badlogic.gdx.scenes.scene2d.ui.TextButton? = null
+
     /** 在表单中渲染图片区（一行按钮 + 提示 + 状态） */
     fun addImageSection(table: Table) {
         val row = Table(BaseScreen.skin)
-        val chooseButton = "Choose image…".toTextButton()
+        val chooseButton = (if (targetFile().exists()) "Replace image…" else "Choose image…").toTextButton()
         chooseButton.onActivation { chooseImage() }
         row.add(chooseButton).pad(6f)
         val removeButton = "Remove image".toTextButton()
@@ -60,6 +62,8 @@ class ModEditorImageSection(
         statusLabel = "".toLabel(fontSize = 13, fontColor = Color(1f, 1f, 1f, 0.55f))
         statusLabel.wrap = true
         table.add(statusLabel).growX().left().pad(2f, 8f, 6f, 8f).row()
+        // 记住按钮引用: 上传/删除后刷新文案 (有图 → Replace, 无图 → Choose)
+        this.chooseButton = chooseButton
     }
 
     private fun chooseImage() {
@@ -81,15 +85,22 @@ class ModEditorImageSection(
                 dest.parent().mkdirs()
                 Gdx.files.absolute(path).copyTo(dest)
                 statusLabel.setText("Image copied to".tr() + ": " + dest.path())
+                updateChooseButton()
             } catch (e: Exception) {
                 statusLabel.setText("Image copy failed:".tr() + " " + (e.message ?: ""))
             }
         }
     }
 
+    /** 目标已有图片时按钮显示 "Replace image…", 否则 "Choose image…" */
+    private fun updateChooseButton() {
+        chooseButton?.setText(if (targetFile().exists()) "Replace image…".tr() else "Choose image…".tr())
+    }
+
     private fun removeImage() {
         val file = targetFile()
         if (file.exists()) file.delete()
         statusLabel.setText("Image removed".tr())
+        updateChooseButton()
     }
 }

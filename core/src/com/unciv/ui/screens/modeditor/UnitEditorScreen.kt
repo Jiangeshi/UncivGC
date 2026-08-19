@@ -456,7 +456,7 @@ class UnitEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
 
         // 小图标：Images/UnitIcons/
         val iconRow = Table(BaseScreen.skin)
-        val chooseIconButton = "Choose image…".toTextButton()
+        val chooseIconButton = (if (iconFile().exists()) "Replace image…" else "Choose image…").toTextButton()
         chooseIconButton.onActivation { chooseImage(isTileArt = false) }
         iconRow.add(chooseIconButton).pad(6f)
         val removeIconButton = "Remove image".toTextButton()
@@ -470,7 +470,7 @@ class UnitEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
 
         // 图集大图：Images/TileSets/<图集>/Units/
         val tileRow = Table(BaseScreen.skin)
-        val chooseArtButton = "Choose unit art…".toTextButton()
+        val chooseArtButton = (if (tileArtFile().exists()) "Replace unit art…" else "Choose unit art…").toTextButton()
         chooseArtButton.onActivation { chooseImage(isTileArt = true) }
         tileRow.add(chooseArtButton).pad(6f)
         val removeArtButton = "Remove image".toTextButton()
@@ -763,6 +763,7 @@ class UnitEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
                 dest.parent().mkdirs()
                 Gdx.files.absolute(path).copyTo(dest)
                 imageStatusLabel.setText("Image copied to".tr() + ": " + dest.path())
+                rebuildForm()  // 刷新按钮文案 (有图 → Replace)
             } catch (e: Exception) {
                 showMessage("Image copy failed:".tr() + " " + (e.message ?: ""))
             }
@@ -773,6 +774,7 @@ class UnitEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
         val file = if (isTileArt) tileArtFile() else iconFile()
         if (file.exists()) file.delete()
         imageStatusLabel.setText("Image removed".tr())
+        rebuildForm()
     }
 
     // ------------------------------------------------------------------
