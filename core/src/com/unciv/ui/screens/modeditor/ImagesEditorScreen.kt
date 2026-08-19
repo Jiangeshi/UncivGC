@@ -9,6 +9,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.utils.Scaling
 import com.badlogic.gdx.scenes.scene2d.utils.TextureRegionDrawable
 import com.badlogic.gdx.graphics.Texture
+import com.unciv.UncivGame
 import com.unciv.models.translations.tr
 import com.unciv.ui.components.extensions.addSeparatorVertical
 import com.unciv.ui.components.extensions.toLabel
@@ -362,6 +363,12 @@ class ImagesEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
         // 必须用绝对路径: modFolder.path() 在安卓上是相对路径 (Gdx.files.local), File() 按进程 cwd 解析找不到 → "No Images folder found"
         val message = impl.packAtlases(modFolder.file().absolutePath)
         statusLabel.setText(message ?: "Pack failed".tr())
+        // 打包产物生效: ①外部 mod → 同步回内部 (游戏只读内部目录) ②重载图集 (当前进程立即生效, 不用重启游戏)
+        try {
+            UncivGame.Current.syncModsFromVisibleToLocal()
+            com.unciv.ui.images.ImageGetter.reloadImages()
+        } catch (ignored: Throwable) {
+        }
         // 刷新 Atlases.json 显示
         refreshAtlasStatus()
     }

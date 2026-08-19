@@ -128,7 +128,7 @@ class ModEditorScreen : BaseScreen() {
                 return@addButton
             }
             println("[ModEditor] create clicked: name=$name isBase=${baseRulesetCheckbox.isChecked}")
-            val folder = UncivGame.Current.files.getModFolder(name)
+            val folder = ModEditorData.getModFolderForEditor(name)
             if (folder.exists() && folder.list().size > 0) {
                 showErrorPopup("A mod with this name already exists:".tr() + " " + name)
                 return@addButton

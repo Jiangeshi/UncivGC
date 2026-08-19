@@ -1346,8 +1346,14 @@ object ModEditorData {
     }
 
     /** 新建模组：创建目录 + jsons/ModOptions.json + jsons/Units.json + .editor-meta.json */
+    /** 编辑器用的 mod 根目录: 安卓优先外部可见目录 (用户文件管理器可见), 桌面/不可用时用内部 */
+    fun getModFolderForEditor(name: String): com.badlogic.gdx.files.FileHandle {
+        val visible = UncivGame.Current.getVisibleModsFolder()
+        return (visible ?: UncivGame.Current.files.getModsFolder()).child(name)
+    }
+
     fun createNewMod(name: String, author: String, isBaseRuleset: Boolean, baseRuleset: String): FileHandle {
-        val folder = UncivGame.Current.files.getModFolder(name)
+        val folder = getModFolderForEditor(name)
         folder.child("jsons").mkdirs()
         val modOptions = LinkedHashMap<String, Any?>()
         modOptions["isBaseRuleset"] = isBaseRuleset
