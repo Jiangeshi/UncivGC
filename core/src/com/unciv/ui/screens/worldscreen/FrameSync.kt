@@ -62,7 +62,7 @@ import kotlinx.serialization.json.jsonPrimitive
  */
 object FrameSync {
 
-    /** fs_server 端口 (生产 30125; 本地联调 -Duncivgc.fsPort=30125) */
+    /** fs_server 端口 (生产 30125; 测试服 30127; 本地联调 -Duncivgc.fsPort=30125) */
     private val FS_PORT: Int
         get() = System.getProperty("uncivgc.fsPort")?.toIntOrNull() ?: 30125
     private const val RECONNECT_BASE_MS = 2000L
