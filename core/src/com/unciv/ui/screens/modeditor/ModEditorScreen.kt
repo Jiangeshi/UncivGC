@@ -6,6 +6,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.CheckBox
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener
 import com.unciv.UncivGame
+import com.unciv.models.translations.fillPlaceholders
 import com.unciv.models.translations.tr
 import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.components.extensions.toTextButton
@@ -91,9 +92,11 @@ class ModEditorScreen : BaseScreen() {
             openButton.onActivation { game.pushScreen(ModModulesScreen(mod)) }
             row.add(openButton)
             val deleteButton = "Delete".toTextButton()
-            deleteButton.onActivation {
+            // allowEventPropagation=false: 阻止点击冒泡到行的"打开"动作 (否则点删除会先进入编辑界面)
+            deleteButton.onActivation(com.unciv.ui.components.input.ActivationTypes.Tap, allowEventPropagation = false) {
+                // fillPlaceholders 先填值再 tr — 直接 tr() 会把占位符值也翻译 ([name] 的 name → 名称, replace 失效)
                 ConfirmPopup(this,
-                    "Delete [name]?".tr().replace("[name]", mod.name()) + "\n" + "整个模组文件夹将被删除，无法恢复".tr(),
+                    "Delete [name]?".fillPlaceholders(mod.name()).tr() + "\n" + "整个模组文件夹将被删除，无法恢复".tr(),
                     "Delete".tr()) {
                     try {
                         if (mod.exists()) mod.deleteDirectory()
