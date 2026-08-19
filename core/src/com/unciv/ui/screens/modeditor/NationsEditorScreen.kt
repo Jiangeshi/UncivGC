@@ -1058,7 +1058,7 @@ class NationsEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
         val nation = currentNation()
         val popup = Popup(this)
         val nationName = nation.name.ifBlank { "(unnamed)".tr() }
-        popup.add("Are you sure you want to delete [${nationName}]?".tr().toLabel(fontSize = 20)).pad(12f).row()
+        popup.add("Are you sure you want to delete [name]?".tr().replace("[name]", nationName).toLabel(fontSize = 20)).pad(12f).row()
         popup.addButton("Delete") {
             nations.removeAt(selectedIndex)
             popup.close()

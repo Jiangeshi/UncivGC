@@ -692,9 +692,10 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         messagesTable.clearChildren()
         for (m in chatMessages) {
             val isMe = m.playerId == playerId
-            val label = "[${m.nickname}]: ${m.text}".toLabel(fontSize = 14)
+            val label = "[${m.nickname}]: ${m.text}".toLabel(fontSize = 18)
             label.color = if (isMe) Color.GREEN else Color.WHITE
-            messagesTable.add(label).left().pad(2f).row()
+            label.setAlignment(com.badlogic.gdx.utils.Align.left)
+            messagesTable.add(label).left().expandX().pad(2f).row()
         }
         // 滚到底部 (最新消息)
         chatPopupScroll?.let { scroll ->

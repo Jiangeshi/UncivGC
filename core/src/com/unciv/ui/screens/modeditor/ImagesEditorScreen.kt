@@ -184,7 +184,7 @@ class ImagesEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
         else emptyList()
 
         if (files.isEmpty()) {
-            gridTable.add(("No images in [${currentCategory}]".tr()).toLabel(
+            gridTable.add(("No images in [category]".tr().replace("[category]", currentCategory)).toLabel(
                 fontSize = 16, fontColor = Color(1f, 1f, 1f, 0.4f))).pad(20f).row()
             return
         }
@@ -310,7 +310,7 @@ class ImagesEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
 
     private fun deleteImage(file: FileHandle) {
         val popup = Popup(this)
-        popup.add("Delete [${file.name()}]?".tr().toLabel(fontSize = 20)).pad(10f).row()
+        popup.add("Delete [name]?".tr().replace("[name]", file.name()).toLabel(fontSize = 20)).pad(10f).row()
         popup.addButton("Delete".tr()) {
             file.delete()
             statusLabel.setText("Deleted".tr())
@@ -395,7 +395,7 @@ class ImagesEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
             statusLabel.setText("No missing images".tr())
         } else {
             val popup = Popup(this, scrollable = Popup.Scrollability.None)
-            popup.add(("Missing images: [${missing.size}]".tr()).toLabel(fontSize = 20,
+            popup.add(("Missing images: [count]".tr().replace("[count]", missing.size.toString())).toLabel(fontSize = 20,
                 fontColor = Color(1f, 0.7f, 0.3f, 1f))).pad(10f).row()
             val listTable = Table(BaseScreen.skin)
             for (m in missing.take(100)) {

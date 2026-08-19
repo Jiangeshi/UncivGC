@@ -847,7 +847,7 @@ class TechsEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
     private fun confirmDeleteTech(group: TechGroupData, tech: TechData) {
         val popup = Popup(this)
         // 注意：必须用 ${tech.name}（$tech.name 会被解析成 $tech + 字面量 .name，显示对象 toString）
-        popup.add("Are you sure you want to delete [${tech.name}]?".tr().toLabel(fontSize = 20)).pad(12f).row()
+        popup.add("Are you sure you want to delete [name]?".tr().replace("[name]", tech.name).toLabel(fontSize = 20)).pad(12f).row()
         popup.addButton("Delete") {
             group.techs.remove(tech)
             expandedTechs.remove(tech)

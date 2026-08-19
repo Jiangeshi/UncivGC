@@ -769,7 +769,7 @@ class PoliciesEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
     private fun confirmDeleteBranch(branchIndex: Int) {
         val branch = branches[branchIndex]
         val popup = Popup(this)
-        popup.add("Are you sure you want to delete [${branch.name}]?".tr().toLabel(fontSize = 20)).pad(12f).row()
+        popup.add("Are you sure you want to delete [name]?".tr().replace("[name]", branch.name).toLabel(fontSize = 20)).pad(12f).row()
         popup.addButton("Delete") {
             branches.removeAt(branchIndex)
             popup.close()
@@ -791,7 +791,7 @@ class PoliciesEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
     private fun confirmDeletePolicy(branchIndex: Int, policyIndex: Int) {
         val policy = branches[branchIndex].policies[policyIndex]
         val popup = Popup(this)
-        popup.add("Are you sure you want to delete [${policy.name}]?".tr().toLabel(fontSize = 20)).pad(12f).row()
+        popup.add("Are you sure you want to delete [name]?".tr().replace("[name]", policy.name).toLabel(fontSize = 20)).pad(12f).row()
         popup.addButton("Delete") {
             branches[branchIndex].policies.removeAt(policyIndex)
             popup.close()
