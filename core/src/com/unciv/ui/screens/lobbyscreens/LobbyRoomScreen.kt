@@ -746,6 +746,8 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         closeButton.onActivation {
             voluntarilyLeft = true
             activeRoomId = null  // 明确退出房间: 清除房间 ID, 避免游戏内菜单误操作旧房间
+            // 主动退出标记: 大厅 LobbyPoll 不再自动拉回 (防退出死循环); 下次进入游戏时复位
+            LobbyRoomScreen.leavingGame = true
             Concurrency.run("LobbyLeave") {
                 try {
                     LobbyApi.leaveRoom(roomId, nickname, playerId)

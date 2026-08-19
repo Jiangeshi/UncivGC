@@ -106,11 +106,13 @@ class LobbyScreen : PickerScreen() {
 
         roomRows.add("Checking if you are already in a room...".toLabel()).pad(20f).row()
 
-        // 如果自己已经在某个房间里, 直接进入该房间/游戏 (不用先看大厅列表)
+        // 如果自己已经在某个房间里, 直接进入该房间/游戏 (不用先看大厅列表);
+        // 主动退出过房间 (leavingGame) → 不自动拉回, 等玩家手动操作 (防退出死循环)
         Concurrency.run("LobbyAutoJoin") {
             try {
                 val rooms = LobbyApi.listRooms()
-                val myRoom = rooms.firstOrNull { room -> room.memberIds.any { it == playerId } }
+                val myRoom = if (LobbyRoomScreen.leavingGame) null
+                    else rooms.firstOrNull { room -> room.memberIds.any { it == playerId } }
                 launchOnGLThread {
                     autoJoinDone = true
                     rightSideButton.enable()
@@ -137,8 +139,10 @@ class LobbyScreen : PickerScreen() {
             while (!closed) {
                 try {
                     val rooms = LobbyApi.listRooms()
-                    // 已在房间/游戏但落在列表页 (初始 auto-join 失败/网络抖动/其他设备) → 自动拉回 (带节流, 避免反复导航)
-                    val myRoom = rooms.firstOrNull { room -> room.memberIds.any { it == playerId } }
+                    // 已在房间/游戏但落在列表页 (初始 auto-join 失败/网络抖动/其他设备) → 自动拉回 (带节流, 避免反复导航);
+                    // 主动退出过房间 (leavingGame) → 不自动拉回 — 否则退出 → 拉回 → 退出 → 死循环 (战败/观战退出卡死根因)
+                    val myRoom = if (LobbyRoomScreen.leavingGame) null
+                        else rooms.firstOrNull { room -> room.memberIds.any { it == playerId } }
                     if (myRoom != null && game.screen == this@LobbyScreen) {
                         val now = System.currentTimeMillis()
                         if (now - lastAutoRejoinMs > 8000) {
