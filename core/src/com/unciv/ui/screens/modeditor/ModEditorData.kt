@@ -1421,6 +1421,12 @@ object ModEditorData {
             try {
                 RulesetCache.loadRulesets()
                 com.unciv.ui.images.ImageGetter.reloadImages()
+                // 模组翻译刷新: loadRulesets 不重读翻译 — 改文本后游戏内仍显示旧翻译,
+                // 必须重读当前语言翻译 (含 mod 翻译) — 否则"保存后要大退才生效"
+                try {
+                    com.unciv.UncivGame.Current.translations.tryReadTranslationForCurrentLanguage()
+                } catch (ignored: Throwable) {
+                }
             } catch (ignored: Throwable) {
             }
             val baseChoice = readBaseRulesetChoice(modFolder).ifBlank { BaseRuleset.Civ_V_GnK.fullName }

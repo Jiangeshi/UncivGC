@@ -181,12 +181,25 @@ class WorldScreenMenuPopup(
             .firstOrNull { it.playerId == myId }?.civName
         // 观战者: 存档无匹配文明, 或匹配到 Spectator (战败转观战后) — 都不是真玩家
         val isSpectator = myCivName == null || myCivName == "Spectator"
-        val isFrameSync = com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo)
         val confirmText = if (isSpectator)
             "Leave the room?"
         else
             "Leave the room? Your civilization will be handed to AI and the game continues.".tr()
         ConfirmPopup(worldScreen, confirmText, "Leave room".tr()) {
+            leaveLobbyGameNow(worldScreen)
+        }.open(force = true)
+    }
+
+    companion object {
+        /** 退出联机房间/对局并回大厅 (菜单确认后 / 战败自动退出共用).
+         *  任何异常都不能卡住玩家 — 失败只记录提示, 必然回到大厅. */
+        fun leaveLobbyGameNow(worldScreen: WorldScreen) {
+            val roomId = LobbyRoomScreen.activeRoomId ?: return
+            val myId = worldScreen.game.settings.multiplayer.getUserId()
+            val myCivName = worldScreen.gameInfo.civilizations
+                .firstOrNull { it.playerId == myId }?.civName
+            val isSpectator = myCivName == null || myCivName == "Spectator"
+            val isFrameSync = com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo)
             LobbyRoomScreen.leavingGame = true
             Concurrency.run("LobbyLeaveGame") {
                 var leaveError: String? = null
@@ -202,7 +215,7 @@ class WorldScreenMenuPopup(
                         // 1. 玩家: 文明转 AI (resign + 上传存档)
                         onlineMultiplayer.resignPlayer(preview, myCivName!!, myCivName)
                     }
-                    // 2. 离开大厅房间 (尽力而为, 失败不阻断返回); 观战者/战败转观战者也必须调用 —
+                    // 2. 离开大厅房间 (尽力而为, 失败不阻断返回); 观战者/战败玩家也必须调用 —
                     //    战败玩家仍是房间成员, 不 leaveRoom → 服务器成员列表残留 → 大厅 LobbyPoll
                     //    检测到“我还在房间里”自动拉回 → 退出死循环 (卡在多人模式出不去的根因)
                     try {
@@ -223,6 +236,6 @@ class WorldScreenMenuPopup(
                     worldScreen.game.replaceCurrentScreen(LobbyScreen())
                 }
             }
-        }.open(force = true)
+        }
     }
 }

@@ -276,7 +276,28 @@ object FrameSync {
 
     /** 发送单位操作 (如 unit.move); 断线时提示 (限频 5s), 避免操作静默丢失 */
     private var lastDisconnectToastAt = 0L
+    /** 完成回合后锁定的 op (结算已入账, 再改城市配置/科技/政策 → 显示与入账不符);
+     *  单位操作 (move/attack 等) 保留 — NextUnit 例外 (完成回合后仍可操作闲置单位) */
+    private val TURN_LOCKED_OPS = setOf(
+        "city.setProduction", "city.addToQueue", "city.addToQueueWithTile",
+        "city.removeFromQueue", "city.removeFromQueueByName", "city.moveQueueEntry",
+        "city.raisePriority", "city.lowerPriority", "city.disableConstruction",
+        "city.workTile", "city.stopWorkTile", "city.lockTile", "city.unlockTile",
+        "city.assignSpecialist", "city.reassignPopulation", "city.setFocus",
+        "city.enableManualSpecialists", "city.disableManualSpecialists", "city.toggleAvoidGrowth",
+        "city.annex", "city.setRazing", "city.buyTile", "city.sellBuilding", "city.rename",
+        "city.setUnitSavedPromotion", "city.saveUnitPromotions", "civ.setConstructionDisabled",
+        "civ.chooseTech", "civ.choosePolicy", "civ.chooseBeliefs", "civ.eventChoice"
+    )
+
     fun sendOp(op: String, data: Map<String, Any?>) {
+        // 完成回合后 (myTurnFinished) 锁定城市配置/科技/政策/信仰类 op —
+        // 结算已按旧配置入账, 再改 → 服务器状态变但本回合产出已入账 → 显示与入账不符;
+        // 单位操作 (move/attack 等) 保留 — 完成回合后仍可操作闲置单位 (NextUnit 例外)
+        if (myTurnFinished && op in TURN_LOCKED_OPS) {
+            showToast("Turn finished - city changes apply next turn".tr())
+            return
+        }
         if (!connected) {
             val now = System.currentTimeMillis()
             if (now - lastDisconnectToastAt > 5000) {
@@ -1663,8 +1684,7 @@ object FrameSync {
         }
     }
 
-    /** 战败检测: 弹提示 → 确认后切观战 (看海); 每局只弹一次 (fs_server 已把战败玩家归入观战者,
-     *  不阻塞全员结算; 无 Spectator 文明时只提示) */
+    /** 战败检测: 提示后自动退出对局回大厅 (用户要求: 不转观战/不留在房间 — 战败玩家直接踢出) */
     private var defeatSwitchPrompted = false
     private fun checkDefeatedAndOfferSpectate() {
         if (isSpectating || defeatSwitchPrompted) return
@@ -1673,18 +1693,20 @@ object FrameSync {
             val civ = ws.viewingCiv
             if (civ.isSpectator() || !civ.isDefeated()) return
             defeatSwitchPrompted = true
-            val spectator = ws.gameInfo.civilizations.firstOrNull { it.isSpectator() }
-            if (spectator == null) {
-                ToastPopup("You have been defeated".tr(), ws)
-                return
+            ToastPopup("You have been defeated".tr(), ws)
+            // 延迟自动退出: 让玩家看到提示, 然后自动离开房间回大厅 (leaveRoom + 恢复服务器 + 切大厅)
+            Concurrency.run("DefeatedAutoLeave") {
+                try { Thread.sleep(1500) } catch (ignored: Exception) {}
+                Concurrency.runOnGLThread {
+                    try {
+                        val cur = com.unciv.UncivGame.Current.screen
+                        if (cur is com.unciv.ui.screens.worldscreen.WorldScreen) {
+                            com.unciv.ui.screens.worldscreen.mainmenu.WorldScreenMenuPopup.leaveLobbyGameNow(cur)
+                        }
+                    } catch (ignored: Exception) {
+                    }
+                }
             }
-            com.unciv.ui.popups.ConfirmPopup(
-                ws,
-                ("You have been defeated!\nContinue watching the game as a spectator?").tr(),
-                "Spectate".tr()
-            ) {
-                switchToSpectatorView(spectator)
-            }.open()
         } catch (e: Exception) {
         }
     }
