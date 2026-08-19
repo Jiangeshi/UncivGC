@@ -522,11 +522,11 @@ open class UncivGame(val isConsoleMode: Boolean = false) : Game(), PlatformSpeci
 
     companion object {
         //region AUTOMATICALLY GENERATED VERSION DATA - DO NOT CHANGE THIS REGION, INCLUDING THIS COMMENT
-        val VERSION = Version("4.21.6.gc.v1.4", 1242)
+        val VERSION = Version("4.21.6.gc.v1.5", 1242)
         //endregion
 
         /** UncivGC 构建版本 (应用内更新检查用, 与服务器 apk/version.json 的 version 对比; 发新版时同步改) */
-        const val UGC_VERSION = "4.21.6.gc.v1.4"
+        const val UGC_VERSION = "4.21.6.gc.v1.5"
 
         /** Global reference to the one Gdx.Game instance created by the platform launchers - do not use without checking [isCurrentInitialized] first. */
         // Set by Gdx Game.create callback, or the special cases ConsoleLauncher and unit tests make do with out Gdx and set this themselves.
