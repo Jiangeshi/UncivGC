@@ -7,6 +7,7 @@ import com.badlogic.gdx.graphics.PixmapIO
 import com.badlogic.gdx.graphics.g2d.PixmapPacker
 import com.unciv.utils.Log
 import java.io.File
+import kotlin.math.min
 
 /**
  * UncivGC: Android 版模组图集打包器.
@@ -72,8 +73,26 @@ object SimpleImagePacker {
                 continue
             }
             if (pixmap.width > maxSize || pixmap.height > maxSize) {
-                pixmap.dispose()
-                skipped++
+                // 超大图 (如手机截图 2400px+) 不跳过 — 等比例缩放到 maxSize 内, 否则整个图集打不出产物
+                val scale = min(maxSize.toFloat() / pixmap.width, maxSize.toFloat() / pixmap.height)
+                val newW = (pixmap.width * scale).toInt().coerceAtLeast(1)
+                val newH = (pixmap.height * scale).toInt().coerceAtLeast(1)
+                try {
+                    val scaled = Pixmap(newW, newH, pixmap.format)
+                    scaled.drawPixmap(pixmap, 0, 0, pixmap.width, pixmap.height, 0, 0, newW, newH)
+                    pixmap.dispose()
+                    val regionName = relativeName(img, folder)
+                    try {
+                        packer.pack(regionName, scaled)
+                    } catch (e: Exception) {
+                        skipped++
+                    } finally {
+                        scaled.dispose()
+                    }
+                } catch (e: Exception) {
+                    skipped++
+                    pixmap.dispose()
+                }
                 continue
             }
             val regionName = relativeName(img, folder)
