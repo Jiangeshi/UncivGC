@@ -20,36 +20,45 @@ class AndroidModEditorPlatform(private val activity: Activity) : ModEditorPlatfo
     companion object {
         const val REQUEST_CHOOSE_IMAGE = 48100
         @Volatile
-        var pendingImageResult: ((Uri?) -> Unit)? = null
+        var pendingImageUri: ((Uri?) -> Unit)? = null
 
-        /** AndroidLauncher.onActivityResult 转发入口 */
+        /** AndroidLauncher.onActivityResult 转发入口 (UI 线程; 只存 uri, IO 由后台线程做) */
         fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
             if (requestCode != REQUEST_CHOOSE_IMAGE) return
-            val callback = pendingImageResult
-            pendingImageResult = null
-            callback?.invoke(if (resultCode == Activity.RESULT_OK) data?.data else null)
+            val callback = pendingImageUri
+            pendingImageUri = null
+            try {
+                callback?.invoke(if (resultCode == Activity.RESULT_OK) data?.data else null)
+            } catch (ignored: Throwable) {
+            }
         }
     }
 
     override fun chooseImageFile(): String? {
         val latch = CountDownLatch(1)
-        val resultPath = AtomicReference<String?>()
-        pendingImageResult = { uri ->
-            resultPath.set(if (uri != null) copyUriToCache(uri) else null)
+        val uriRef = AtomicReference<Uri?>()
+        pendingImageUri = { uri ->
+            uriRef.set(uri)
             latch.countDown()
         }
-        activity.runOnUiThread {
-            try {
-                val intent = Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*" }
-                activity.startActivityForResult(intent, REQUEST_CHOOSE_IMAGE)
-            } catch (e: Exception) {
-                pendingImageResult = null
-                resultPath.set(null)
-                latch.countDown()
+        try {
+            activity.runOnUiThread {
+                try {
+                    val intent = Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*" }
+                    activity.startActivityForResult(intent, REQUEST_CHOOSE_IMAGE)
+                } catch (e: Throwable) {
+                    pendingImageUri = null
+                    uriRef.set(null)
+                    latch.countDown()
+                }
             }
+            if (!latch.await(120, TimeUnit.SECONDS)) return null
+        } catch (e: Throwable) {
+            return null
         }
-        if (!latch.await(120, TimeUnit.SECONDS)) return null
-        return resultPath.get()
+        // IO 在后台线程 (调用方线程), 不在 UI 线程
+        val uri = uriRef.get() ?: return null
+        return copyUriToCache(uri)
     }
 
     /** content:// URI → 应用缓存目录里的真实文件, 返回绝对路径 (模组编辑器按路径读取/复制) */
@@ -62,7 +71,7 @@ class AndroidModEditorPlatform(private val activity: Activity) : ModEditorPlatfo
                 dest.outputStream().use { output -> input.copyTo(output) }
             } ?: return null
             dest.absolutePath
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             null
         }
     }
@@ -75,7 +84,7 @@ class AndroidModEditorPlatform(private val activity: Activity) : ModEditorPlatfo
                     if (idx >= 0) cursor.getString(idx) else null
                 } else null
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             null
         }
     }

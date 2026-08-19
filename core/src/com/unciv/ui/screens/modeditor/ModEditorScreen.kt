@@ -47,17 +47,28 @@ class ModEditorScreen : BaseScreen() {
     private fun refreshList() {
         listTable.clear()
         val modsFolder = UncivGame.Current.files.getModsFolder()
-        println("[ModEditor] modsFolder=" + modsFolder.path() + " exists=" + modsFolder.exists())
-        val mods = if (modsFolder.exists())
-            modsFolder.list().filter { it.isDirectory && !it.name().startsWith("temp-") }.sortedBy { it.name() }
-        else emptyList()
-        println("[ModEditor] found mods: " + mods.map { it.name() })
+        val visibleFolder = UncivGame.Current.getVisibleModsFolder()
+        println("[ModEditor] modsFolder=" + modsFolder.path() + " exists=" + modsFolder.exists()
+                + " visible=" + (visibleFolder?.path() ?: "null"))
 
-        if (mods.isEmpty()) {
+        // 内部 + 外部(可见) 两个目录的 mod 一起列出; 外部 mod 同样可读写 (图片导入/打包直接写外部目录)
+        val entries = ArrayList<Pair<com.badlogic.gdx.files.FileHandle, Boolean>>()  // (modDir, isVisible)
+        if (modsFolder.exists()) {
+            for (mod in modsFolder.list().filter { it.isDirectory && !it.name().startsWith("temp-") }.sortedBy { it.name() })
+                entries.add(mod to false)
+        }
+        if (visibleFolder != null && visibleFolder.exists() && visibleFolder.path() != modsFolder.path()) {
+            for (mod in visibleFolder.list().filter { it.isDirectory && !it.name().startsWith("temp-") }.sortedBy { it.name() }) {
+                if (entries.none { it.first.name() == mod.name() }) entries.add(mod to true)
+            }
+        }
+        println("[ModEditor] found mods: " + entries.map { it.first.name() })
+
+        if (entries.isEmpty()) {
             listTable.add("No mods yet. Click \"New mod\" in the top right to get started!".toLabel())
                 .pad(20f).row()
         }
-        for (mod in mods) {
+        for ((mod, isVisible) in entries) {
             val row = Table(BaseScreen.skin)
             row.defaults().pad(8f)
             row.background = BaseScreen.skinStrings.getUiBackground(
@@ -67,6 +78,10 @@ class ModEditorScreen : BaseScreen() {
             val info = if (ModEditorData.readIsBaseRuleset(mod)) "Base ruleset mod" else "Extension mod"
             row.add(nameLabel).left().expandX()
             row.add(info.toLabel(fontSize = 16)).right().padRight(12f)
+            if (isVisible) {
+                row.add("External".toLabel(fontSize = 14,
+                    fontColor = com.badlogic.gdx.graphics.Color(1f, 0.8f, 0.4f, 1f))).right().padRight(12f)
+            }
             val openButton = "Open".toTextButton()
             openButton.onActivation { game.pushScreen(ModModulesScreen(mod)) }
             row.add(openButton)

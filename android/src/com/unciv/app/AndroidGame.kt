@@ -26,6 +26,16 @@ import java.util.Locale
 
 class AndroidGame(private val activity: Activity) : UncivGame() {
 
+    /** 模组编辑器: 用户可见 mods 目录 (外部存储 Android/data/包名/files/mods) — 与内部目录并存, 均可读写 */
+    override fun getVisibleModsFolder(): com.badlogic.gdx.files.FileHandle? {
+        return try {
+            val external = activity.getExternalFilesDir(null) ?: return null
+            com.badlogic.gdx.Gdx.files.absolute(java.io.File(external, "mods").absolutePath)
+        } catch (e: Throwable) {
+            null
+        }
+    }
+
     /** Android 13+ (API 33): 运行时申请通知权限 — U 原本从不申请, 导致通知被系统静默屏蔽 */
     override fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT < 33) return  // Android 12 及以下无需运行时权限

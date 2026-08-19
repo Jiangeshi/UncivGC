@@ -71,6 +71,10 @@ open class UncivGame(val isConsoleMode: Boolean = false) : Game(), PlatformSpeci
     lateinit var onlineMultiplayer: Multiplayer
     lateinit var files: UncivFiles
 
+    /** UncivGC 模组编辑器: 用户可见 mods 目录 (Android 外部存储 Android/data/包名/files/mods);
+     *  桌面端与内部目录相同返回 null (无内外之分); Android 由 AndroidGame 提供 */
+    open fun getVisibleModsFolder(): com.badlogic.gdx.files.FileHandle? = null
+
     var isTutorialTaskCollapsed = false
 
     var worldScreen: WorldScreen? = null
