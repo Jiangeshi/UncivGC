@@ -202,21 +202,21 @@ class WorldScreenMenuPopup(
                         // 1. 玩家: 文明转 AI (resign + 上传存档)
                         onlineMultiplayer.resignPlayer(preview, myCivName!!, myCivName)
                     }
-                    // 2. 离开大厅房间 (尽力而为, 失败不阻断返回); 观战者不是成员, 无需调用
-                    if (!isSpectator) {
-                        try {
-                            LobbyApi.leaveRoom(roomId, LobbyRoomScreen.currentNickname(), LobbyRoomScreen.currentPlayerId())
-                        } catch (e: Exception) {
-                            leaveError = "Leave room failed: [${e.message}]".tr()
-                        }
+                    // 2. 离开大厅房间 (尽力而为, 失败不阻断返回); 观战者/战败转观战者也必须调用 —
+                    //    战败玩家仍是房间成员, 不 leaveRoom → 服务器成员列表残留 → 大厅 LobbyPoll
+                    //    检测到“我还在房间里”自动拉回 → 退出死循环 (卡在多人模式出不去的根因)
+                    try {
+                        LobbyApi.leaveRoom(roomId, LobbyRoomScreen.currentNickname(), LobbyRoomScreen.currentPlayerId())
+                    } catch (e: Exception) {
+                        leaveError = "Leave room failed: [${e.message}]".tr()
                     }
                 } catch (e: Exception) {
-                    launchOnGLThread {
-                        ToastPopup("Leave room failed: [${e.message}]".tr(), worldScreen)
-                    }
-                    return@run
+                    // 任何异常都不能卡住玩家 — 记录错误并继续回大厅 (resign/leaveRoom 失败不应困住玩家)
+                    leaveError = "Leave room failed: [${e.message}]".tr()
                 }
                 // 3. 替换掉 WorldScreen (避免背后残留观战视图), 回到联机大厅; 恢复原多人服务器
+                //    帧同步: 先停连接 (WorldScreen 即将销毁, 不依赖 dispose 时机)
+                try { com.unciv.ui.screens.worldscreen.FrameSync.stop() } catch (ignored: Exception) {}
                 launchOnGLThread {
                     if (leaveError != null) ToastPopup(leaveError, worldScreen)
                     LobbyRoomScreen.restoreMultiplayerServer()

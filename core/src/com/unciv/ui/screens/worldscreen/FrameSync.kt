@@ -534,7 +534,9 @@ object FrameSync {
     private fun sendJson(json: String) {
         val s = session
         if (s == null || !connected) {
-            notifyDisconnected()
+            // 回合结算重载期间 (reloadGame: stop → 下载存档 → loadGame) 不提示断线 —
+            // 连接是主动停的, 新 WorldScreen 会自动重连; 玩家点击只丢一次, 结算后自然恢复
+            if (!reloading) notifyDisconnected()
             updateStatusLabel()
             return
         }
@@ -1205,7 +1207,12 @@ object FrameSync {
         if (state == null) {
             // op 结果失败 (如移动被拒)
             if (!ok && reason.isNotEmpty() && reason != "state") {
-                showToast("Operation rejected: [$reason]".tr())
+                // 结算窗口拒绝 (全员完成→模拟器结算中): 友好提示而非“Operation rejected”, 玩家稍候重试即可
+                if (reason.contains("turn settling")) {
+                    showToast("Turn settling, please wait a moment".tr())
+                } else {
+                    showToast("Operation rejected: [$reason]".tr())
+                }
             }
             return
         }
