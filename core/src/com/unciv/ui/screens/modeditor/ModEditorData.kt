@@ -1431,8 +1431,8 @@ object ModEditorData {
                 try {
                     val rc = RulesetCache.get(modName)
                     if (rc != null) {
-                        println("[ModEditor] 保存后 reload OK: mod=$modName units=" + rc.getUnits().size
-                            + " buildings=" + rc.getBuildings().size + " nations=" + rc.getNations().size)
+                        println("[ModEditor] 保存后 reload OK: mod=$modName units=" + rc.units.size
+                            + " buildings=" + rc.buildings.size + " nations=" + rc.nations.size)
                     } else {
                         println("[ModEditor] 保存后 reload 失败: mod=$modName 不在 RulesetCache!")
                     }
