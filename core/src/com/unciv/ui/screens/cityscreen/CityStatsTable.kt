@@ -145,9 +145,6 @@ class CityStatsTable(private val cityScreen: CityScreen) : Table() {
                     cityView.getRuleset().units[cityView.currentConstructionName()]
                         .let { it != null && it.hasUnique(UniqueType.ConvertFoodToProductionWhenConstructed) }
                     -> "Food converts to production"
-                    cityView.getRuleset().units[cityView.currentConstructionName()]
-                        .let { it != null && it.hasUnique(UniqueType.ConvertAllFoodToProductionWhenConstructed) }
-                    -> "All food converts to production"
                     cityView.isGrowing() -> "[${cityView.getNumTurnsToNewPopulation()}] turns to new population"
                     else -> "Stopped population growth"
                 }.tr()

@@ -348,7 +348,6 @@ enum class UniqueType(
         docDescription = "Meant to be used together with conditionals, like \"Unavailable <after generating a Great Prophet>\"."),
     CannotBuildBuildings("Cannot build [buildingFilter] buildings", UniqueTarget.Global),
     ConvertFoodToProductionWhenConstructed("Excess Food converted to Production when under construction", UniqueTarget.Building, UniqueTarget.Unit),
-    ConvertAllFoodToProductionWhenConstructed("All Food converted to Production when under construction, and prevents starvation", UniqueTarget.Building, UniqueTarget.Unit),
     RequiresPopulation("Requires at least [amount] population", UniqueTarget.Building, UniqueTarget.Unit),
 
     TriggersAlertOnStart("Triggers a global alert upon build start", UniqueTarget.Building, UniqueTarget.Unit),
