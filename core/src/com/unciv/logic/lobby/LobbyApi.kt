@@ -106,7 +106,7 @@ data class SettingsRequest(val nickname: String, val playerId: String, val setti
 object LobbyApi {
     // 生产默认; 本地联调可用 -Duncivgc.lobbyUrl=http://127.0.0.1:8124 覆盖
     val SERVER_URL: String
-        get() = System.getProperty("uncivgc.lobbyUrl") ?: "http://110.40.151.9:8123"
+        get() = System.getProperty("uncivgc.lobbyUrl") ?: "http://110.40.151.9:8125"
 
     /** 房间接口鉴权 token (与服务器 LOBBY_TOKEN 一致; 防止陌生客户端建房/进房) */
     const val LOBBY_TOKEN = "fe645aeabf2862a9d70405643a849bee"

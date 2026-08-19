@@ -359,7 +359,8 @@ class ImagesEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
             return
         }
         statusLabel.setText("Packing...".tr())
-        val message = impl.packAtlases(modFolder.path())
+        // 必须用绝对路径: modFolder.path() 在安卓上是相对路径 (Gdx.files.local), File() 按进程 cwd 解析找不到 → "No Images folder found"
+        val message = impl.packAtlases(modFolder.file().absolutePath)
         statusLabel.setText(message ?: "Pack failed".tr())
         // 刷新 Atlases.json 显示
         refreshAtlasStatus()

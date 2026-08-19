@@ -64,7 +64,7 @@ object FrameSync {
 
     /** fs_server 端口 (生产 30125; 测试服 30127; 本地联调 -Duncivgc.fsPort=30125) */
     private val FS_PORT: Int
-        get() = System.getProperty("uncivgc.fsPort")?.toIntOrNull() ?: 30125
+        get() = System.getProperty("uncivgc.fsPort")?.toIntOrNull() ?: 30127
     private const val RECONNECT_BASE_MS = 2000L
     private const val RECONNECT_MAX_MS = 15000L
     /** 心跳间隔: 5s 一次 (断线检测提速 — 网络切换/服务器关闭时收不到 pong 快速判死) */

@@ -110,7 +110,7 @@ object ImagePacker {
         for ((file, packFileName) in imageFolders(baseDir)) {
             atlasList += packFileName
         }
-        return if (atlasList.isEmpty()) "No Images folder found"
+        return if (atlasList.isEmpty()) "该模组没有 Images 文件夹，请先在图片模块导入图片"
             else "Packed: " + atlasList.sorted().joinToString(", ")
     }
 

@@ -72,7 +72,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
     companion object {
         /** UncivGC 自建存档服务器 (与 gen_lobby.py 一致): 存档上传/下载都走这里; 本地联调用 -Duncivgc.spUrl 覆盖 */
         val SP_SERVER_URL: String
-            get() = System.getProperty("uncivgc.spUrl") ?: "http://110.40.151.9:30123"
+            get() = System.getProperty("uncivgc.spUrl") ?: "http://110.40.151.9:30126"
 
         /** 当前所在房间 ID (游戏内菜单「退出房间」用) */
         var activeRoomId: String? = null
