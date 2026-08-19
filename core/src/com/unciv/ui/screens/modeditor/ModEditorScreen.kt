@@ -51,16 +51,16 @@ class ModEditorScreen : BaseScreen() {
         println("[ModEditor] modsFolder=" + modsFolder.path() + " exists=" + modsFolder.exists()
                 + " visible=" + (visibleFolder?.path() ?: "null"))
 
-        // 内部 + 外部(可见) 两个目录的 mod 一起列出; 外部 mod 同样可读写 (图片导入/打包直接写外部目录)
+        // 内部 + 外部(可见) 两个目录的 mod 全部列出 (同名也各自显示, 标注位置 —
+        // 之前按名去重内部优先, 用户以为在编辑外部 mod 实际写到了内部副本, 外部内容永远不变)
         val entries = ArrayList<Pair<com.badlogic.gdx.files.FileHandle, Boolean>>()  // (modDir, isVisible)
         if (modsFolder.exists()) {
             for (mod in modsFolder.list().filter { it.isDirectory && !it.name().startsWith("temp-") }.sortedBy { it.name() })
                 entries.add(mod to false)
         }
         if (visibleFolder != null && visibleFolder.exists() && visibleFolder.path() != modsFolder.path()) {
-            for (mod in visibleFolder.list().filter { it.isDirectory && !it.name().startsWith("temp-") }.sortedBy { it.name() }) {
-                if (entries.none { it.first.name() == mod.name() }) entries.add(mod to true)
-            }
+            for (mod in visibleFolder.list().filter { it.isDirectory && !it.name().startsWith("temp-") }.sortedBy { it.name() })
+                entries.add(mod to true)
         }
         println("[ModEditor] found mods: " + entries.map { it.first.name() })
 
