@@ -474,7 +474,16 @@ class WorldScreen(
                 viewingCiv.shouldShowDiplomaticVotingResults() ->
                     UncivGame.Current.pushScreen(DiplomaticVoteResultScreen(gameInfo.diplomaticVictoryVotesCast, viewingCiv))
                 !gameInfo.oneMoreTurnMode && (viewingCiv.isDefeated() || gameInfo.checkForVictory()) ->
-                    game.pushScreen(VictoryScreen(this))
+                    // 帧同步: 对局结束提示只弹一次 — 否则关闭胜利屏后 update 再次检测到胜利 → 死循环
+                    // (观战/成员进打完的局: 胜利屏关闭 → 回 WorldScreen → 又弹 → 困住)
+                    if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo)) {
+                        if (!com.unciv.ui.screens.worldscreen.FrameSync.victoryShownForFsGame) {
+                            com.unciv.ui.screens.worldscreen.FrameSync.victoryShownForFsGame = true
+                            game.pushScreen(VictoryScreen(this))
+                        }
+                    } else {
+                        game.pushScreen(VictoryScreen(this))
+                    }
                 viewingCiv.greatPeople.freeGreatPeople > 0 ->
                     game.pushScreen(GreatPersonPickerScreen(this, viewingCiv))
                 viewingCiv.popupAlerts.any() -> AlertPopup(this, viewingCiv.popupAlerts.first())

@@ -103,6 +103,9 @@ object FrameSync {
     /** 观战者 (存档无我的 playerId) — 连接时告知服务器, 不参与“全员完成”判定 */
     @Volatile private var isSpectating = false
 
+    /** 帧同步: 对局结束 (胜利) 提示已弹出标记 — 防关闭胜利屏后 update 反复弹 (死循环); start() 时重置 */
+    @Volatile var victoryShownForFsGame = false
+
     /** 回合倒计时 (服务器 turnStatus 广播的 deadline, epoch 毫秒; 0=未知) + 已完成回合的玩家 */
     @Volatile var turnDeadline: Long = 0
     @Volatile var turnReadyPlayers: List<String> = emptyList()
@@ -182,6 +185,8 @@ object FrameSync {
         turnDeadline = 0
         turnReadyPlayers = emptyList()
         lastTurn = gameInfo.turns
+        // 跨局重置: 对局结束 (胜利/失败) 提示标记 — 新局重新允许弹一次
+        victoryShownForFsGame = false
         // 观战者判定: viewingCiv 是 Spectator 文明, 或存档里没有任何存活文明匹配我的 playerId
         // (玩家文明被消灭后 playerId 仍留在存档 civilizations → 不排除已败文明会被误判成该玩家,
         //  死后退出房间再观战时被拉回已死文明 (如阿兹特克))
@@ -1684,31 +1689,10 @@ object FrameSync {
         }
     }
 
-    /** 战败检测: 提示后自动退出对局回大厅 (用户要求: 不转观战/不留在房间 — 战败玩家直接踢出) */
-    private var defeatSwitchPrompted = false
+    /** 战败检测: 由 WorldScreen.update 的 isDefeated 分支弹失败界面 (VictoryScreen, 帧同步防重),
+     *  界面按钮为“回到大厅” — 玩家自己点回大厅, 不自动踢出 (用户 2026-08-20 确认) */
     private fun checkDefeatedAndOfferSpectate() {
-        if (isSpectating || defeatSwitchPrompted) return
-        val ws = worldScreenRef?.get() ?: return
-        try {
-            val civ = ws.viewingCiv
-            if (civ.isSpectator() || !civ.isDefeated()) return
-            defeatSwitchPrompted = true
-            ToastPopup("You have been defeated".tr(), ws)
-            // 延迟自动退出: 让玩家看到提示, 然后自动离开房间回大厅 (leaveRoom + 恢复服务器 + 切大厅)
-            Concurrency.run("DefeatedAutoLeave") {
-                try { Thread.sleep(1500) } catch (ignored: Exception) {}
-                Concurrency.runOnGLThread {
-                    try {
-                        val cur = com.unciv.UncivGame.Current.screen
-                        if (cur is com.unciv.ui.screens.worldscreen.WorldScreen) {
-                            com.unciv.ui.screens.worldscreen.mainmenu.WorldScreenMenuPopup.leaveLobbyGameNow(cur)
-                        }
-                    } catch (ignored: Exception) {
-                    }
-                }
-            }
-        } catch (e: Exception) {
-        }
+        // 不再自动踢出 / 不再转观战 — 失败界面由 update 循环弹 (victoryShownForFsGame 防重)
     }
 
     /** 切观战: 停旧连接 → 重建 WorldScreen(Spectator) → 新屏 init 自动重连 (join 后 fs_server 视观战者) */
