@@ -37,6 +37,9 @@ open class AndroidLauncher : AndroidApplication() {
         val displayImpl = AndroidDisplay(this)
         Display.platform = displayImpl
 
+        // Setup Android mod editor platform (SAF image picker + atlas packing)
+        com.unciv.ui.screens.modeditor.ModEditorPlatformHolder.impl = AndroidModEditorPlatform(this)
+
         // Setup Android fonts
         Fonts.fontImplementation = AndroidFont()
 
@@ -141,5 +144,6 @@ open class AndroidLauncher : AndroidApplication() {
         val saverLoader = UncivFiles.saverLoader as AndroidSaverLoader
         saverLoader.onActivityResult(requestCode, data)
         super.onActivityResult(requestCode, resultCode, data)
+        AndroidModEditorPlatform.onActivityResult(requestCode, resultCode, data)
     }
 }

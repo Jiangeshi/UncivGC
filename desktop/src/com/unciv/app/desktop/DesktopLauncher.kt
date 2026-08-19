@@ -21,6 +21,7 @@ import com.unciv.models.ruleset.validation.RulesetValidator
 import com.unciv.models.ruleset.validation.UniqueAutoUpdater
 import com.unciv.ui.components.fonts.Fonts
 import com.unciv.ui.screens.basescreen.BaseScreen
+import com.unciv.ui.screens.modeditor.ModEditorPlatformHolder
 import com.unciv.utils.Display
 import com.unciv.utils.Log
 import com.unciv.utils.isRunFromJar
@@ -94,6 +95,9 @@ internal object DesktopLauncher {
 
         // Setup Desktop display
         Display.platform = DesktopDisplay()
+
+        // Setup Desktop mod editor platform (native file dialogs)
+        ModEditorPlatformHolder.impl = DesktopModEditorPlatform()
 
         // Setup Desktop font
         Fonts.fontImplementation = DesktopFont()

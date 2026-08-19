@@ -1,0 +1,146 @@
+package com.unciv.ui.screens.modeditor
+
+import com.badlogic.gdx.scenes.scene2d.Actor
+import com.badlogic.gdx.scenes.scene2d.Touchable
+import com.badlogic.gdx.scenes.scene2d.ui.CheckBox
+import com.badlogic.gdx.scenes.scene2d.ui.Table
+import com.badlogic.gdx.scenes.scene2d.utils.ChangeListener
+import com.unciv.UncivGame
+import com.unciv.models.translations.tr
+import com.unciv.ui.components.extensions.toLabel
+import com.unciv.ui.components.extensions.toTextButton
+import com.unciv.ui.components.input.KeyCharAndCode
+import com.unciv.ui.components.input.keyShortcuts
+import com.unciv.ui.components.input.onActivation
+import com.unciv.ui.components.widgets.AutoScrollPane
+import com.unciv.ui.components.widgets.UncivTextField
+import com.unciv.ui.popups.Popup
+import com.unciv.ui.screens.basescreen.BaseScreen
+
+/** S1 模组工作台：选择/新建模组 */
+class ModEditorScreen : BaseScreen() {
+
+    private val listTable = Table(BaseScreen.skin)
+
+    init {
+        val root = Table(BaseScreen.skin)
+        root.setFillParent(true)
+        stage.addActor(root)
+
+        val topBar = Table(BaseScreen.skin)
+        val backButton = ("‹ " + "Back".tr()).toTextButton()
+        backButton.onActivation { game.popScreen() }
+        topBar.add(backButton).pad(8f)
+        topBar.add("Mod Editor".toLabel(fontSize = 30)).padLeft(20f).expandX().left()
+        val newModButton = "New mod".toTextButton()
+        newModButton.onActivation { showNewModPopup() }
+        topBar.add(newModButton).pad(8f)
+        root.add(topBar).fillX().row()
+
+        val scrollPane = AutoScrollPane(listTable)
+        scrollPane.setScrollingDisabled(true, false)
+        root.add(scrollPane).expand().grow()
+
+        refreshList()
+    }
+
+    private fun refreshList() {
+        listTable.clear()
+        val modsFolder = UncivGame.Current.files.getModsFolder()
+        println("[ModEditor] modsFolder=" + modsFolder.path() + " exists=" + modsFolder.exists())
+        val mods = if (modsFolder.exists())
+            modsFolder.list().filter { it.isDirectory && !it.name().startsWith("temp-") }.sortedBy { it.name() }
+        else emptyList()
+        println("[ModEditor] found mods: " + mods.map { it.name() })
+
+        if (mods.isEmpty()) {
+            listTable.add("No mods yet. Click \"New mod\" in the top right to get started!".toLabel())
+                .pad(20f).row()
+        }
+        for (mod in mods) {
+            val row = Table(BaseScreen.skin)
+            row.defaults().pad(8f)
+            row.background = BaseScreen.skinStrings.getUiBackground(
+                "ModEditor/ModRow", BaseScreen.skinStrings.roundedEdgeRectangleShape,
+                BaseScreen.skinStrings.skinConfig.baseColor)
+            val nameLabel = mod.name().toLabel(fontSize = 24)
+            val info = if (ModEditorData.readIsBaseRuleset(mod)) "Base ruleset mod" else "Extension mod"
+            row.add(nameLabel).left().expandX()
+            row.add(info.toLabel(fontSize = 16)).right().padRight(12f)
+            val openButton = "Open".toTextButton()
+            openButton.onActivation { game.pushScreen(ModModulesScreen(mod)) }
+            row.add(openButton)
+            row.touchable = Touchable.enabled
+            row.onActivation { game.pushScreen(ModModulesScreen(mod)) }
+            listTable.add(row).fillX().pad(4f, 12f, 4f, 12f).row()
+        }
+    }
+
+    private fun showNewModPopup() {
+        val popup = Popup(this)
+        popup.add("New mod".toLabel(fontSize = 26)).pad(10f).row()
+
+        val nameField = UncivTextField("Mod name (Chinese OK, spaces become dashes)")
+        popup.add("Name".toLabel()).left().pad(6f)
+        popup.add(nameField).width(420f).row()
+        val nameHint = "Chinese names work locally; use English when publishing".toLabel(
+            fontSize = 13, fontColor = com.badlogic.gdx.graphics.Color(1f, 1f, 1f, 0.45f))
+        popup.add(nameHint).colspan(2).left().pad(2f, 6f, 8f, 6f).row()
+
+        val authorField = UncivTextField("Author (optional)")
+        popup.add("Author".toLabel()).left().pad(6f)
+        popup.add(authorField).width(420f).row()
+
+        val baseRulesetBox = ModEditorSelectBox(ModEditorData.getBaseRulesetNames(), "Civ V - Gods & Kings", searchable = true)
+        popup.add("Base ruleset".toLabel()).left().pad(6f)
+        popup.add(baseRulesetBox).width(420f).row()
+
+        val baseRulesetCheckbox = CheckBox(
+            "Base ruleset mod (starts from scratch, not based on any ruleset)".tr(), BaseScreen.skin)
+        popup.add(baseRulesetCheckbox).colspan(2).left().pad(6f).row()
+
+        baseRulesetCheckbox.addListener(object : ChangeListener() {
+            override fun changed(event: ChangeEvent?, actor: Actor?) {
+                baseRulesetBox.isDisabled = baseRulesetCheckbox.isChecked
+            }
+        })
+
+        popup.addButton("Create") {
+            val rawName = nameField.text.trim()
+            val name = rawName.replace(Regex("[ /\\\\:]+|\\.\\."), "-")
+            if (name.isEmpty() || name == "." || name == "..") {
+                showErrorPopup("Please enter a mod name")
+                return@addButton
+            }
+            println("[ModEditor] create clicked: name=$name isBase=${baseRulesetCheckbox.isChecked}")
+            val folder = UncivGame.Current.files.getModFolder(name)
+            if (folder.exists() && folder.list().size > 0) {
+                showErrorPopup("A mod with this name already exists:".tr() + " " + name)
+                return@addButton
+            }
+            try {
+                val isBase = baseRulesetCheckbox.isChecked
+                val baseRuleset = baseRulesetBox.selected.value
+                ModEditorData.createNewMod(name, authorField.text.trim(), isBase, baseRuleset)
+                println("[ModEditor] mod created at ${folder.path()}")
+                popup.close()
+                refreshList()
+                game.pushScreen(ModModulesScreen(folder))
+                println("[ModEditor] pushed ModModulesScreen")
+            } catch (e: Exception) {
+                println("[ModEditor] CREATE FAILED: ${e.stackTraceToString()}")
+                showErrorPopup("Creation failed:".tr() + " " + (e.message ?: ""))
+            }
+        }
+        popup.addCloseButton()
+        popup.open()
+        nameField.keyShortcuts.add(KeyCharAndCode.RETURN)
+    }
+
+    private fun showErrorPopup(message: String) {
+        val popup = Popup(this)
+        popup.add(message.toLabel(fontColor = com.badlogic.gdx.graphics.Color.RED)).pad(12f).row()
+        popup.addCloseButton()
+        popup.open()
+    }
+}

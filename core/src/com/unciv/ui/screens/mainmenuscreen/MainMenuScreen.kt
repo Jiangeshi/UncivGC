@@ -55,6 +55,7 @@ import com.unciv.ui.screens.mainmenuscreen.EasterEggRulesets.modifyForEasterEgg
 import com.unciv.ui.screens.mapeditorscreen.EditorMapHolder
 import com.unciv.ui.screens.mapeditorscreen.MapEditorScreen
 import com.unciv.ui.screens.modmanager.ModManagementScreen
+import com.unciv.ui.screens.modeditor.ModEditorScreen
 import com.unciv.ui.screens.multiplayerscreens.MultiplayerScreen
 import com.unciv.ui.screens.lobbyscreens.LobbyScreen
 import com.unciv.ui.screens.lobbyscreens.ModMirrorScreen
@@ -215,6 +216,10 @@ class MainMenuScreen: BaseScreen(), RecreateOnResize {
         val modsTable = getMenuButton("Mods", "OtherIcons/Mods", KeyboardBinding.ModManager)
             { game.pushScreen(ModManagementScreen()) }
         column2.add(modsTable).row()
+
+        val modEditorTable = getMenuButton("Mod Editor", "OtherIcons/MapEditor", KeyboardBinding.ModEditor)
+            { game.pushScreen(ModEditorScreen()) }
+        column2.add(modEditorTable).row()
 
         // Unciv 共创: 国内模组镜像 (模组下面)
         val modMirrorTable = getMenuButton("Mod Mirror (CN)", "OtherIcons/Mods", KeyboardBinding.ModManager)

@@ -724,12 +724,20 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         readyButton.enable()
         bar.add(readyButton).width(150f).fillX()
         bar.add(startLobbyButton).width(230f).fillX()
-        bar.add(chatButton).width(120f).fillX()
-        chatButton.onClick { openChatPopup() }
         rightSideGroup.addActor(bar)
         // 固定到最右边: 去掉 rightSideGroup 单元格的右内边距, 组内靠右
         rightSideGroup.align(com.badlogic.gdx.utils.Align.right)
         bottomTable.getCell(rightSideGroup)?.padRight(0f)
+
+        // ---- 聊天按钮: 放「退出房间」(closeButton, 左下角) 旁边, 不放开始游戏按钮那边 ----
+        // bottomTable 原布局: [closeButton][descriptionScroll(grow)][rightSideGroup] → 重建为:
+        // [closeButton][chatButton][descriptionScroll(grow)][rightSideGroup]
+        bottomTable.clearChildren()
+        bottomTable.add(closeButton).pad(10f)
+        bottomTable.add(chatButton).pad(10f)
+        bottomTable.add(descriptionScroll).grow()
+        bottomTable.add(rightSideGroup)
+        chatButton.onClick { openChatPopup() }
 
         // ---- 退出房间 (替换原版返回动作: 先清掉原版 Tap 激活, 避免双重弹屏) ----
         closeButton.setText("Leave room".tr())

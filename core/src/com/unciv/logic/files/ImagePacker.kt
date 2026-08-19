@@ -102,6 +102,18 @@ object ImagePacker {
         debug("Packing textures - %sms", texturePackingTime)
     }
 
+    /** 编辑器用：打包单个 mod 的图集（public 入口，桌面/安卓自动分流），返回生成的文件名列表描述 */
+    fun packModAtlases(modFolderPath: String): String {
+        packImagesPerMod(modFolderPath, modFolderPath)
+        val atlasList = mutableListOf<String>()
+        val baseDir = File(modFolderPath)
+        for ((file, packFileName) in imageFolders(baseDir)) {
+            atlasList += packFileName
+        }
+        return if (atlasList.isEmpty()) "No Images folder found"
+            else "Packed: " + atlasList.sorted().joinToString(", ")
+    }
+
     // Scan multiple image folders and generate an atlas for each - if outdated
     fun packImagesPerMod(input: String, output: String, defaultSettings: TexturePacker.Settings? = null) {
         val baseDir = File(input)

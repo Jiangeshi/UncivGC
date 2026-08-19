@@ -10,7 +10,11 @@ import yairm210.purity.annotations.InternalState
 import yairm210.purity.annotations.Pure
 import yairm210.purity.annotations.Readonly
 
-class RulesetError(val text: String, val errorSeverityToReport: RulesetErrorSeverity)
+class RulesetError(val text: String, val errorSeverityToReport: RulesetErrorSeverity) {
+    /** The object that triggered this error, if any (null = mod-level/global).
+     *  Used by the mod editor to filter errors by file type. */
+    var sourceObject: IHasUniques? = null
+}
 
 enum class RulesetErrorSeverity(val color: Color, val iconName: String) {
     /** Only appears in mod checker - used for possible misspellings, etc */
@@ -53,6 +57,7 @@ class RulesetErrorList(
         if (!removeLowerSeverityDuplicate(element)) return false
         if (Suppression.isErrorSuppressed(globalSuppressionFilters, sourceObject, sourceUnique, element))
             return false
+        element.sourceObject = sourceObject
         return super.add(element)
     }
 
