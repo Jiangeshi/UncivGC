@@ -35,30 +35,56 @@ class AndroidModEditorPlatform(private val activity: Activity) : ModEditorPlatfo
     }
 
     override fun chooseImageFile(): String? {
+        logToFile("chooseImageFile start")
         val latch = CountDownLatch(1)
         val uriRef = AtomicReference<Uri?>()
         pendingImageUri = { uri ->
+            logToFile("onActivityResult callback, uri=${uri}")
             uriRef.set(uri)
             latch.countDown()
         }
         try {
             activity.runOnUiThread {
                 try {
-                    val intent = Intent(Intent.ACTION_GET_CONTENT).apply { type = "image/*" }
+                    // 用 ACTION_OPEN_DOCUMENT (与原版存档选择器 SaverLoader 一致, 华为上验证过稳定;
+                    // ACTION_GET_CONTENT 在部分华为/HarmonyOS 机型返回时进程崩溃)
+                    val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                        type = "image/*"
+                        addCategory(Intent.CATEGORY_OPENABLE)
+                    }
                     activity.startActivityForResult(intent, REQUEST_CHOOSE_IMAGE)
+                    logToFile("startActivityForResult sent")
                 } catch (e: Throwable) {
+                    logToFile("startActivityForResult failed: $e")
                     pendingImageUri = null
                     uriRef.set(null)
                     latch.countDown()
                 }
             }
-            if (!latch.await(120, TimeUnit.SECONDS)) return null
+            if (!latch.await(120, TimeUnit.SECONDS)) {
+                logToFile("chooseImageFile timeout")
+                return null
+            }
         } catch (e: Throwable) {
+            logToFile("chooseImageFile await failed: $e")
             return null
         }
-        // IO 在后台线程 (调用方线程), 不在 UI 线程
-        val uri = uriRef.get() ?: return null
-        return copyUriToCache(uri)
+        val uri = uriRef.get() ?: run { logToFile("no uri selected"); return null }
+        logToFile("copyUriToCache start, uri=$uri")
+        val result = copyUriToCache(uri)
+        logToFile("copyUriToCache done: $result")
+        return result
+    }
+
+    /** 调试日志写到外部可见目录 (Android/data/包名/files/modeditor_debug.log), 闪退后可从文件管理器读取 */
+    private fun logToFile(msg: String) {
+        try {
+            val dir = activity.getExternalFilesDir(null) ?: return
+            val f = java.io.File(dir, "modeditor_debug.log")
+            val ts = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US).format(java.util.Date())
+            f.appendText("$ts $msg\n")
+        } catch (ignored: Throwable) {
+        }
     }
 
     /** content:// URI → 应用缓存目录里的真实文件, 返回绝对路径 (模组编辑器按路径读取/复制) */
