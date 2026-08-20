@@ -15,11 +15,15 @@ import com.unciv.logic.trade.Trade
 import com.unciv.logic.trade.TradeOffer
 import com.unciv.logic.trade.TradeOfferType
 import com.unciv.logic.trade.TradeRequest
+import com.unciv.models.translations.fillPlaceholders
 import com.unciv.models.translations.tr
+import com.unciv.ui.components.extensions.darken
+import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.components.input.onClick
 import com.unciv.ui.popups.ToastPopup
 import com.unciv.ui.screens.basescreen.BaseScreen
 import com.unciv.utils.Concurrency
+import com.unciv.utils.launchOnGLThread
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.websocket.WebSockets
@@ -91,7 +95,13 @@ object FrameSync {
     /** 暂停按钮 (由 WorldScreenTopBar 创建并注册 — 生命周期随顶栏, 避免重载竞态) */
     @Volatile private var fsPauseButton: TextButton? = null
     /** 暂停全局弹窗 (防止重复弹) */
-    private var pausePopup: com.unciv.ui.popups.Popup? = null
+    private var pauseBar: Table? = null  // 非模态暂停提示条 (2026-08-21: 不再用模态 Popup, 顶部按钮保持可点)
+    /** 暂停输入拦截: 顶栏以下全屏挡点击 (只有顶栏按钮 + 提示条 Resume 可点) — 2026-08-21 用户要求 */
+    private var pauseBlocker: com.badlogic.gdx.scenes.scene2d.Actor? = null
+    private var settlingHint: com.badlogic.gdx.scenes.scene2d.ui.Label? = null  // 回合结算提示 (2 秒)
+    @Volatile private var settlingHintUntil = 0L
+    @Volatile private var inputLockedUntil = 0L  // 回合结算强制锁定: 新回合开始后 2 秒内禁止操作 (2026-08-21 用户要求)
+    @Volatile private var serverSettling = false  // 服务器结算中 (turnStatus settling): 全程锁定, 不受 2 秒限制
     /** 暂停发起者昵称 (弹窗被盖住后返回世界屏时补弹用) */
     @Volatile private var pauseNickname: String? = null
     private var lastErrorShown = ""
@@ -172,6 +182,7 @@ object FrameSync {
 
     private fun start(worldScreen: WorldScreen) {
         if (running) return
+        FsNotifier.reset()  // 新对局: 通知去重按局重置 (2026-08-21)
         val gameInfo = worldScreen.gameInfo ?: return
         running = true
         connected = false
@@ -241,8 +252,7 @@ object FrameSync {
         pauseNickname = null
         Concurrency.runOnGLThread {
             // fsPauseButton 不置 null — 重载时新顶栏会重新注册覆盖; 置 null 会和注册产生竞态 (按钮文本不更新)
-            pausePopup?.close()
-            pausePopup = null
+            hidePauseBar()
         }
         worldScreenRef = null
     }
@@ -296,6 +306,14 @@ object FrameSync {
     )
 
     fun sendOp(op: String, data: Map<String, Any?>) {
+        // 暂停期间: 游戏内操作全部静默无效 (不报错; 顶栏按钮仍可点) — 2026-08-21 用户要求
+        if (lastPaused) {
+            return
+        }
+        // 回合结算强制锁定: 结算中 (serverSettling) 全程锁定; 结算后至少 2 秒 — 提示条已在屏幕上 (2026-08-21)
+        if (serverSettling || System.currentTimeMillis() < inputLockedUntil) {
+            return
+        }
         // 完成回合后 (myTurnFinished) 锁定城市配置/科技/政策/信仰类 op —
         // 结算已按旧配置入账, 再改 → 服务器状态变但本回合产出已入账 → 显示与入账不符;
         // 单位操作 (move/attack 等) 保留 — 完成回合后仍可操作闲置单位 (NextUnit 例外)
@@ -555,6 +573,8 @@ object FrameSync {
         if (now - lastDisconnectNoticeAt < 5000) return
         lastDisconnectNoticeAt = now
         showToast("Connection lost - reconnecting...".tr())
+        // 手机通知栏: 后台时告知掉线 (对局在继续, 回合倒计时不等人) — 同局只发一次
+        FsNotifier.notify("connLost", "Connection lost".tr(), "Connection lost - reconnecting...".tr())
     }
 
     private fun sendJson(json: String) {
@@ -717,6 +737,7 @@ object FrameSync {
             "closed" -> {
                 val reason = msg["reason"]?.jsonPrimitive?.contentOrNull ?: ""
                 // 对局已死 (模拟器退出): 停止重连并自动回大厅 — 继续重连只会无限失败
+                FsNotifier.notify("closed", "Game closed".tr(), "Real-time game closed: [$reason]".tr())
                 handleFatalError("Real-time game closed: [$reason]".tr())
             }
             "error" -> {
@@ -724,6 +745,7 @@ object FrameSync {
                 // 致命错误 (game not running / gameId required): 对局在服务器已不存在,
                 // 停止重连并自动回大厅; 其余 error 仅提示
                 if (reason == "game not running" || reason == "gameId required") {
+                    FsNotifier.notify("error", "Game error".tr(), "Real-time error: [$reason]".tr())
                     handleFatalError("Real-time error: [$reason]".tr())
                 } else {
                     showToast("Real-time error: [$reason]".tr())
@@ -755,6 +777,15 @@ object FrameSync {
     private fun handleTurnStatus(msg: JsonObject) {
         val tsTurn = msg["turn"]?.jsonPrimitive?.intOrNull ?: return
         if (tsTurn < lastTurn) return  // 过期广播 (网络延迟/乱序) 忽略
+        // 结算状态: settling=true → 全程锁定 (提示条常驻); 结束 → 至少再锁 2 秒 (2026-08-21)
+        val settling = msg["settling"]?.jsonPrimitive?.contentOrNull == "true"
+        serverSettling = settling
+        if (settling) {
+            showSettlingHint()  // 显示提示条 + 2 秒保底锁定 (serverSettling 控制实际锁定)
+        } else {
+            inputLockedUntil = System.currentTimeMillis() + 2000  // 结算结束: 2 秒下限
+            if (settlingHint != null) settlingHintUntil = System.currentTimeMillis() + 2000  // 提示条顺延
+        }
         val deadlineSec = msg["deadline"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull() ?: 0.0
         // deadline=0 的广播不覆盖已有倒计时 (连接补推竞态)
         if (deadlineSec > 0 || turnDeadline == 0L) {
@@ -765,6 +796,11 @@ object FrameSync {
         if (tsTurn > lastTurn) {
             // 新回合: 完成状态重置 (按钮恢复“完成回合”)
             myTurnFinished = false
+            // 手机通知栏: 后台时告知新回合 (每回合一次; key 带回合号)
+            FsNotifier.notify(
+                "turn-$tsTurn",
+                "New turn".tr(),
+                "Turn [turnNumber] has started".tr().fillPlaceholders(tsTurn.toString()))
         } else if (playerId in turnReadyPlayers) {
             myTurnFinished = true
         }
@@ -787,7 +823,12 @@ object FrameSync {
 
     /** 暂停/继续 (顶栏按钮点击): 发命令 + 本地立即切换文本 (服务器广播 lastPaused 会确认/纠正) */
     fun togglePause() {
-        if (lastPaused) sendResume() else sendPause()
+        if (lastPaused) {
+            sendResume()
+            hidePauseBar()
+        } else {
+            sendPause()
+        }
         lastPaused = !lastPaused
         // 直接更新按钮文本 — 不依赖 statusLabel (可能为空导致跳过)
         Concurrency.runOnGLThread {
@@ -802,54 +843,128 @@ object FrameSync {
     private fun handlePauseNotice(msg: JsonObject) {
         val nickname = msg["nickname"]?.jsonPrimitive?.contentOrNull ?: return
         pauseNickname = nickname
+        FsNotifier.notify("pause", "Game paused".tr(), "[$nickname] has paused the game".tr())
         Concurrency.runOnGLThread {
             showPausePopup(nickname)
         }
     }
 
-    /** 暂停弹窗创建 (防重复; 子屏期间收到暂停 → 弹窗挂在世界屏 stage 上不可见, 返回世界屏时 ensurePausePopup 补弹) */
+    /** 暂停提示条 (非模态): 顶部按钮 (暂停/概览/菜单) 保持可点 — 2026-08-21 用户要求 */
     private fun showPausePopup(nickname: String) {
-        if (pausePopup != null) return  // 防重复弹
+        if (pauseBar != null) return  // 防重复
         val worldScreen = currentWorldScreenOrNull() ?: return
         val gameInfo = worldScreen.gameInfo ?: return
         if (gameInfo.gameId != gameId) return
         lastPaused = true
         updateStatusLabel()
         try {
-            val popup = com.unciv.ui.popups.Popup(worldScreen)
-            popup.addGoodSizedLabel("[$nickname] has paused the game".tr()).row()
-            popup.addButton("Resume".tr()) {
+            // 输入拦截: 顶栏以下的整个区域挡掉所有点击/滚轮 (只有顶栏按钮能点)
+            // 纯 Actor + touchable.enabled 即可拦截 — stage hit() 只命中顶层 actor, 下面的地图/按钮收不到事件
+            val blocker = com.badlogic.gdx.scenes.scene2d.Actor()
+            blocker.touchable = com.badlogic.gdx.scenes.scene2d.Touchable.enabled
+            val topBarHeight = worldScreen.topBar.height
+            val blockerHeight = (worldScreen.stage.height - if (topBarHeight > 0f) topBarHeight else 50f).coerceAtLeast(0f)
+            blocker.setBounds(0f, 0f, worldScreen.stage.width, blockerHeight)
+            worldScreen.stage.addActor(blocker)
+            pauseBlocker = blocker
+
+            val bar = Table()
+            // 单层圆角背景 (模组编辑器同款样式, 不再矩形套内层) — 2026-08-21
+            bar.background = com.unciv.ui.screens.basescreen.BaseScreen.skinStrings.getUiBackground(
+                "PauseBar",
+                com.unciv.ui.screens.basescreen.BaseScreen.skinStrings.roundedEdgeRectangleShape,
+                com.unciv.ui.screens.basescreen.BaseScreen.skinStrings.skinConfig.baseColor.darken(0.5f))
+            bar.add("[$nickname] has paused the game".tr().toLabel(fontSize = 26)).pad(18f, 24f, 18f, 14f)
+            val resumeBtn = TextButton("Resume".tr(), com.unciv.ui.screens.basescreen.BaseScreen.skin)
+            resumeBtn.onClick {
                 sendResume()
-                pausePopup?.close()
-                pausePopup = null
-            }.row()
-            popup.open()
-            pausePopup = popup
+                hidePauseBar()
+            }
+            bar.add(resumeBtn).pad(12f, 6f, 12f, 18f)
+            bar.pack()
+            // 居中放大
+            bar.setPosition((worldScreen.stage.width - bar.width) / 2f, (worldScreen.stage.height - bar.height) / 2f)
+            worldScreen.stage.addActor(bar)
+            pauseBar = bar
         } catch (e: Exception) {
         }
     }
 
-    /** 从子屏 (城市/科技等) 返回世界屏时调用: 若仍处于暂停且弹窗被盖住, 重新弹出 (用户方案: 退出界面后刷新出暂停弹窗) */
+    private fun hidePauseBar() {
+        try {
+            pauseBar?.remove()
+        } catch (ignored: Exception) {
+        }
+        pauseBar = null
+        try {
+            pauseBlocker?.remove()
+        } catch (ignored: Exception) {
+        }
+        pauseBlocker = null
+    }
+
+    /** 回合结算提示 + 强制锁定: 新回合开始后 2 秒内禁止操作 (给玩家准备时间), 屏幕中央提示「回合正在结算…」 */
+    private fun showSettlingHint() {
+        val worldScreen = currentWorldScreenOrNull() ?: return
+        val gameInfo = worldScreen.gameInfo ?: return
+        if (gameInfo.gameId != gameId) return
+        inputLockedUntil = System.currentTimeMillis() + 2000  // 强制锁定: 先于 UI 提示设置
+        Concurrency.runOnGLThread {
+            try {
+                if (settlingHint != null) {
+                    // 已有提示 (快速连续回合) → 只顺延
+                    settlingHintUntil = System.currentTimeMillis() + 2000
+                    return@runOnGLThread
+                }
+                val hint = "Settling turn...".tr().toLabel(fontSize = 22)
+                hint.setColor(com.badlogic.gdx.graphics.Color.WHITE)
+                val table = Table()
+                table.background = com.unciv.ui.screens.basescreen.BaseScreen.skinStrings.getUiBackground(
+                    "SettlingHint",
+                    com.unciv.ui.screens.basescreen.BaseScreen.skinStrings.roundedEdgeRectangleShape,
+                    com.badlogic.gdx.graphics.Color(0f, 0f, 0f, 0.6f))
+                table.add(hint).pad(12f, 20f, 12f, 20f)
+                table.pack()
+                table.setPosition((worldScreen.stage.width - table.width) / 2f, worldScreen.stage.height * 0.42f)
+                worldScreen.stage.addActor(table)
+                settlingHint = hint
+                settlingHintUntil = System.currentTimeMillis() + 2000
+                // 后台线程等 2 秒 → GL 线程移除 (期间新回合会顺延 until)
+                Concurrency.run("SettlingHintTimer") {
+                    while (System.currentTimeMillis() < settlingHintUntil) Thread.sleep(100)
+                    launchOnGLThread {
+                        if (settlingHintUntil <= System.currentTimeMillis()) {
+                            try {
+                                settlingHint?.remove()
+                            } catch (ignored: Exception) {
+                            }
+                            settlingHint = null
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+            }
+        }
+    }
+
+    /** 从子屏 (城市/科技等) 返回世界屏时调用: 非模态条挂在 stage 上自动可见, 无需补弹; 保留防丢兜底 */
     fun ensurePausePopup() {
         val nick = pauseNickname ?: return
-        if (pausePopup != null) return
+        if (pauseBar != null) return
         if (!lastPaused) return
         Concurrency.runOnGLThread {
             showPausePopup(nick)
         }
     }
 
-    /** 有人恢复: 关闭暂停弹窗 + 倒计时恢复 */
+    /** 有人恢复: 关闭暂停提示条 + 倒计时恢复 */
     private fun handleResumeNotice(msg: JsonObject) {
+        FsNotifier.notify("resume", "Game resumed".tr(), "The game has resumed".tr())
         Concurrency.runOnGLThread {
             lastPaused = false
             pauseNickname = null
             updateStatusLabel()
-            try {
-                pausePopup?.close()
-            } catch (ignored: Exception) {
-            }
-            pausePopup = null
+            hidePauseBar()
         }
     }
 
@@ -1248,6 +1363,8 @@ object FrameSync {
             // 新回合: “已查看”闲置单位标记重置 — 上回合点过“下一个单位”的单位本回合重新参与循环
             // (不重置 → reapplyLocalDueSeen 把本回合 due=true 的单位设回 false → 闲置循环漏单位)
             localDueSeen.clear()
+            // 回合结算提示 (帧同步结算在服务器瞬时完成, 本地无动画缓冲 → 至少停留 2 秒) — 2026-08-21 用户要求
+            showSettlingHint()
         }
         lastTurn = newTurn ?: lastTurn
         lastPaused = state["paused"]?.jsonPrimitive?.contentOrNull == "true"
@@ -1280,8 +1397,9 @@ object FrameSync {
             } catch (e: Exception) {
             }
         }
-        // 昵称映射同步 (playerId -> nickname): 服务器 state 附加; 概览/政治学显示用
-        state["nicknames"]?.jsonObject?.let { nk ->
+        // 昵称映射同步 (playerId -> nickname): 服务器在 state 消息顶层附加 (obj["nicknames"]), 概览/政治学显示用
+        // 注意: 在 msg 顶层找, 不在 state 子对象里 — 2026-08-20 修复 (此前全房间昵称显示 "-")
+        msg["nicknames"]?.jsonObject?.let { nk ->
             playerNicknames.clear()
             for ((k, v) in nk) playerNicknames[k] = v.jsonPrimitive.contentOrNull ?: k
         }

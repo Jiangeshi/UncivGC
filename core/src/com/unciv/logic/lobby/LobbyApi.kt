@@ -23,6 +23,11 @@ import io.ktor.utils.io.readAvailable
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.longOrNull
 
 @Serializable
 data class ModMirrorEntry(val name: String = "", val size: Long = 0, val updatedAt: Double = 0.0, val md5: String = "", val version: String = "")
@@ -213,6 +218,75 @@ object LobbyApi {
     /** 模组镜像清单 */
     suspend fun modMirrorManifest(): List<ModMirrorEntry> =
         parse(client.get("$SERVER_URL/api/mods"))
+
+    @Serializable
+    data class PendingModStatus(val status: String = "pending", val reason: String = "", val uploadedAt: Long = 0)
+
+    /** 已上传模组的审核状态 (modName -> status: pending/approved/rejected + reason) */
+    suspend fun pendingModStatus(): Map<String, PendingModStatus> {
+        val resp = client.get("$SERVER_URL/api/mods/pending")
+        if (!resp.status.isSuccess()) return emptyMap()
+        val body = resp.body<JsonObject>()
+        val mods = body["mods"]?.jsonObject ?: return emptyMap()
+        return mods.mapValues { (_, v) ->
+            val o = v.jsonObject
+            PendingModStatus(
+                status = o["status"]?.jsonPrimitive?.contentOrNull ?: "pending",
+                reason = o["reason"]?.jsonPrimitive?.contentOrNull ?: "",
+                uploadedAt = o["uploadedAt"]?.jsonPrimitive?.longOrNull ?: 0,
+            )
+        }
+    }
+
+    /** 上传模组 zip 到镜像 (流式, 带进度回调) → 返回服务器响应 JSON 文本; 失败抛异常 */
+    fun uploadModZip(modName: String, zipPath: String, onProgress: (Long, Long) -> Unit): String =
+        uploadModZipWithToken(modName, "", zipPath, onProgress)
+
+    /** 上传模组 zip (带上传令牌: 首次设置, 同名更新需相同令牌) */
+    fun uploadModZipWithToken(modName: String, token: String, zipPath: String, onProgress: (Long, Long) -> Unit): String {
+        val file = java.io.File(zipPath)
+        val total = file.length()
+        val conn = java.net.URL("$SERVER_URL/api/mods/upload").openConnection() as java.net.HttpURLConnection
+        try {
+            conn.requestMethod = "POST"
+            conn.connectTimeout = 15000
+            conn.readTimeout = 300000
+            conn.setRequestProperty("X-Lobby-Token", LOBBY_TOKEN)
+            conn.setRequestProperty("X-Mod-Name", java.net.URLEncoder.encode(modName, "UTF-8"))
+            if (token.isNotEmpty()) conn.setRequestProperty("X-Mod-Token", token)
+            conn.setRequestProperty("Content-Type", "application/octet-stream")
+            conn.setRequestProperty("Content-Length", total.toString())
+            conn.doOutput = true
+            conn.outputStream.use { out ->
+                file.inputStream().use { ins ->
+                    val buf = ByteArray(64 * 1024)
+                    var sent = 0L
+                    while (true) {
+                        val n = ins.read(buf)
+                        if (n < 0) break
+                        out.write(buf, 0, n)
+                        sent += n
+                        onProgress(sent, total)
+                    }
+                }
+            }
+            val code = conn.responseCode
+            val resp = (if (code in 200..299) conn.inputStream else conn.errorStream)
+                ?.bufferedReader()?.readText() ?: ""
+            if (code !in 200..299) {
+                val err = try {
+                    kotlinx.serialization.json.Json.parseToJsonElement(resp).jsonObject["error"]
+                        ?.jsonPrimitive?.contentOrNull
+                } catch (e: Exception) {
+                    null
+                }
+                throw RuntimeException(err ?: "HTTP $code")
+            }
+            return resp
+        } finally {
+            conn.disconnect()
+        }
+    }
 
     /** 上报自己缺失的模组 (服务器开始游戏前的统一性检查) */
     suspend fun reportMods(roomId: String, nickname: String, playerId: String? = null, missingMods: List<String>): ApiResult =

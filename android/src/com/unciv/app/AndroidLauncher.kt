@@ -57,6 +57,12 @@ open class AndroidLauncher : AndroidApplication() {
         // Create notification channels for Multiplayer notificator
         MultiplayerTurnCheckWorker.createNotificationChannels(applicationContext)
 
+        // 帧同步系统通知桥 (2026-08-21 用户要求): 后台时对局事件 → 通知栏; 前台不发 (FsNotifier 内部判断)
+        FsNotificationHelper.createChannel(applicationContext)
+        com.unciv.ui.screens.worldscreen.FsNotifier.impl = { title, text ->
+            FsNotificationHelper.show(applicationContext, title, text)
+        }
+
         game = AndroidGame(this)
         initialize(game, config)
 
@@ -88,6 +94,7 @@ open class AndroidLauncher : AndroidApplication() {
     }
 
     override fun onPause() {
+        com.unciv.ui.screens.worldscreen.FsNotifier.appInBackground = true  // 帧同步通知: 仅后台发
         val game = this.game!!
         if (game.isInitializedProxy()
                 && game.gameInfo != null
@@ -107,6 +114,8 @@ open class AndroidLauncher : AndroidApplication() {
     }
 
     override fun onResume() {
+        com.unciv.ui.screens.worldscreen.FsNotifier.appInBackground = false  // 回到前台: 不再发通知
+        FsNotificationHelper.cancel(applicationContext)  // 清掉后台期间积攒的帧同步通知
         try {
             WorkManager.getInstance(applicationContext).cancelAllWorkByTag(MultiplayerTurnCheckWorker.WORK_TAG)
             with(NotificationManagerCompat.from(this)) {

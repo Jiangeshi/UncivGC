@@ -93,7 +93,7 @@ class UnitPromotionsEditorScreen(private val modFolder: FileHandle) : BaseScreen
         leftPanel.add(separatorLine()).fillX().height(2f).pad(4f, 8f, 4f, 8f).row()
         val leftListScroll = AutoScrollPane(listTable).apply {
             setOverscroll(false, false)
-            setScrollingDisabled(true, false)
+            setScrollingDisabled(false, false)
             fadeScrollBars = false
         }
         leftPanel.add(leftListScroll).expand().fill().row()

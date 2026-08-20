@@ -26,6 +26,7 @@ import com.unciv.models.metadata.GameSetupInfo
 import com.unciv.models.ruleset.Event
 import com.unciv.models.ruleset.tile.ResourceType
 import com.unciv.models.ruleset.unique.UniqueType
+import com.unciv.models.translations.tr
 import com.unciv.ui.components.extensions.centerX
 import com.unciv.ui.components.extensions.darken
 import com.unciv.ui.components.input.KeyShortcutDispatcherVeto
@@ -479,6 +480,11 @@ class WorldScreen(
                     if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo)) {
                         if (!com.unciv.ui.screens.worldscreen.FrameSync.victoryShownForFsGame) {
                             com.unciv.ui.screens.worldscreen.FrameSync.victoryShownForFsGame = true
+                            // 手机通知栏: 后台时告知对局结束 (2026-08-21)
+                            com.unciv.ui.screens.worldscreen.FsNotifier.notify(
+                                "gameOver",
+                                "Game over".tr(),
+                                if (viewingCiv.isDefeated()) "You have been defeated".tr() else "You have won".tr())
                             game.pushScreen(VictoryScreen(this))
                         }
                     } else {

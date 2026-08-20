@@ -477,9 +477,25 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                     if (!leavingGame) {
                         val gone = e.message?.contains("404") == true || e.message?.contains("Room not found") == true  // 匹配服务器 404 协议消息 (服务器已英文化)
                         if (gone) {
+                            val reason = e.message?.substringAfter("Room not found: ", "")?.takeIf { it.isNotBlank() }
+                            // 手机通知栏: 后台时告知房间解散 (2026-08-21)
+                            com.unciv.ui.screens.worldscreen.FsNotifier.notify(
+                                "disband",
+                                "The room has been disbanded".tr(),
+                                ("The room has been disbanded" + if (reason != null) " ($reason)" else "").tr())
                             launchOnGLThread {
+                                // UncivGC: 对局中房间被解散 (只剩1人/管理员/胜利清理等) → 提示原因再回大厅 (2026-08-21)
+                                // 坑: Toast/弹窗挂旧世界屏会随 replaceCurrentScreen 的 dispose() 瞬间销毁, 永远看不到
+                                // → 必须挂到新的大厅屏上 (构造后先加弹窗再切屏)
+                                // 2026-08-21 用户要求: 自动消失的 Toast 改弹窗, 玩家点确定才消失
                                 restoreMultiplayerServer()
-                                UncivGame.Current.replaceCurrentScreen(LobbyScreen())
+                                val lobbyScreen = LobbyScreen()
+                                com.unciv.ui.popups.ConfirmPopup(
+                                    lobbyScreen,
+                                    ("The room has been disbanded" + if (reason != null) " ($reason)" else "").tr(),
+                                    "OK".tr()
+                                ) { }.open(force = true)
+                                UncivGame.Current.replaceCurrentScreen(lobbyScreen)
                             }
                             return@run
                         }
@@ -929,13 +945,26 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                     if (e.message?.contains("404") == true || e.message?.contains("Room not found") == true) {  // 匹配服务器 404 协议消息 (服务器已英文化)
                         // UncivGC: 主动退出时房间解散是预期 (最后一人退出服务器会解散) — 不弹提示也不重复弹屏
                         if (!voluntarilyLeft) {
+                            val reason = e.message?.substringAfter("Room not found: ", "")?.takeIf { it.isNotBlank() }
+                            // 手机通知栏: 后台时告知房间解散 (2026-08-21)
+                            com.unciv.ui.screens.worldscreen.FsNotifier.notify(
+                                "disband",
+                                "The room has been disbanded".tr(),
+                                ("The room has been disbanded" + if (reason != null) " ($reason)" else "").tr())
                             launchOnGLThread {
-                                ToastPopup("The room has been disbanded".tr(), this@LobbyRoomScreen)
+                                // Toast 必须挂到切屏后的目标屏 — popScreen/replaceCurrentScreen 都会 dispose 旧屏 (2026-08-21)
+                                // 2026-08-21 用户要求: 自动消失的 Toast 改弹窗, 玩家点确定才消失
+                                val msg = ("The room has been disbanded" + if (reason != null) " ($reason)" else "").tr()
                                 // 栈深 1 (异常路径 replace 进房间) → popScreen 会弹"退出游戏"确认 → 直接回大厅
-                                if (game.getScreensOfType(com.unciv.ui.screens.mainmenuscreen.MainMenuScreen::class).any())
-                                    game.popScreen()
-                                else
-                                    game.replaceCurrentScreen(LobbyScreen())
+                                if (game.getScreensOfType(com.unciv.ui.screens.mainmenuscreen.MainMenuScreen::class).any()) {
+                                    val target = game.popScreen()
+                                    if (target != null)
+                                        com.unciv.ui.popups.ConfirmPopup(target, msg, "OK".tr()) { }.open(force = true)
+                                } else {
+                                    val lobby = LobbyScreen()
+                                    com.unciv.ui.popups.ConfirmPopup(lobby, msg, "OK".tr()) { }.open(force = true)
+                                    game.replaceCurrentScreen(lobby)
+                                }
                             }
                         }
                         break

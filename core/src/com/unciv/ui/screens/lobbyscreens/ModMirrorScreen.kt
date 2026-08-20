@@ -105,6 +105,9 @@ class ModMirrorScreen : PickerScreen() {
             row.add(button).width(90f)
             modRows.add(row).fillX().row()
         }
+        // 版权声明: 镜像内模组版权归原作者所有, 镜像仅提供国内加速分发 (2026-08-20)
+        modRows.add("Mods on the mirror belong to their original authors; this mirror only provides faster downloads in China".tr()
+            .toLabel(fontColor = com.badlogic.gdx.graphics.Color.GRAY, fontSize = 12)).padTop(10f).row()
     }
 
     /** 显示名: 连字符替换为空格 (Leader-Mission-2-Rising-Power → Leader Mission 2 Rising Power) */

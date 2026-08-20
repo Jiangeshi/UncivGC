@@ -80,7 +80,7 @@ class PoliciesEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
         leftPanel.add(buttonRow).fillX().row()
         val listScroll = AutoScrollPane(listTable).apply {
             setOverscroll(false, false)
-            setScrollingDisabled(true, false)
+            setScrollingDisabled(false, false)
         }
         leftPanel.add(listScroll).expand().grow().row()
 

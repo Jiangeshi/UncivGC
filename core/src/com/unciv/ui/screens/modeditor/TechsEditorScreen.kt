@@ -131,7 +131,7 @@ class TechsEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
         leftPanel.add(separatorLine()).fillX().height(2f).pad(4f, 8f, 4f, 8f).row()
         val leftScroll = AutoScrollPane(leftTable).apply {
             setOverscroll(false, false)
-            setScrollingDisabled(true, false)
+            setScrollingDisabled(false, false)
             fadeScrollBars = false
         }
         leftPanel.add(leftScroll).expand().grow().row()
@@ -180,7 +180,8 @@ class TechsEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
                 else BaseScreen.skinStrings.skinConfig.baseColor)
             header.add(((if (expanded) "▾ " else "▸ ") + "Column".tr() + " " + group.columnNumber)
                 .toLabel(fontSize = 20)).left().expandX().pad(6f)
-            header.add(group.era.tr().ifBlank { "(no era)".tr() }.toLabel(
+            header.add(listNameLabel(group.era.tr().ifBlank { "(no era)".tr() },
+                maxWidth = max(60f, stage.width * 0.25f - 100f),
                 fontSize = 16, fontColor = Color(1f, 1f, 1f, 0.7f))).right().pad(6f)
             header.add((group.techs.size.toString() + " " + "Techs".tr()).toLabel(
                 fontSize = 14, fontColor = Color(1f, 1f, 1f, 0.6f))).right().pad(6f)

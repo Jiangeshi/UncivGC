@@ -126,7 +126,7 @@ class NationsEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
         leftPanel.add(separatorLine()).fillX().height(2f).pad(4f, 8f, 4f, 8f).row()
         val leftListScroll = AutoScrollPane(listTable).apply {
             setOverscroll(false, false)
-            setScrollingDisabled(true, false)
+            setScrollingDisabled(false, false)
             fadeScrollBars = false
         }
         leftPanel.add(leftListScroll).expand().fill().row()
@@ -175,7 +175,7 @@ class NationsEditorScreen(private val modFolder: FileHandle) : BaseScreen() {
             }
             colorBar.setSize(4f, 1f)
             header.add(colorBar).width(4f).growY().pad(0f)
-            header.add(((if (isExpanded) "▾ " else "▸ ") + group.label).toLabel(fontSize = 20, fontColor = group.color))
+            header.add(listNameLabel((if (isExpanded) "▾ " else "▸ ") + group.label, maxWidth = max(80f, stage.width * 0.25f - 140f), fontSize = 20, fontColor = group.color))
                 .left().expandX().pad(10f, 10f, 10f, 8f)
             header.add(groupItems.size.toString().toLabel(fontSize = 16, fontColor = Color(1f, 1f, 1f, 0.35f)))
                 .right().pad(10f, 8f, 10f, 8f)

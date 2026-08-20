@@ -16,9 +16,9 @@ class GameParameters : IsPartOfGameInfoSerialization { // Default values are the
         repeat(3) { add(Player()) }
     }
     var randomNumberOfCityStates = false
-    var minNumberOfCityStates = 6
+    var minNumberOfCityStates = 0
     var maxNumberOfCityStates = 6
-    var numberOfCityStates = 6
+    var numberOfCityStates = 0  // UncivGC: 默认 0 城邦 (用户 2026-08-21 要求; 原版 6)
 
     var enableRandomNationsPool = false
     var randomNationsPool = arrayListOf<String>()
