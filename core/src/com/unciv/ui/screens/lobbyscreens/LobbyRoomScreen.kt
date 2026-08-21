@@ -556,6 +556,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                 val list = (arr as? JsonArray)?.mapNotNull { it.jsonPrimitive.floatOrNull }
                 if (list != null && list.size == 5) g.fsTurnTimes = list.toTypedArray()
             }
+            g.fsSettleLockSeconds = gp.i("fsSettleLockSeconds", g.fsSettleLockSeconds)
             g.noStartBias = gp.b("noStartBias", g.noStartBias)
             g.noBarbarians = gp.b("noBarbarians", g.noBarbarians)
             g.ragingBarbarians = gp.b("ragingBarbarians", g.ragingBarbarians)
@@ -1128,6 +1129,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             put("espionageEnabled", gp.espionageEnabled)
             put("simultaneousTurns", gp.simultaneousTurns)
             gp.fsTurnTimes?.let { put("fsTurnTimes", JsonArray(it.map { JsonPrimitive(it) })) }
+            put("fsSettleLockSeconds", gp.fsSettleLockSeconds)
             put("noStartBias", gp.noStartBias)
             put("noBarbarians", gp.noBarbarians)
             put("ragingBarbarians", gp.ragingBarbarians)

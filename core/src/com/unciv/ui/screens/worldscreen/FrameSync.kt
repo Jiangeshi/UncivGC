@@ -2414,6 +2414,64 @@ object FrameSync {
                         refreshOpenDiplomacyScreen()
                     }
                 }
+                // 活跃贸易同步 (服务器权威: 成交后立即出现在双方贸易列表, 不等回合重载 — 2026-08-22 用户反馈"本回合的贸易下回合才生效")
+                obj["trades"]?.jsonArray?.let { tradesArr ->
+                    try {
+                        val serverTrades = HashMap<String, List<Trade>>()
+                        for (t in tradesArr) {
+                            val a = t.jsonArray ?: continue
+                            if (a.size < 3) continue
+                            val otherId = a[0].jsonPrimitive.contentOrNull ?: continue
+                            val trade = Trade()
+                            for (sideIdx in 1..2) {
+                                val sideList = if (sideIdx == 1) trade.ourOffers else trade.theirOffers
+                                for (offerElem in a[sideIdx].jsonArray ?: continue) {
+                                    val oa = offerElem.jsonArray ?: continue
+                                    if (oa.size < 4) continue
+                                    val type = try {
+                                        TradeOfferType.valueOf(oa[0].jsonPrimitive.contentOrNull ?: continue)
+                                    } catch (e: Exception) {
+                                        continue
+                                    }
+                                    val name = oa[1].jsonPrimitive.contentOrNull ?: ""
+                                    val amount = oa[2].jsonPrimitive.intOrNull ?: 1
+                                    val duration = oa[3].jsonPrimitive.intOrNull ?: -1
+                                    sideList.add(TradeOffer(name, type, amount, duration))
+                                }
+                            }
+                            serverTrades[otherId] = (serverTrades[otherId] ?: emptyList()) + trade
+                        }
+                        fun sameOffer(l: TradeOffer, s: TradeOffer) =
+                            l.type == s.type && l.name == s.name && l.amount == s.amount && l.duration == s.duration
+                        fun sameTrade(l: Trade, s: Trade) =
+                            l.ourOffers.size == s.ourOffers.size && l.theirOffers.size == s.theirOffers.size
+                                && l.ourOffers.zip(s.ourOffers).all { (lo, so) -> sameOffer(lo, so) }
+                                && l.theirOffers.zip(s.theirOffers).all { (lo, so) -> sameOffer(lo, so) }
+                        var tradesChanged = false
+                        for ((otherId, serverList) in serverTrades) {
+                            val other = gameInfo.civilizations.firstOrNull { it.civID == otherId } ?: continue
+                            val dm = civ.getDiplomacyManager(other) ?: continue
+                            val local = dm.trades
+                            val same = local.size == serverList.size && local.zip(serverList).all { (l, s) -> sameTrade(l, s) }
+                            if (!same) {
+                                dm.trades.clear()
+                                dm.trades.addAll(serverList)
+                                tradesChanged = true
+                            }
+                        }
+                        // 本地有但服务器没有的贸易 (被宣战/到期清除等) → 移除
+                        for (other in gameInfo.civilizations) {
+                            if (other.civID == civ.civID) continue
+                            val dm = civ.getDiplomacyManager(other) ?: continue
+                            if (dm.trades.isNotEmpty() && !serverTrades.containsKey(other.civID)) {
+                                dm.trades.clear()
+                                tradesChanged = true
+                            }
+                        }
+                        if (tradesChanged) changed = true
+                    } catch (e: Exception) {
+                    }
+                }
                 // 金币 (自己文明的, 服务器权威)
                 if (civ.civID == viewingCivId) {
                     obj["gold"]?.jsonPrimitive?.intOrNull?.let {
