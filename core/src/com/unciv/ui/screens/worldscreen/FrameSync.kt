@@ -885,12 +885,15 @@ object FrameSync {
                 com.unciv.ui.screens.basescreen.BaseScreen.skinStrings.roundedEdgeRectangleShape,
                 com.unciv.ui.screens.basescreen.BaseScreen.skinStrings.skinConfig.baseColor.darken(0.5f))
             bar.add("[$nickname] has paused the game".tr().toLabel(fontSize = 26)).pad(18f, 24f, 18f, 14f)
-            val resumeBtn = TextButton("Resume".tr(), com.unciv.ui.screens.basescreen.BaseScreen.skin)
-            resumeBtn.onClick {
-                sendResume()
-                hidePauseBar()
+            // 观战者: 只显示提示, 不显示 Resume 按钮 (观战者无权恢复游戏, 2026-08-21)
+            if (!worldScreen.viewingCiv.isSpectator()) {
+                val resumeBtn = TextButton("Resume".tr(), com.unciv.ui.screens.basescreen.BaseScreen.skin)
+                resumeBtn.onClick {
+                    sendResume()
+                    hidePauseBar()
+                }
+                bar.add(resumeBtn).pad(12f, 6f, 12f, 18f)
             }
-            bar.add(resumeBtn).pad(12f, 6f, 12f, 18f)
             bar.pack()
             // 居中放大
             bar.setPosition((worldScreen.stage.width - bar.width) / 2f, (worldScreen.stage.height - bar.height) / 2f)
