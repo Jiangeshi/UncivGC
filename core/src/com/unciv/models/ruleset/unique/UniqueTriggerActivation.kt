@@ -1333,7 +1333,19 @@ object UniqueTriggerActivation {
 
                 return {
                     when (terrain.type) {
-                        TerrainType.Land, TerrainType.Water -> tile.setBaseTerrain(terrain)
+                        TerrainType.Land, TerrainType.Water -> {
+                            tile.setBaseTerrain(terrain)
+                            // 地形改变后清理不兼容的改良 (如陆地→水后 Farm 残留成“水上农场”, 2026-08-21)
+                            // terrainsCanBeBuiltOn 是建造时的合法性依据; 改地形后不匹配 → 改良非法, 移除
+                            val impName = tile.improvement
+                            if (impName != null) {
+                                val imp = ruleset.tileImprovements[impName]
+                                if (imp != null && imp.terrainsCanBeBuiltOn.isNotEmpty()
+                                    && !imp.terrainsCanBeBuiltOn.contains(tile.baseTerrain)) {
+                                    tile.removeImprovement()
+                                }
+                            }
+                        }
                         TerrainType.TerrainFeature -> tile.addTerrainFeature(terrain.name)
                         TerrainType.NaturalWonder -> NaturalWonderGenerator.placeNaturalWonder(terrain, tile)
                     }
