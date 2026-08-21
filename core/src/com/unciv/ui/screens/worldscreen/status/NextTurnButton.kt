@@ -56,10 +56,10 @@ class NextTurnButton(
 
         isEnabled = nextTurnAction.getText(worldScreen) == "AutoPlay"
             || ((worldScreen.isPlayersTurn || worldScreen.failedUpload) && !worldScreen.waitingForAutosave && !worldScreen.isNextTurnUpdateRunning())
-        // UncivGC 帧同步: 已点“完成回合”后禁用 (等待剩余玩家, 结算后广播复位)
-        // NextUnit 例外: 完成回合后仍可跳转/操作剩余闲置单位 (服务器允许完成后的 op, 避免"还剩单位却点不了")
+        // UncivGC 帧同步: 已点“完成回合”后按钮变「取消完成」仍可点 (点击取消); NextUnit 例外: 完成回合后仍可跳转/操作剩余闲置单位
         if (FrameSync.isFsMode(worldScreen.gameInfo) && FrameSync.myTurnFinished
-            && nextTurnAction != NextTurnAction.NextUnit) isEnabled = false
+            && nextTurnAction != NextTurnAction.NextUnit
+            && nextTurnAction != NextTurnAction.NextTurn) isEnabled = false
         // UncivGC 帧同步: 观战者不能点完成回合
         if (FrameSync.isFsMode(worldScreen.gameInfo) && worldScreen.viewingCiv.isSpectator()) isEnabled = false
         if (isEnabled) {

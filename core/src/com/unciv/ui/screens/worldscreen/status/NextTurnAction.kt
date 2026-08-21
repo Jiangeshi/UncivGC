@@ -146,17 +146,18 @@ enum class NextTurnAction(protected val text: String, val color: Color) {
         override fun isChoice(worldScreen: WorldScreen) =
             true  // When none of the others is active..
         override fun getText(worldScreen: WorldScreen): String {
-            // UncivGC 帧同步: 「完成回合」/「等待剩余玩家…」 (点击后本地立即变等待, 结算后广播复位)
+            // UncivGC 帧同步: 「完成回合」/「取消完成」 (点击后本地立即变等待, 再点取消; 结算后广播复位)
             if (FrameSync.isFsMode(worldScreen.gameInfo)) {
-                return if (FrameSync.myTurnFinished) "Waiting for remaining players..."
+                return if (FrameSync.myTurnFinished) "Cancel finish turn"
                 else "Finish turn"
             }
             return text
         }
         override fun action(worldScreen: WorldScreen) {
-            // UncivGC 帧同步: 点完成回合 → 通知服务器 (不再走本地结算)
+            // UncivGC 帧同步: 点完成回合 → 通知服务器 (不再走本地结算); 已完成后点 → 取消
             if (FrameSync.isFsMode(worldScreen.gameInfo)) {
-                FrameSync.sendNextTurn()
+                if (FrameSync.myTurnFinished) FrameSync.sendUncompleteTurn()
+                else FrameSync.sendNextTurn()
                 return
             }
             worldScreen.confirmedNextTurn()

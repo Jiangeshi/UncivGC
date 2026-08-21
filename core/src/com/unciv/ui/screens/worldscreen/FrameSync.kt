@@ -551,6 +551,18 @@ object FrameSync {
         }
     }
 
+    /** 取消完成回合: 服务器从 ended 集合移除, 按钮恢复可操作 (2026-08-22 用户反馈"跳过回合无法取消") */
+    fun sendUncompleteTurn() {
+        sendJson("""{"type":"uncompleteTurn"}""")
+        myTurnFinished = false
+        worldScreenRef?.get()?.let { ws ->
+            try {
+                ws.nextTurnButton.update()
+            } catch (ignored: Exception) {
+            }
+        }
+    }
+
     fun sendPause() {
         sendJson("""{"type":"pause"}""")
     }
@@ -728,6 +740,7 @@ object FrameSync {
             "saveUpdated" -> reloadGame(msg["turn"]?.jsonPrimitive?.intOrNull ?: -1)
             "tradeRequest" -> handleTradeRequest(msg)
             "tradeRetracted" -> handleTradeRetracted(msg)
+            "tradeAccepted" -> handleTradeAccepted(msg)
             "friendshipOffer" -> handleFriendshipOffer(msg)
             "demandOffer" -> handleDemandOffer(msg)
             "denounced" -> handleDenounced(msg)
@@ -1107,6 +1120,31 @@ object FrameSync {
     }
 
     /** 贸易提议广播 (服务器挂起+转发): 本地加 TradeRequest → WorldScreen.update 自然弹 TradePopup */
+    /** 我方发起的报价被接受: 清除等待/报价状态 + 关闭相关 TradePopup (2026-08-22 用户反馈"接受后还能撤回报价") */
+    private fun handleTradeAccepted(msg: JsonObject) {
+        val acceptingCiv = msg["requestingCiv"]?.jsonPrimitive?.contentOrNull ?: return
+        val targetPlayerId = msg["playerId"]?.jsonPrimitive?.contentOrNull
+        if (targetPlayerId != null && targetPlayerId != playerId) return
+        Concurrency.runOnGLThread {
+            val worldScreen = currentWorldScreenOrNull() ?: return@runOnGLThread
+            val gameInfo = worldScreen.gameInfo ?: return@runOnGLThread
+            if (gameInfo.gameId != gameId) return@runOnGLThread
+            // 清除指向该文明的挂起报价 (若 TradePopup 正显示该报价 → 关闭)
+            val myCiv = worldScreen.viewingCiv
+            if (myCiv != null && !myCiv.isSpectator()) {
+                myCiv.tradeRequests.removeAll { it.requestingCiv == acceptingCiv }
+                try {
+                    val cur = com.unciv.UncivGame.Current.screen
+                    if (cur is com.unciv.ui.screens.worldscreen.TradePopup) {
+                        com.unciv.UncivGame.Current.popScreen()
+                    }
+                } catch (ignored: Exception) {
+                }
+            }
+            worldScreen.shouldUpdate = true
+        }
+    }
+
     private fun handleTradeRequest(msg: JsonObject) {
         val requestingCiv = msg["requestingCiv"]?.jsonPrimitive?.contentOrNull ?: return
         val tradeJson = msg["trade"]?.jsonObject ?: return
@@ -1334,25 +1372,41 @@ object FrameSync {
             try {
                 // 战斗动画/伤害飘字 (原版 battleAnimationDeferred): 服务器广播 battle 后播放 —
                 // 帧同步本地不执行 Battle, 无动画 → "打人不显示伤害" (2026-08-21)
-                val attackerUnit = findUnit(gameInfo, attackerId) ?: return@runOnGLThread
+                // 2026-08-22: ①只播与自己相关的战斗 (自己打/被打; 观战者播全部) ②城市攻击 (attackerId=-1)
+                val myCiv = worldScreen.viewingCiv
+                val spectator = myCiv == null || myCiv.isSpectator()
                 val targetTile = gameInfo.tileMap.get(x, y) ?: return@runOnGLThread
                 val targetId = msg["targetId"]?.jsonPrimitive?.intOrNull ?: -1
-                val defender: com.unciv.logic.battle.ICombatant =
+                val attacker: com.unciv.logic.battle.ICombatant? =
+                    if (attackerId >= 0) {
+                        findUnit(gameInfo, attackerId)?.let { com.unciv.logic.battle.MapUnitCombatant(it) }
+                    } else {
+                        // 城市攻击: attackerName 定位攻击城市 (城市轰炸无突进动画, 只需飘字/闪烁)
+                        val cname = msg["attackerName"]?.jsonPrimitive?.contentOrNull
+                        gameInfo.civilizations.firstOrNull { it.civName == attackerCiv }
+                            ?.cities?.firstOrNull { it.name == cname }
+                            ?.let { com.unciv.logic.battle.CityCombatant(it) }
+                    }
+                val defender: com.unciv.logic.battle.ICombatant? =
                     if (targetId >= 0) {
-                        findUnit(gameInfo, targetId)
-                            ?.let { com.unciv.logic.battle.MapUnitCombatant(it) }
-                            ?: return@runOnGLThread
+                        findUnit(gameInfo, targetId)?.let { com.unciv.logic.battle.MapUnitCombatant(it) }
                     } else {
                         // 城市目标 (targetId=-1): 用坐标找城市
-                        targetTile.getCity()
-                            ?.let { com.unciv.logic.battle.CityCombatant(it) }
-                            ?: return@runOnGLThread
+                        targetTile.getCity()?.let { com.unciv.logic.battle.CityCombatant(it) }
                     }
+                if (!spectator) {
+                    // 非观战者: 只播与自己相关的战斗 (攻击者或防守者是自己文明)
+                    val attackerIsMine = attackerCiv == myCiv!!.civName
+                    val defenderIsMine = defender?.getCivInfo()?.civName == myCiv.civName
+                    if (!attackerIsMine && !defenderIsMine) return@runOnGLThread
+                    // 攻击者不可见 (对方打我, 攻击者在我视野外) → attacker 为 null, 只播防守者飘字
+                }
+                if (defender == null) return@runOnGLThread
                 worldScreen.battleAnimationDeferred(
-                    com.unciv.logic.battle.MapUnitCombatant(attackerUnit),
-                    defenderDamage,   // 攻击者受到的伤害
+                    attacker,        // 可空: 攻击者不可见时只播防守者飘字/闪烁
+                    defenderDamage,  // 攻击者受到的伤害
                     defender,
-                    damage)           // 防守者受到的伤害
+                    damage)          // 防守者受到的伤害
             } catch (ignored: Exception) {
             }
             // 战斗通知统一走服务器广播 (checkRuinRewards 全量转发, 含攻击方/被攻击方/厌战度等),
@@ -2248,6 +2302,21 @@ object FrameSync {
             val civ = gameInfo.civilizations.firstOrNull { it.civName == name } ?: continue
             val before = changed
             try {
+                // 已见面文明同步 (纯拦截下客户端不调 meet → 本地 diplomacy 缺游戏内新遇见的文明 →
+                // 下方 getDiplomacyManager 全 null → 战争/友谊/谴责全不同步; 2026-08-22 用户反馈"友谊同意后外交界面不更新")
+                obj["met"]?.jsonArray?.let { metArr ->
+                    for (mElem in metArr) {
+                        val metId = mElem.jsonPrimitive.contentOrNull ?: continue
+                        if (civ.getDiplomacyManager(metId) == null) {
+                            val other = gameInfo.civilizations.firstOrNull { it.civID == metId }
+                            if (other != null) {
+                                civ.diplomacy[metId] =
+                                    com.unciv.logic.civilization.diplomacy.DiplomacyManager(civ, other)
+                                changed = true
+                            }
+                        }
+                    }
+                }
                 // 战争状态 (服务器权威: 宣战/和平实时生效; 不在列表但本地是战争 → 已和解)
                 val atWarWith = obj["atWarWith"]?.jsonArray
                     ?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()

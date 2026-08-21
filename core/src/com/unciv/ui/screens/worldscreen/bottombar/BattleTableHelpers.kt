@@ -145,7 +145,7 @@ object BattleTableHelpers {
     }
 
     fun WorldScreen.battleAnimationDeferred(
-        attacker: ICombatant, damageToAttacker: Int,
+        attacker: ICombatant?, damageToAttacker: Int,
         defender: ICombatant, damageToDefender: Int
     ){
         // This ensures that we schedule the animation to happen AFTER the worldscreen.update(), 
@@ -154,7 +154,7 @@ object BattleTableHelpers {
     }
 
     private fun WorldScreen.battleAnimation(
-        attacker: ICombatant, damageToAttacker: Int,
+        attacker: ICombatant?, damageToAttacker: Int,
         defender: ICombatant, damageToDefender: Int
     ) {
         fun getMapActorsForCombatant(combatant: ICombatant): Sequence<Actor> =
@@ -169,6 +169,23 @@ object BattleTableHelpers {
                 }
             }
 
+        // 攻击者不可见 (帧同步: 被打方视野外) → 只播防守者飘字/闪烁, 不播突进/攻击动画 (2026-08-22)
+        if (attacker == null) {
+            try {
+                val defenderGroup = mapHolder.tileGroups[defender.getTile()]!!
+                createDamageLabel(damageToDefender, defenderGroup)
+                val actors = getMapActorsForCombatant(defender)
+                    .associateWith { it.color.cpy() }
+                stage.addAction(
+                    Actions.sequence(
+                        FlashRedAction(0f, 1f, actors),
+                        FlashRedAction(1f, 0f, actors)
+                    )
+                )
+            } catch (ignored: Exception) {
+            }
+            return
+        }
 
         val actorsToFlashRed =
                 sequence {
