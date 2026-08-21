@@ -98,7 +98,8 @@ object FrameSync {
     private var pauseBar: Table? = null  // 非模态暂停提示条 (2026-08-21: 不再用模态 Popup, 顶部按钮保持可点)
     /** 暂停输入拦截: 顶栏以下全屏挡点击 (只有顶栏按钮 + 提示条 Resume 可点) — 2026-08-21 用户要求 */
     private var pauseBlocker: com.badlogic.gdx.scenes.scene2d.Actor? = null
-    private var settlingHint: com.badlogic.gdx.scenes.scene2d.ui.Label? = null  // 回合结算提示 (2 秒)
+    /** 回合结算提示条 (整个 Table — 存 Label 会导致移除时只删文字、背景框残留, 2026-08-21 观战者反馈) */
+    private var settlingHint: com.badlogic.gdx.scenes.scene2d.ui.Table? = null  // 回合结算提示 (2 秒)
     @Volatile private var settlingHintUntil = 0L
     @Volatile private var inputLockedUntil = 0L  // 回合结算强制锁定: 新回合开始后 2 秒内禁止操作 (2026-08-21 用户要求)
     @Volatile private var serverSettling = false  // 服务器结算中 (turnStatus settling): 全程锁定, 不受 2 秒限制
@@ -936,7 +937,7 @@ object FrameSync {
                 table.pack()
                 table.setPosition((worldScreen.stage.width - table.width) / 2f, worldScreen.stage.height * 0.42f)
                 worldScreen.stage.addActor(table)
-                settlingHint = hint
+                settlingHint = table  // 存整个框 — remove() 时背景和文字一起移除
                 settlingHintUntil = System.currentTimeMillis() + 2000
                 // 后台线程等 2 秒 → GL 线程移除 (期间新回合会顺延 until)
                 Concurrency.run("SettlingHintTimer") {
