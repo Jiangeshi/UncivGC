@@ -2632,15 +2632,22 @@ object FrameSync {
                                 newCiv.cities = newCiv.cities.plusElement(existing)
                                 cityStateChanged = true
                                 worldScreen.shouldUpdate = true
-                                // 城市被攻占/易主 → 若玩家正打开该城市界面 → 关闭回世界屏
-                                // (否则界面按新归属渲染, 看起来"自己变成其他玩家", 2026-08-21)
+                                // 城市被攻占/易主 → ①清除对它的选中 (否则 updateSelectedCiv 会把视角切到攻占者,
+                                // "变成其他玩家的视角" 2026-08-21) ②若正打开该城市界面 → 关闭回世界屏
+                                try {
+                                    val wsSel = worldScreen.bottomUnitTable.selectedCity
+                                    if (wsSel != null && wsSel.city == existing) {
+                                        worldScreen.bottomUnitTable.selectUnit(null)
+                                    }
+                                } catch (ignored2: Exception) {
+                                }
                                 try {
                                     val cur = com.unciv.UncivGame.Current.screen
                                     if (cur is com.unciv.ui.screens.cityscreen.CityScreen
                                         && cur.cityView.city == existing) {
                                         com.unciv.UncivGame.Current.popScreen()
                                     }
-                                } catch (ignored2: Exception) {
+                                } catch (ignored3: Exception) {
                                 }
                             } catch (e: Exception) {
                             }
@@ -2957,14 +2964,21 @@ object FrameSync {
             for (localCity in gameInfo.getCities().toList()) {
                 if (localCity.id in serverCityIds) continue
                 try {
-                    // 城市被摧毁 → 若正打开该城市界面 → 关闭回世界屏 (2026-08-21)
+                    // 城市被摧毁 → ①清除对它的选中 ②若正打开该城市界面 → 关闭回世界屏 (2026-08-21)
+                    try {
+                        val wsSel = worldScreen.bottomUnitTable.selectedCity
+                        if (wsSel != null && wsSel.city == localCity) {
+                            worldScreen.bottomUnitTable.selectUnit(null)
+                        }
+                    } catch (ignored2: Exception) {
+                    }
                     try {
                         val cur = com.unciv.UncivGame.Current.screen
                         if (cur is com.unciv.ui.screens.cityscreen.CityScreen
                             && cur.cityView.city == localCity) {
                             com.unciv.UncivGame.Current.popScreen()
                         }
-                    } catch (ignored2: Exception) {
+                    } catch (ignored3: Exception) {
                     }
                     localCity.destroyCity(overrideSafeties = true)
                     cityStateChanged = true
