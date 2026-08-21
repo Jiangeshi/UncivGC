@@ -69,7 +69,9 @@ class MinimapHolder(val mapHolder: WorldMapHolder) : Table() {
 
     private fun rebuildIfSizeChanged(civInfo: Civilization) {
         // For Spectator should not restrict minimap
-        val civ: Civilization? = civInfo.takeUnless { GUI.getViewingPlayer().isSpectator() }
+        // ⚠️ 2026-08-22: 原来用 GUI.getViewingPlayer() (读全局 worldScreen) — 帧同步回合重载时
+        // 旧 WorldScreen 的 update 还在跑但全局 worldScreen 已被替换/置空 → NPE 崩溃; 改用自身持有的引用
+        val civ: Civilization? = civInfo.takeUnless { worldScreen.viewingCiv.isSpectator() }
         val newMinimapSize = worldScreen.game.settings.minimapSize
         val cutoutSetting = worldScreen.game.settings.androidCutout
         if (newMinimapSize == minimapSize && civ?.exploredRegion?.shouldUpdateMinimap() != true && cutoutSetting == lastCutoutSetting) return

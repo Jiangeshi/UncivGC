@@ -104,6 +104,9 @@ object FrameSync {
     @Volatile private var settlingHintUntil = 0L
     @Volatile private var inputLockedUntil = 0L  // 回合结算强制锁定: 新回合开始后停留秒数内禁止操作 (房间设置 fsSettleLockSeconds, 默认 3, 2026-08-22 用户要求可设置)
     @Volatile private var serverSettling = false  // 服务器结算中 (turnStatus settling): 全程锁定, 不受停留秒数限制
+    /** 最近一次结算开始时间 (收到 settling=true 时记录) — 回合结算会触发存档重载 (stop 清空锁定),
+     *  重载完成后凭此恢复“结算后停留”锁定, 否则设置秒数形同虚设 (2026-08-22 用户反馈"秒过回合") */
+    @Volatile private var lastSettleAt = 0L
     /** 暂停发起者昵称 (弹窗被盖住后返回世界屏时补弹用) */
     @Volatile private var pauseNickname: String? = null
     private var lastErrorShown = ""
@@ -189,7 +192,9 @@ object FrameSync {
         running = true
         connected = false
         worldScreenRef = java.lang.ref.WeakReference(worldScreen)
-        gameId = gameInfo.gameId
+        val newGameId = gameInfo.gameId
+        val isNewGame = gameId != newGameId  // 跨局 (跳海/新房间) 判定: 同 gameId 的 start = 回合重载
+        gameId = newGameId
         playerId = UncivGameHelper.getUserId()
         nickname = UncivGameHelper.getNickname()
         // 跨局状态重置 (跳海/换房后新局: 完成回合/倒计时/重载幂等必须清零, 否则新局失效)
@@ -200,6 +205,7 @@ object FrameSync {
         lastTurn = gameInfo.turns
         // 跨局重置: 对局结束 (胜利/失败) 提示标记 — 新局重新允许弹一次
         victoryShownForFsGame = false
+        if (isNewGame) lastSettleAt = 0  // 新局清结算时间; 同局重载保留 (下面恢复停留锁定)
         // 观战者判定: viewingCiv 是 Spectator 文明, 或存档里没有任何存活文明匹配我的 playerId
         // (玩家文明被消灭后 playerId 仍留在存档 civilizations → 不排除已败文明会被误判成该玩家,
         //  死后退出房间再观战时被拉回已死文明 (如阿兹特克))
@@ -238,6 +244,16 @@ object FrameSync {
         } catch (e: Exception) {
         }
         updateStatusLabel()
+        // 回合重载 (同局) 且刚结算完: 恢复“结算后停留”锁定 — stop() 清空了 inputLockedUntil,
+        // 若此时不恢复, 重载完成后停留秒数全部丢失 → “设置 30 秒还是 1 秒就过回合” (2026-08-22 用户反馈)
+        if (!isNewGame && lastSettleAt > 0) {
+            val lockEnd = lastSettleAt + settleLockMs()
+            if (lockEnd > System.currentTimeMillis()) {
+                showSettlingHint()
+                inputLockedUntil = maxOf(inputLockedUntil, lockEnd)
+                settlingHintUntil = maxOf(settlingHintUntil, lockEnd)
+            }
+        }
         connectLoop()
     }
 
@@ -804,6 +820,7 @@ object FrameSync {
         val wasSettling = serverSettling
         serverSettling = settling
         if (settling) {
+            lastSettleAt = System.currentTimeMillis()  // 记录结算开始时间 (重载后恢复停留锁定用)
             showSettlingHint()  // 显示提示条 + 全程锁定 (serverSettling 控制实际锁定)
         } else if (wasSettling) {
             // 结算刚结束: 停留秒数保底锁定 (给玩家准备时间); 同回合内后续 turnStatus 不再刷新
