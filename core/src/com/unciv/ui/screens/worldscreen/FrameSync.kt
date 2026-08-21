@@ -1422,6 +1422,20 @@ object FrameSync {
         val religions = state["religions"]?.jsonArray ?: emptyList()
         // 地形变化同步 (OneTimeChangeTerrain): 被改地块 [x,y,baseTerrain,features,naturalWonder,improvement]
         val terrainChanges = state["terrainChanges"]?.jsonArray ?: emptyList()
+        // 增量广播: full 标记 + removed 列表 (服务器总是输出; 缺省视为全量)
+        val isFull = state["full"]?.jsonPrimitive?.contentOrNull == "true"
+        val removedUnits = state["removedUnits"]?.jsonArray ?: emptyList()
+        val removedCities = state["removedCities"]?.jsonArray ?: emptyList()
+        // 防御: 增量状态但回合已变 → 丢弃并请求全量 (回合变化应全量, 此为网络乱序/服务器防御漏网)
+        if (!isFull && newTurn != null && newTurn > lastTurn) {
+            try {
+                sendJson(buildJson {
+                    put("cmd", "state")
+                    put("full", true)
+                })
+            } catch (_: Exception) {}
+            return
+        }
         // 外交胜利投票记录同步 [投票文明, 投给谁|null] (投票后 mayVoteForDiplomaticVictory 立即变 false; 服务器权威)
         state["diplomaticVotes"]?.jsonArray?.let { dvArr ->
             try {
@@ -1451,7 +1465,7 @@ object FrameSync {
         Concurrency.runOnGLThread {
             if (!running) return@runOnGLThread
             try {
-                applyState(worldScreen, units, cities, civs, encampments, improvements, improvementsDone, roads, religions, terrainChanges)
+                applyState(worldScreen, units, cities, civs, encampments, improvements, improvementsDone, roads, religions, terrainChanges, isFull = isFull, removedUnits = removedUnits, removedCities = removedCities)
             } catch (e: Exception) {
                 // 状态应用绝不能崩溃 — 失败项由下一条广播/回合重载兜底
             }
@@ -1559,7 +1573,7 @@ object FrameSync {
         }
     }
 
-    private fun applyState(worldScreen: WorldScreen, units: List<JsonElement>, cities: List<JsonElement> = emptyList(), civs: List<JsonElement> = emptyList(), encampments: List<JsonElement> = emptyList(), improvements: List<JsonElement> = emptyList(), improvementsDone: List<JsonElement> = emptyList(), roads: List<JsonElement> = emptyList(), religions: List<JsonElement> = emptyList(), terrainChanges: List<JsonElement> = emptyList()) {
+    private fun applyState(worldScreen: WorldScreen, units: List<JsonElement>, cities: List<JsonElement> = emptyList(), civs: List<JsonElement> = emptyList(), encampments: List<JsonElement> = emptyList(), improvements: List<JsonElement> = emptyList(), improvementsDone: List<JsonElement> = emptyList(), roads: List<JsonElement> = emptyList(), religions: List<JsonElement> = emptyList(), terrainChanges: List<JsonElement> = emptyList(), isFull: Boolean = true, removedUnits: List<JsonElement> = emptyList(), removedCities: List<JsonElement> = emptyList()) {
         val gameInfo = worldScreen.gameInfo ?: return
         // 地形变化同步 (OneTimeChangeTerrain "Turn this tile into"): 服务器权威改地形, 本地应用 + 刷新视野/单位通行
         syncTerrainChanges(gameInfo, terrainChanges, worldScreen)
@@ -1568,7 +1582,7 @@ object FrameSync {
             gameInfo.turns = lastTurn
         }
         cityStateChanged = false
-        syncCities(worldScreen, cities)
+        syncCities(worldScreen, cities, isFull, removedCities)
         val civChanged = syncCivInfo(gameInfo, civs, worldScreen.viewingCiv.civID)
         var unitsChanged = false
         syncEncampments(gameInfo, encampments)
@@ -1791,14 +1805,35 @@ object FrameSync {
         // 对方单位进入视野时, 我方即使没动也要触发相遇/视野更新
         refreshMyCivVisibility(worldScreen, gameInfo)
         // 服务器上已消失的单位 (被消灭/建城消耗) → 本地同步移除
-        for (civ in gameInfo.civilizations) {
-            for (unit in civ.units.getCivUnits()) {
-                if (unit.isDestroyed || !unit.hasTile()) continue
-                if (unit.id !in stateIds) {
-                    try {
-                        unit.destroy()
-                        unitsChanged = true
-                    } catch (e: Exception) {
+        if (isFull) {
+            // 全量模式: 扫描本地单位, 不在服务器列表中的 → 移除
+            for (civ in gameInfo.civilizations) {
+                for (unit in civ.units.getCivUnits()) {
+                    if (unit.isDestroyed || !unit.hasTile()) continue
+                    if (unit.id !in stateIds) {
+                        try {
+                            unit.destroy()
+                            unitsChanged = true
+                        } catch (e: Exception) {
+                        }
+                    }
+                }
+            }
+        } else {
+            // 增量模式: 只处理 removedUnits 列表
+            for (ruElem in removedUnits) {
+                val ruId = ruElem.jsonPrimitive.intOrNull ?: continue
+                for (civ in gameInfo.civilizations) {
+                    for (unit in civ.units.getCivUnits()) {
+                        if (unit.isDestroyed || !unit.hasTile()) continue
+                        if (unit.id == ruId) {
+                            try {
+                                unit.destroy()
+                                unitsChanged = true
+                            } catch (e: Exception) {
+                            }
+                            break
+                        }
                     }
                 }
             }
@@ -2646,7 +2681,7 @@ object FrameSync {
     }
 
     /** 服务器城市 → 本地创建/对齐 (建城后立即在地图上出现, 不等回合末重载) */
-    private fun syncCities(worldScreen: WorldScreen, cities: List<JsonElement>) {
+    private fun syncCities(worldScreen: WorldScreen, cities: List<JsonElement>, isFull: Boolean = true, removedCities: List<JsonElement> = emptyList()) {
         val gameInfo = worldScreen.gameInfo ?: return
         val serverCityIds = HashSet<String>()
         for (cityJson in cities) {
@@ -2994,11 +3029,40 @@ object FrameSync {
             }
         }
         // 服务器列表没有的本地城市 → 被摧毁/烧毁 (服务器权威: 旗子立即消失, 不等回合末重载)
-        if (serverCityIds.isNotEmpty()) {
-            for (localCity in gameInfo.getCities().toList()) {
-                if (localCity.id in serverCityIds) continue
+        if (isFull) {
+            // 全量模式: 扫描本地城市, 不在服务器列表中的 → 移除
+            if (serverCityIds.isNotEmpty()) {
+                for (localCity in gameInfo.getCities().toList()) {
+                    if (localCity.id in serverCityIds) continue
+                    try {
+                        try {
+                            val wsSel = worldScreen.bottomUnitTable.selectedCity
+                            if (wsSel != null && wsSel.city == localCity) {
+                                worldScreen.bottomUnitTable.selectUnit(null)
+                            }
+                        } catch (ignored2: Exception) {
+                        }
+                        try {
+                            val cur = com.unciv.UncivGame.Current.screen
+                            if (cur is com.unciv.ui.screens.cityscreen.CityScreen
+                                && cur.cityView.city == localCity) {
+                                com.unciv.UncivGame.Current.popScreen()
+                            }
+                        } catch (ignored3: Exception) {
+                        }
+                        localCity.destroyCity(overrideSafeties = true)
+                        cityStateChanged = true
+                        worldScreen.shouldUpdate = true
+                    } catch (e: Exception) {
+                    }
+                }
+            }
+        } else {
+            // 增量模式: 只处理 removedCities 列表
+            for (rcElem in removedCities) {
+                val rcId = rcElem.jsonPrimitive.contentOrNull ?: continue
+                val localCity = gameInfo.getCities().firstOrNull { it.id == rcId } ?: continue
                 try {
-                    // 城市被摧毁 → ①清除对它的选中 ②若正打开该城市界面 → 关闭回世界屏 (2026-08-21)
                     try {
                         val wsSel = worldScreen.bottomUnitTable.selectedCity
                         if (wsSel != null && wsSel.city == localCity) {
