@@ -214,10 +214,10 @@ object FrameSync {
                 shownMeets.clear()
                 shownMeetsGameId = gameId
             }
-            if (localDueSeenGameId != gameId) {
-                localDueSeen.clear()
-                localDueSeenGameId = gameId
-            }
+            // 已查看标记必须每次加载都清空: 回合结算 reload 后服务器补推 state 的 turn 与 lastTurn 相等,
+            // handleSimMessage 的 newTurn>lastTurn 清理不触发 → 残留标记把新回合 due=true 误设回 false → 闲置循环漏单位 (2026-08-21)
+            localDueSeen.clear()
+            localDueSeenGameId = gameId
             worldScreen.viewingCiv.popupAlerts.clear()
             // 事件弹窗 (时代奖励等): 服务器广播后挂起未选择, 存档重载会清空 → 重新挂起, 弹窗不消失
             if (pendingEvents.isNotEmpty()) {
@@ -1384,6 +1384,7 @@ object FrameSync {
         val encampments = state["encampments"]?.jsonArray ?: emptyList()
         val improvements = state["improvements"]?.jsonArray ?: emptyList()
         val improvementsDone = state["improvementsDone"]?.jsonArray ?: emptyList()
+        val roads = state["roads"]?.jsonArray ?: emptyList()
         val religions = state["religions"]?.jsonArray ?: emptyList()
         // 地形变化同步 (OneTimeChangeTerrain): 被改地块 [x,y,baseTerrain,features,naturalWonder,improvement]
         val terrainChanges = state["terrainChanges"]?.jsonArray ?: emptyList()
@@ -1416,7 +1417,7 @@ object FrameSync {
         Concurrency.runOnGLThread {
             if (!running) return@runOnGLThread
             try {
-                applyState(worldScreen, units, cities, civs, encampments, improvements, improvementsDone, religions, terrainChanges)
+                applyState(worldScreen, units, cities, civs, encampments, improvements, improvementsDone, roads, religions, terrainChanges)
             } catch (e: Exception) {
                 // 状态应用绝不能崩溃 — 失败项由下一条广播/回合重载兜底
             }
@@ -1524,7 +1525,7 @@ object FrameSync {
         }
     }
 
-    private fun applyState(worldScreen: WorldScreen, units: List<JsonElement>, cities: List<JsonElement> = emptyList(), civs: List<JsonElement> = emptyList(), encampments: List<JsonElement> = emptyList(), improvements: List<JsonElement> = emptyList(), improvementsDone: List<JsonElement> = emptyList(), religions: List<JsonElement> = emptyList(), terrainChanges: List<JsonElement> = emptyList()) {
+    private fun applyState(worldScreen: WorldScreen, units: List<JsonElement>, cities: List<JsonElement> = emptyList(), civs: List<JsonElement> = emptyList(), encampments: List<JsonElement> = emptyList(), improvements: List<JsonElement> = emptyList(), improvementsDone: List<JsonElement> = emptyList(), roads: List<JsonElement> = emptyList(), religions: List<JsonElement> = emptyList(), terrainChanges: List<JsonElement> = emptyList()) {
         val gameInfo = worldScreen.gameInfo ?: return
         // 地形变化同步 (OneTimeChangeTerrain "Turn this tile into"): 服务器权威改地形, 本地应用 + 刷新视野/单位通行
         syncTerrainChanges(gameInfo, terrainChanges, worldScreen)
@@ -1539,6 +1540,7 @@ object FrameSync {
         syncEncampments(gameInfo, encampments)
         syncImprovements(gameInfo, improvements)
         syncImprovementsDone(gameInfo, improvementsDone)
+        syncRoads(gameInfo, roads)
         syncReligions(gameInfo, religions, worldScreen)
         val stateIds = HashSet<Int>()
         for (unitJson in units) {
@@ -1814,6 +1816,51 @@ object FrameSync {
                 worldScreenRef?.get()?.let { it.shouldUpdate = true }
             }
         } catch (e: Exception) {
+        }
+    }
+
+    /** 道路状态同步 (含劫掠; 2026-08-21): 服务器权威 [x,y,roadStatus,pillaged] —
+     *  纯道路地块劫掠后客户端看不到 → “道路无法劫掠”; 只有 roadStatus != None 的格子输出 */
+    private fun syncRoads(gameInfo: GameInfo, roads: List<JsonElement>) {
+        try {
+            val server = HashMap<Pair<Int, Int>, Pair<String, Boolean>>()
+            for (r in roads) {
+                val a = r.jsonArray ?: continue
+                if (a.size < 4) continue
+                val x = a[0].jsonPrimitive.intOrNull ?: continue
+                val y = a[1].jsonPrimitive.intOrNull ?: continue
+                server[x to y] = (a[2].jsonPrimitive.contentOrNull ?: "") to (a[3].jsonPrimitive.contentOrNull == "true")
+            }
+            var changed = false
+            for (tile in gameInfo.tileMap.values) {
+                val key = (tile.position.x ?: continue) to (tile.position.y ?: continue)
+                val s = server[key]
+                val localStatus = tile.roadStatus.name
+                val localPillaged = tile.roadIsPillaged
+                if (s == null) {
+                    if (localStatus != "None" || localPillaged) {
+                        tile.roadStatus = com.unciv.logic.map.tile.RoadStatus.None
+                        tile.roadIsPillaged = false
+                        changed = true
+                    }
+                } else {
+                    val wantStatus = s.first
+                    val wantPillaged = s.second
+                    if (localStatus != wantStatus || localPillaged != wantPillaged) {
+                        try {
+                            tile.roadStatus = com.unciv.logic.map.tile.RoadStatus.valueOf(wantStatus)
+                        } catch (ignored: Exception) {
+                            continue
+                        }
+                        tile.roadIsPillaged = wantPillaged
+                        changed = true
+                    }
+                }
+            }
+            if (changed) {
+                worldScreenRef?.get()?.let { it.shouldUpdate = true }
+            }
+        } catch (ignored: Exception) {
         }
     }
 
@@ -2192,6 +2239,27 @@ object FrameSync {
                             if (civ.civID == viewingCivId) cityStateChanged = true
                         }
                     }
+                    // 购买涨价计数同步 (BuyUnits/BuildingsIncreasingCost 词条: 每次购买价格+X):
+                    // 纯拦截下本地不执行购买 → 本地计数不涨 → 价格显示不变 (2026-08-21)
+                    obj["boughtInc"]?.jsonArray?.let { biArr ->
+                        try {
+                            val server = HashMap<String, Int>()
+                            for (e in biArr) {
+                                val a = e.jsonArray ?: continue
+                                if (a.size < 2) continue
+                                val nm = a[0].jsonPrimitive.contentOrNull ?: continue
+                                server[nm] = a[1].jsonPrimitive.intOrNull ?: 0
+                            }
+                            val local = civ.civConstructions.boughtItemsWithIncreasingPrice
+                            if (local.toMap() != server) {
+                                local.clear()
+                                local.putAll(server)
+                                changed = true
+                                if (civ.civID == viewingCivId) cityStateChanged = true
+                            }
+                        } catch (ignored: Exception) {
+                        }
+                    }
                     // 黄金时代同步 (开启后客户端立即生效/显示; 服务器权威 — 不同步则下回合才看到加成)
                     obj["goldenAgeTurns"]?.jsonPrimitive?.intOrNull?.let { gaTurns ->
                         if (civ.goldenAges.turnsLeftForCurrentGoldenAge != gaTurns) {
@@ -2564,6 +2632,16 @@ object FrameSync {
                                 newCiv.cities = newCiv.cities.plusElement(existing)
                                 cityStateChanged = true
                                 worldScreen.shouldUpdate = true
+                                // 城市被攻占/易主 → 若玩家正打开该城市界面 → 关闭回世界屏
+                                // (否则界面按新归属渲染, 看起来"自己变成其他玩家", 2026-08-21)
+                                try {
+                                    val cur = com.unciv.UncivGame.Current.screen
+                                    if (cur is com.unciv.ui.screens.cityscreen.CityScreen
+                                        && cur.cityView.city == existing) {
+                                        com.unciv.UncivGame.Current.popScreen()
+                                    }
+                                } catch (ignored2: Exception) {
+                                }
                             } catch (e: Exception) {
                             }
                         }
@@ -2879,6 +2957,15 @@ object FrameSync {
             for (localCity in gameInfo.getCities().toList()) {
                 if (localCity.id in serverCityIds) continue
                 try {
+                    // 城市被摧毁 → 若正打开该城市界面 → 关闭回世界屏 (2026-08-21)
+                    try {
+                        val cur = com.unciv.UncivGame.Current.screen
+                        if (cur is com.unciv.ui.screens.cityscreen.CityScreen
+                            && cur.cityView.city == localCity) {
+                            com.unciv.UncivGame.Current.popScreen()
+                        }
+                    } catch (ignored2: Exception) {
+                    }
                     localCity.destroyCity(overrideSafeties = true)
                     cityStateChanged = true
                     worldScreen.shouldUpdate = true
