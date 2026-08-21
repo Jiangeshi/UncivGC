@@ -50,7 +50,11 @@ class ImprovementPickerScreen(
     private var selectedImprovement: TileImprovement? = null
     private val gameInfo = tile.tileMap.gameInfo
     private val ruleset = gameInfo.ruleset
-    private val currentPlayerCiv = gameInfo.getCurrentPlayerCivilization()
+    /** 帧同步: 同时回合无"当前玩家"概念, getCurrentPlayerCivilization() 可能落到别人头上 →
+     *  用建造单位所属文明, 否则资源可见性 (canSeeResource) / 加成预览全按别人文明算:
+     *  马地块不显示 "Provides [Horses]" + 预览缺资源激活加成 (2026-08-21 用户反馈) */
+    private val currentPlayerCiv = if (FrameSync.isFsMode(gameInfo)) unit.civ
+    else gameInfo.getCurrentPlayerCivilization()
     // Support for UniqueType.CreatesOneImprovement
     private val tileMarkedForCreatesOneImprovement = tile.isMarkedForCreatesOneImprovement()
     private val tileWithoutLastTerrain: Tile

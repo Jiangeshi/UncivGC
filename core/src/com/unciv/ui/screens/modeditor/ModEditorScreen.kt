@@ -328,7 +328,7 @@ class ModEditorScreen : BaseScreen() {
                     addDir(modDir, modDir.name())  // 顶层带模组目录名 (标准 zip 结构, 服务器校验/安装依赖)
                 }
                 val total = zipFile.file().length()
-                if (total > 200L * 1024 * 1024) throw RuntimeException("Mod too large (max 200MB)")
+                if (total > 50L * 1024 * 1024) throw RuntimeException("Mod too large (max 50MB)")
                 // 2. 上传 (进度) — 先 tr 再 fill (词条 key 带占位符)
                 com.unciv.logic.lobby.LobbyApi.uploadModZipWithToken(modName, token, zipFile.file().absolutePath) { sent, tot ->
                     launchOnGLThread {
