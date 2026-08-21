@@ -67,6 +67,15 @@ import kotlinx.serialization.json.jsonPrimitive
  */
 object FrameSync {
 
+    /** 帧同步调试日志 (用户目录 fs_debug.log — 桌面版 .app 无控制台, 必须落文件; 2026-08-22 排查"结算停留不生效"用) */
+    private fun dbg(msg: String) {
+        try {
+            val f = java.io.File(System.getProperty("user.home"), "fs_debug.log")
+            java.io.FileWriter(f, true).use { it.write(java.text.SimpleDateFormat("HH:mm:ss.SSS").format(java.util.Date()) + " " + msg + "\n") }
+        } catch (ignored: Exception) {
+        }
+    }
+
     /** fs_server 端口 (生产 30125; 测试服 30127; 本地联调 -Duncivgc.fsPort=30125) */
     private val FS_PORT: Int
         get() = System.getProperty("uncivgc.fsPort")?.toIntOrNull() ?: 30127
@@ -101,12 +110,7 @@ object FrameSync {
     private var pauseBlocker: com.badlogic.gdx.scenes.scene2d.Actor? = null
     /** 回合结算提示条 (整个 Table — 存 Label 会导致移除时只删文字、背景框残留, 2026-08-21 观战者反馈) */
     private var settlingHint: com.badlogic.gdx.scenes.scene2d.ui.Table? = null  // 回合结算提示 (2 秒)
-    @Volatile private var settlingHintUntil = 0L
-    @Volatile private var inputLockedUntil = 0L  // 回合结算强制锁定: 新回合开始后停留秒数内禁止操作 (房间设置 fsSettleLockSeconds, 默认 3, 2026-08-22 用户要求可设置)
-    @Volatile private var serverSettling = false  // 服务器结算中 (turnStatus settling): 全程锁定, 不受停留秒数限制
-    /** 最近一次结算开始时间 (收到 settling=true 时记录) — 回合结算会触发存档重载 (stop 清空锁定),
-     *  重载完成后凭此恢复“结算后停留”锁定, 否则设置秒数形同虚设 (2026-08-22 用户反馈"秒过回合") */
-    @Volatile private var lastSettleAt = 0L
+    @Volatile private var serverSettling = false  // 服务器结算中 (turnStatus settling): 全程锁定 — 切换前停留由服务器端延迟广播实现 (2026-08-22)
     /** 暂停发起者昵称 (弹窗被盖住后返回世界屏时补弹用) */
     @Volatile private var pauseNickname: String? = null
     private var lastErrorShown = ""
@@ -205,7 +209,6 @@ object FrameSync {
         lastTurn = gameInfo.turns
         // 跨局重置: 对局结束 (胜利/失败) 提示标记 — 新局重新允许弹一次
         victoryShownForFsGame = false
-        if (isNewGame) lastSettleAt = 0  // 新局清结算时间; 同局重载保留 (下面恢复停留锁定)
         // 观战者判定: viewingCiv 是 Spectator 文明, 或存档里没有任何存活文明匹配我的 playerId
         // (玩家文明被消灭后 playerId 仍留在存档 civilizations → 不排除已败文明会被误判成该玩家,
         //  死后退出房间再观战时被拉回已死文明 (如阿兹特克))
@@ -244,16 +247,6 @@ object FrameSync {
         } catch (e: Exception) {
         }
         updateStatusLabel()
-        // 回合重载 (同局) 且刚结算完: 恢复“结算后停留”锁定 — stop() 清空了 inputLockedUntil,
-        // 若此时不恢复, 重载完成后停留秒数全部丢失 → “设置 30 秒还是 1 秒就过回合” (2026-08-22 用户反馈)
-        if (!isNewGame && lastSettleAt > 0) {
-            val lockEnd = lastSettleAt + settleLockMs()
-            if (lockEnd > System.currentTimeMillis()) {
-                showSettlingHint()
-                inputLockedUntil = maxOf(inputLockedUntil, lockEnd)
-                settlingHintUntil = maxOf(settlingHintUntil, lockEnd)
-            }
-        }
         connectLoop()
     }
 
@@ -272,10 +265,14 @@ object FrameSync {
         // 所有 sendOp 被静默吞掉 → “操作没反应” (2026-08-21 用户反馈; 服务器重连补推会重新同步状态)
         lastPaused = false
         serverSettling = false
-        inputLockedUntil = 0L
         Concurrency.runOnGLThread {
             // fsPauseButton 不置 null — 重载时新顶栏会重新注册覆盖; 置 null 会和注册产生竞态 (按钮文本不更新)
             hidePauseBar()
+            try {
+                settlingHint?.remove()
+            } catch (ignored: Exception) {
+            }
+            settlingHint = null
         }
         worldScreenRef = null
     }
@@ -333,8 +330,9 @@ object FrameSync {
         if (lastPaused) {
             return
         }
-        // 回合结算强制锁定: 结算中 (serverSettling) 全程锁定; 结算后至少 2 秒 — 提示条已在屏幕上 (2026-08-21)
-        if (serverSettling || System.currentTimeMillis() < inputLockedUntil) {
+        // 回合结算中 (服务器 settling=true): 全程锁定 — 切换前停留由服务器延迟广播实现 (2026-08-22)
+        if (serverSettling) {
+            dbg("sendOp 被结算锁定吞掉: op=$op")
             return
         }
         // 完成回合后 (myTurnFinished) 锁定城市配置/科技/政策/信仰类 op —
@@ -813,19 +811,19 @@ object FrameSync {
     private fun handleTurnStatus(msg: JsonObject) {
         val tsTurn = msg["turn"]?.jsonPrimitive?.intOrNull ?: return
         if (tsTurn < lastTurn) return  // 过期广播 (网络延迟/乱序) 忽略
-        // 结算状态: settling=true → 全程锁定 (提示条常驻); 结算刚结束 → 再锁 2 秒保底
-        // ⚠️ 2026-08-21 修复: 原来每条非 settling 的 turnStatus 都刷新 inputLockedUntil=now+2000,
-        // 而服务器每个 op 都会广播 turnStatus → 锁定永不解除 → 所有操作被静默吞 (玩家“点四五下才能成功”)
+        // 结算状态: settling=true → 全程锁定 (提示条常驻); 结算结束 → 解锁 + 移除提示条
+        // (切换前停留由服务器延迟广播实现, 2026-08-22; 这里不再做切换后锁定)
         val settling = msg["settling"]?.jsonPrimitive?.contentOrNull == "true"
         val wasSettling = serverSettling
+        dbg("turnStatus turn=$tsTurn lastTurn=$lastTurn settling=$settling wasSettling=$wasSettling settleLockSec=" + (worldScreenRef?.get()?.gameInfo?.gameParameters?.fsSettleLockSeconds ?: -1))
         serverSettling = settling
         if (settling) {
-            lastSettleAt = System.currentTimeMillis()  // 记录结算开始时间 (重载后恢复停留锁定用)
+            dbg("settling=true → 锁定 + 提示条")
             showSettlingHint()  // 显示提示条 + 全程锁定 (serverSettling 控制实际锁定)
         } else if (wasSettling) {
-            // 结算刚结束: 停留秒数保底锁定 (给玩家准备时间); 同回合内后续 turnStatus 不再刷新
-            inputLockedUntil = System.currentTimeMillis() + settleLockMs()
-            if (settlingHint != null) settlingHintUntil = System.currentTimeMillis() + settleLockMs()  // 提示条顺延
+            // 结算结束 (延迟到期, 服务器已广播新回合): 解锁 + 移除提示条
+            dbg("settling=false → 解锁, 移除提示条")
+            hideSettlingHint()
         }
         val deadlineSec = msg["deadline"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull() ?: 0.0
         // deadline=0 的广播不覆盖已有倒计时 (连接补推竞态); deadline<0 = 无限制段 (无限, 不设倒计时)
@@ -949,26 +947,14 @@ object FrameSync {
         pauseBlocker = null
     }
 
-    /** 回合结算后强制停留/锁定毫秒数 — 房间设置 fsSettleLockSeconds (秒, 默认 3; 0=不锁定) 2026-08-22 */
-    private fun settleLockMs(): Long {
-        val ws = worldScreenRef?.get()
-        val secs = ws?.gameInfo?.gameParameters?.fsSettleLockSeconds ?: 3
-        return secs.coerceAtLeast(0) * 1000L
-    }
-
-    /** 回合结算提示 + 强制锁定: 新回合开始后停留秒数内禁止操作 (给玩家准备时间), 屏幕中央提示「回合正在结算…」 */
+    /** 回合结算提示条: settling=true 期间常驻 (全程锁定), 结算结束 (settling=false) 由 hideSettlingHint 移除 — 2026-08-22 */
     private fun showSettlingHint() {
         val worldScreen = currentWorldScreenOrNull() ?: return
         val gameInfo = worldScreen.gameInfo ?: return
         if (gameInfo.gameId != gameId) return
-        inputLockedUntil = System.currentTimeMillis() + settleLockMs()  // 强制锁定: 先于 UI 提示设置
         Concurrency.runOnGLThread {
             try {
-                if (settlingHint != null) {
-                    // 已有提示 (快速连续回合) → 只顺延
-                    settlingHintUntil = System.currentTimeMillis() + settleLockMs()
-                    return@runOnGLThread
-                }
+                if (settlingHint != null) return@runOnGLThread  // 已显示
                 val hint = "Settling turn...".tr().toLabel(fontSize = 22)
                 hint.setColor(com.badlogic.gdx.graphics.Color.WHITE)
                 val table = Table()
@@ -981,22 +967,19 @@ object FrameSync {
                 table.setPosition((worldScreen.stage.width - table.width) / 2f, worldScreen.stage.height * 0.42f)
                 worldScreen.stage.addActor(table)
                 settlingHint = table  // 存整个框 — remove() 时背景和文字一起移除
-                settlingHintUntil = System.currentTimeMillis() + settleLockMs()
-                // 后台线程等停留秒数 → GL 线程移除 (期间新回合会顺延 until)
-                Concurrency.run("SettlingHintTimer") {
-                    while (System.currentTimeMillis() < settlingHintUntil) Thread.sleep(100)
-                    launchOnGLThread {
-                        if (settlingHintUntil <= System.currentTimeMillis()) {
-                            try {
-                                settlingHint?.remove()
-                            } catch (ignored: Exception) {
-                            }
-                            settlingHint = null
-                        }
-                    }
-                }
             } catch (e: Exception) {
             }
+        }
+    }
+
+    /** 结算结束: 移除提示条 (GL 线程) */
+    private fun hideSettlingHint() {
+        Concurrency.runOnGLThread {
+            try {
+                settlingHint?.remove()
+            } catch (ignored: Exception) {
+            }
+            settlingHint = null
         }
     }
 

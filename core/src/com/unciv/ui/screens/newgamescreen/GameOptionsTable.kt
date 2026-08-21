@@ -524,7 +524,7 @@ class GameOptionsTable(
             table.add("Turn ${segments[i]}:".tr().toLabel(hideIcons = true)).right().padRight(6f)
             table.add(box).left().row()
         }
-        // 回合结算后强制停留秒数 (0=不锁定) — 2026-08-22 用户要求可设置, 默认 3
+        // 回合切换前停留秒数 (0=不延迟) — 2026-08-22 用户需求: 结算完成后延迟 X 秒再进入下一回合 (服务器端实现); 文案保留原样 (用户要求不改)
         val lockField = UncivTextField.Numeric(
             "Lock input after turn (seconds)", gameParameters.fsSettleLockSeconds, integerOnly = true)
         lockField.onChange {
