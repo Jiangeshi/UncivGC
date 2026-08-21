@@ -250,6 +250,11 @@ object FrameSync {
         job = null
         session = null
         pauseNickname = null
+        // 重置暂停/结算锁定 — 否则断线重连后 lastPaused/serverSettling 卡旧值,
+        // 所有 sendOp 被静默吞掉 → “操作没反应” (2026-08-21 用户反馈; 服务器重连补推会重新同步状态)
+        lastPaused = false
+        serverSettling = false
+        inputLockedUntil = 0L
         Concurrency.runOnGLThread {
             // fsPauseButton 不置 null — 重载时新顶栏会重新注册覆盖; 置 null 会和注册产生竞态 (按钮文本不更新)
             hidePauseBar()
@@ -777,13 +782,17 @@ object FrameSync {
     private fun handleTurnStatus(msg: JsonObject) {
         val tsTurn = msg["turn"]?.jsonPrimitive?.intOrNull ?: return
         if (tsTurn < lastTurn) return  // 过期广播 (网络延迟/乱序) 忽略
-        // 结算状态: settling=true → 全程锁定 (提示条常驻); 结束 → 至少再锁 2 秒 (2026-08-21)
+        // 结算状态: settling=true → 全程锁定 (提示条常驻); 结算刚结束 → 再锁 2 秒保底
+        // ⚠️ 2026-08-21 修复: 原来每条非 settling 的 turnStatus 都刷新 inputLockedUntil=now+2000,
+        // 而服务器每个 op 都会广播 turnStatus → 锁定永不解除 → 所有操作被静默吞 (玩家“点四五下才能成功”)
         val settling = msg["settling"]?.jsonPrimitive?.contentOrNull == "true"
+        val wasSettling = serverSettling
         serverSettling = settling
         if (settling) {
-            showSettlingHint()  // 显示提示条 + 2 秒保底锁定 (serverSettling 控制实际锁定)
-        } else {
-            inputLockedUntil = System.currentTimeMillis() + 2000  // 结算结束: 2 秒下限
+            showSettlingHint()  // 显示提示条 + 全程锁定 (serverSettling 控制实际锁定)
+        } else if (wasSettling) {
+            // 结算刚结束: 2 秒保底锁定 (给玩家准备时间); 同回合内后续 turnStatus 不再刷新
+            inputLockedUntil = System.currentTimeMillis() + 2000
             if (settlingHint != null) settlingHintUntil = System.currentTimeMillis() + 2000  // 提示条顺延
         }
         val deadlineSec = msg["deadline"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull() ?: 0.0
