@@ -474,7 +474,9 @@ class WorldScreen(
             when {
                 viewingCiv.shouldShowDiplomaticVotingResults() ->
                     UncivGame.Current.pushScreen(DiplomaticVoteResultScreen(gameInfo.diplomaticVictoryVotesCast, viewingCiv))
-                !gameInfo.oneMoreTurnMode && (viewingCiv.isDefeated() || gameInfo.checkForVictory()) ->
+                !gameInfo.oneMoreTurnMode && (viewingCiv.isDefeated() || gameInfo.checkForVictory()) &&
+                    // 帧同步: 观战者不弹胜负界面 (战败重进=观战者, 弹失败界面会卡住; 2026-08-21)
+                    !(com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo) && viewingCiv.isSpectator()) ->
                     // 帧同步: 对局结束提示只弹一次 — 否则关闭胜利屏后 update 再次检测到胜利 → 死循环
                     // (观战/成员进打完的局: 胜利屏关闭 → 回 WorldScreen → 又弹 → 困住)
                     if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo)) {

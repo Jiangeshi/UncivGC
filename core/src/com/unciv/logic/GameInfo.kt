@@ -238,11 +238,13 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
 
         // Iterating on all civs, starting from the the current player, gives us the one that will have the next turn
         // This allows multiple civs from the same UserID
-        if (civilizations.any { it.playerId == userId }) {
+        // UncivGC 帧同步: 只匹配存活文明 — 战败后重进若 viewingCiv=已击败文明,
+        // WorldScreen.update 立即弹失败界面卡住 (2026-08-21 LianFang 反馈) → 战败重进应以观战者进入
+        if (civilizations.any { it.playerId == userId && !it.isDefeated() }) {
             var civIndex = civilizations.map { it.civID }.indexOf(currentPlayer)
             while (true) {
                 val civToCheck = civilizations[civIndex % civilizations.size]
-                if (civToCheck.playerId == userId) return civToCheck
+                if (civToCheck.playerId == userId && !civToCheck.isDefeated()) return civToCheck
                 civIndex++
             }
         } else {
