@@ -34,7 +34,7 @@ class GameParameters : IsPartOfGameInfoSerialization { // Default values are the
     var espionageEnabled = false
     /** UncivGC 帧同步: 同时回合 (实时联机, Civ6 模式) — 房间设置开关, 服务器权威 */
     var simultaneousTurns = false
-    /** UncivGC 帧同步: 每段回合保底时长 (分钟) — 5 段 [0-25, 26-50, 51-75, 76-100, 100+]; null=服务器默认 */
+    /** UncivGC 帧同步: 每段回合保底时长 (分钟) — 5 段 [0-25, 26-50, 51-75, 76-100, 100+]; 0=无限制 (该段不设倒计时, 全员完成才过回合); null=服务器默认 */
     var fsTurnTimes: Array<Float>? = null
     var noStartBias = false
     var shufflePlayerOrder = false

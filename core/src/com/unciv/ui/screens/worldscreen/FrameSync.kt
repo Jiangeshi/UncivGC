@@ -798,9 +798,11 @@ object FrameSync {
             if (settlingHint != null) settlingHintUntil = System.currentTimeMillis() + 2000  // 提示条顺延
         }
         val deadlineSec = msg["deadline"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull() ?: 0.0
-        // deadline=0 的广播不覆盖已有倒计时 (连接补推竞态)
+        // deadline=0 的广播不覆盖已有倒计时 (连接补推竞态); deadline<0 = 无限制段 (无限, 不设倒计时)
         if (deadlineSec > 0 || turnDeadline == 0L) {
             turnDeadline = (deadlineSec * 1000).toLong()
+        } else if (deadlineSec < 0) {
+            turnDeadline = -1L
         }
         turnReadyPlayers = msg["readyPlayers"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: emptyList()
         onlinePlayers = msg["onlinePlayers"]?.jsonArray?.mapNotNull { it.jsonPrimitive.contentOrNull } ?: onlinePlayers

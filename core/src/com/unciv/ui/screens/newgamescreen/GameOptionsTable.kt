@@ -502,11 +502,11 @@ class GameOptionsTable(
             .colspan(2).left().padBottom(4f).row()
         val segments = arrayOf("0-25", "26-50", "51-75", "76-100", "100+")
         val options = arrayOf(
-            arrayOf(0.5f, 1f, 2f, 3f, 5f),
-            arrayOf(2f, 3f, 4f, 5f, 7f),
-            arrayOf(3f, 4f, 5f, 7f, 10f),
-            arrayOf(4f, 5f, 7f, 10f, 12f, 15f),
-            arrayOf(5f, 7f, 10f, 15f, 20f)
+            arrayOf(0.5f, 1f, 2f, 3f, 5f, 0f),
+            arrayOf(2f, 3f, 4f, 5f, 7f, 0f),
+            arrayOf(3f, 4f, 5f, 7f, 10f, 0f),
+            arrayOf(4f, 5f, 7f, 10f, 12f, 15f, 0f),
+            arrayOf(5f, 7f, 10f, 15f, 20f, 0f)
         )
         for (i in 0..4) {
             val cur = gameParameters.fsTurnTimes?.getOrNull(i) ?: DEFAULT_FS_TURN_TIMES[i]
@@ -527,6 +527,7 @@ class GameOptionsTable(
     }
 
     private fun fmtMinutes(v: Float): String {
+        if (v <= 0f) return "No limit".tr()  // 0 = 无限制: 该段不设倒计时, 全员完成才过回合
         val num = if (v % 1f == 0f) v.toInt().toString() else v.toString()
         return "$num ${("min").tr()}"
     }

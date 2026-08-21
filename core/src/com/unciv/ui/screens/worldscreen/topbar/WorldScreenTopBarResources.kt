@@ -83,7 +83,10 @@ internal class WorldScreenTopBarResources(topbar: WorldScreenTopBar) : ScalingTa
         // 暂停期间倒计时冻结 (服务器暂停不结算, deadline 恢复时才顺延 — 本地不再递减)
         if (com.unciv.ui.screens.worldscreen.FrameSync.isPaused()) return
         val deadline = com.unciv.ui.screens.worldscreen.FrameSync.turnDeadline
-        val text = if (deadline <= 0) {
+        val text = if (deadline < 0) {
+            // 无限制段 (服务器 deadline=-1): 无倒计时, 全员完成才过回合
+            Fonts.turn + "\u2004" + gameInfo.turns.tr() + "\u2004|\u2004∞"
+        } else if (deadline <= 0) {
             // 未收到 turnStatus (连接初期): 先显示回合数, 收到广播后自动切换
             Fonts.turn + "\u2004" + gameInfo.turns.tr()
         } else {
