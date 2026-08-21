@@ -431,12 +431,19 @@ object UnitActions {
             useFrequency = 0f, // Last on first page (defaultPage=0)
             action = {
                 // UncivGC 帧同步: 统一服务器广播
-                if (!FrameSync.tryInterceptOp(FrameSync.currentWorldScreenOrNull(), "unit.skip", mapOf("unitId" to unit.id)))
+                if (FrameSync.tryInterceptOp(FrameSync.currentWorldScreenOrNull(), "unit.skip", mapOf("unitId" to unit.id))) {
+                    // 切换后不再被本地“已查看”标记覆盖 due (取消跳过时服务器改回 true, 广播必须生效) — 2026-08-22
+                    FrameSync.onUnitSkipToggle(unit.id)
+                } else {
                     unit.due = !unit.due
+                }
                 // If it's on, skips to next unit due to worldScreen.switchToNextUnit() in activateAction
                 // We don't want to switch twice since then we skip units :)
                 if (!unit.due && !UncivGame.Current.settings.autoUnitCycle)
                     GUI.getWorldScreen().switchToNextUnit()
+                // 帧同步: 取消跳过的点击会触发上面的 switchToNextUnit → 重新标记“已查看” → 再移除一次
+                // (否则广播里服务器 due=true 生效后又被本地标记打回 false → 取消无效)
+                FrameSync.onUnitSkipToggle(unit.id)
             }.takeIf { unit.hasMovement() },
             isCurrentAction = !unit.due
         ))

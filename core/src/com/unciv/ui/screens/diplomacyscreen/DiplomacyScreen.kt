@@ -74,6 +74,13 @@ class DiplomacyScreen(
         background = skinStrings.getUiBackground("DiplomacyScreen/RightSide", tintColor = highlightColor)
     }
 
+    /** 右侧当前显示的文明 (点左侧头像/构造时设置; FrameSync 关系变化实时刷新用 — 2026-08-22) */
+    internal var selectedCivForRightSide: Civilization? = null
+        private set
+    /** 右侧当前是否显示贸易页 (贸易页不重建 — 防止清空编辑中的报价, 2026-08-22) */
+    internal var showingTradeTable = false
+        private set
+
     private val splitPane = SplitPaneCenteringLeftSide()
 
     private val closeButton = getCloseButton(closeButtonSize) { game.popScreen() }
@@ -211,6 +218,8 @@ class DiplomacyScreen(
 
     internal fun updateRightSide(otherCiv: Civilization) {
         rightSideTable.clear()
+        selectedCivForRightSide = otherCiv
+        showingTradeTable = false
         UncivGame.Current.musicController.chooseTrack(otherCiv.civName,
             MusicMood.peaceOrWar(viewingCiv.isAtWarWith(otherCiv)),MusicTrackChooserFlags.setSelectNation)
         rightSideTable.add(ScrollPane(
@@ -223,6 +232,8 @@ class DiplomacyScreen(
 
     internal fun setTrade(otherCiv: Civilization): TradeTable {
         rightSideTable.clear()
+        selectedCivForRightSide = otherCiv
+        showingTradeTable = true
         val tradeTable = TradeTable(viewingCiv, otherCiv, this)
         rightSideTable.add(tradeTable)
         return tradeTable

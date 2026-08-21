@@ -1120,23 +1120,34 @@ object FrameSync {
     }
 
     /** 贸易提议广播 (服务器挂起+转发): 本地加 TradeRequest → WorldScreen.update 自然弹 TradePopup */
-    /** 我方发起的报价被接受: 清除等待/报价状态 + 关闭相关 TradePopup (2026-08-22 用户反馈"接受后还能撤回报价") */
+    /** 我方发起的报价被接受 (贸易成交): 清除等待/报价状态 + 退出贸易界面 —
+     *  发起人正停留在外交界面的贸易页时, 应回到外交菜单 (友谊宣言/宣战/谴责等) (2026-08-22 用户反馈) */
     private fun handleTradeAccepted(msg: JsonObject) {
-        val acceptingCiv = msg["requestingCiv"]?.jsonPrimitive?.contentOrNull ?: return
+        val acceptingCivName = msg["requestingCiv"]?.jsonPrimitive?.contentOrNull ?: return
         val targetPlayerId = msg["playerId"]?.jsonPrimitive?.contentOrNull
         if (targetPlayerId != null && targetPlayerId != playerId) return
         Concurrency.runOnGLThread {
             val worldScreen = currentWorldScreenOrNull() ?: return@runOnGLThread
             val gameInfo = worldScreen.gameInfo ?: return@runOnGLThread
             if (gameInfo.gameId != gameId) return@runOnGLThread
-            // 清除指向该文明的挂起报价 (若 TradePopup 正显示该报价 → 关闭)
             val myCiv = worldScreen.viewingCiv
             if (myCiv != null && !myCiv.isSpectator()) {
-                myCiv.tradeRequests.removeAll { it.requestingCiv == acceptingCiv }
+                // 接受方 (服务器广播的是 civName; 本地 tradeRequests 存 civID)
+                val acceptingCiv = gameInfo.civilizations.firstOrNull { it.civName == acceptingCivName }
+                // 清除已成交的挂起报价: 接受方侧 (发起方乐观加的报价 key=发起方 civID) + 我方侧 (反向)
+                if (acceptingCiv != null) {
+                    acceptingCiv.tradeRequests.removeAll { it.requestingCiv == myCiv.civID }
+                    myCiv.tradeRequests.removeAll { it.requestingCiv == acceptingCiv.civID }
+                } else {
+                    myCiv.tradeRequests.removeAll { it.requestingCiv == acceptingCivName }
+                }
                 try {
                     val cur = com.unciv.UncivGame.Current.screen
                     if (cur is com.unciv.ui.screens.worldscreen.TradePopup) {
                         com.unciv.UncivGame.Current.popScreen()
+                    } else if (cur is com.unciv.ui.screens.diplomacyscreen.DiplomacyScreen && acceptingCiv != null) {
+                        // 发起人: 贸易已成交 → 退出贸易页, 回到外交菜单 (updateRightSide 同时复位贸易状态标记)
+                        cur.updateRightSide(acceptingCiv)
                     }
                 } catch (ignored: Exception) {
                 }
@@ -1589,10 +1600,19 @@ object FrameSync {
         localDueSeen.add(unitId)
     }
 
-    /** 帧同步: 广播应用后重新应用本地“已查看”标记 (否则 due 被广播覆盖回 true, 下一个单位循环卡住) */
-    private fun reapplyLocalDueSeen(gameInfo: GameInfo) {
+    /** 帧同步: 单位“跳过回合”切换后调用 — 从“已查看”集合移除该单位.
+     *  否则取消跳过时 (服务器 due 已改回 true) 广播应用后又被本地标记打回 false → “跳过回合无法取消” (2026-08-22 用户反馈) */
+    fun onUnitSkipToggle(unitId: Int) {
+        localDueSeen.remove(unitId)
+    }
+
+    /** 帧同步: 广播应用后重新应用本地“已查看”标记 (否则 due 被广播覆盖回 true, 下一个单位循环卡住).
+     *  [serverDueChanged]: 本次广播中服务器驱动了 due 变化的单位 (跳过回合切换) — 不应用本地标记,
+     *  否则“取消跳过” (服务器已改回 true) 又被本地打回 false → 无法取消 (2026-08-22) */
+    private fun reapplyLocalDueSeen(gameInfo: GameInfo, serverDueChanged: Set<Int> = emptySet()) {
         try {
             for (id in localDueSeen) {
+                if (id in serverDueChanged) continue
                 findUnit(gameInfo, id)?.due = false
             }
         } catch (ignored: Exception) {}
@@ -1645,6 +1665,8 @@ object FrameSync {
         syncRoads(gameInfo, roads)
         syncReligions(gameInfo, religions, worldScreen)
         val stateIds = HashSet<Int>()
+        // 本次广播中服务器驱动了 due 变化的单位 (跳过回合切换) — 重应用“已查看”标记时跳过, 防止取消跳过被回滚
+        val serverDueChanged = HashSet<Int>()
         for (unitJson in units) {
             try {
                 val obj = unitJson.jsonObject
@@ -1689,7 +1711,11 @@ object FrameSync {
                     }
                 }
                 obj["due"]?.jsonPrimitive?.contentOrNull?.let {
-                    unit.due = it == "true"
+                    val newDue = it == "true"
+                    if (unit.due != newDue) {
+                        unit.due = newDue
+                        serverDueChanged.add(id)
+                    }
                 }
                 // 单位实例名同步 (自定义改名; 可选字段 — 缺失/null 时清除本地, 防"取消改名"传不到对方)
                 obj["instanceName"]?.jsonPrimitive?.contentOrNull?.let {
@@ -1893,8 +1919,9 @@ object FrameSync {
             }
         }
         worldScreen.shouldUpdate = true
-        // 本地“已查看”单位标记重应用: due 被广播覆盖回 true 后恢复 (下一个单位循环不被广播打断)
-        reapplyLocalDueSeen(gameInfo)
+        // 本地“已查看”单位标记重应用: due 被广播覆盖回 true 后恢复 (下一个单位循环不被广播打断);
+        // 服务器本次驱动了 due 变化的单位除外 (跳过回合切换必须生效)
+        reapplyLocalDueSeen(gameInfo, serverDueChanged)
         // 帝国概览页 (Stats/Units/Politics) 实时刷新: 仅观看文明自身数据或单位实质状态变化时重建
         // (宗教页内容变化走 syncReligions 的 recreate; 这里不再因别人金币/外交变化频繁打断概览页)
         if ((civChanged || unitsChanged)
@@ -2293,6 +2320,21 @@ object FrameSync {
     }
 
     /** 其他文明信息同步 (概览界面): 已采用政策 + 时代 — 对方回合中选政策/进时代立即可见 */
+    /** 外交关系变化 (新见面/战争/友谊/谴责) → 实时刷新打开的外交界面: 左侧关系圆圈变色/新文明出现 + 右侧菜单更新.
+     *  贸易页打开时不重建右侧 (防止清空编辑中的报价), 只刷左侧圆圈. (2026-08-22 用户反馈"友谊同意后圆圈不实时变色") */
+    private fun refreshOpenDiplomacyScreen() {
+        try {
+            val cur = com.unciv.UncivGame.Current.screen
+            if (cur is com.unciv.ui.screens.diplomacyscreen.DiplomacyScreen) {
+                cur.updateLeftSideTable(cur.selectedCivForRightSide)
+                if (!cur.showingTradeTable) {
+                    cur.selectedCivForRightSide?.let { cur.updateRightSide(it) }
+                }
+            }
+        } catch (e: Exception) {
+        }
+    }
+
     private fun syncCivInfo(gameInfo: GameInfo, civs: List<JsonElement>, viewingCivId: String): Boolean {
         var changed = false
         var ownChanged = false
@@ -2313,6 +2355,7 @@ object FrameSync {
                                 civ.diplomacy[metId] =
                                     com.unciv.logic.civilization.diplomacy.DiplomacyManager(civ, other)
                                 changed = true
+                                refreshOpenDiplomacyScreen()
                             }
                         }
                     }
@@ -2328,9 +2371,11 @@ object FrameSync {
                     if (atWar && !isWar) {
                         dm.diplomaticStatus = DiplomaticStatus.War
                         changed = true
+                        refreshOpenDiplomacyScreen()
                     } else if (!atWar && isWar) {
                         dm.diplomaticStatus = DiplomaticStatus.Peace
                         changed = true
+                        refreshOpenDiplomacyScreen()
                     }
                 }
                 // 友谊宣言/谴责 flag 同步 (服务器权威: 界面按钮显示/消失)
@@ -2346,16 +2391,20 @@ object FrameSync {
                     if (doF.contains(other.civID) && !hasDoF) {
                         dm.setFlag(com.unciv.logic.civilization.diplomacy.DiplomacyFlags.DeclarationOfFriendship, 30)
                         changed = true
+                        refreshOpenDiplomacyScreen()
                     } else if (!doF.contains(other.civID) && hasDoF) {
                         dm.removeFlag(com.unciv.logic.civilization.diplomacy.DiplomacyFlags.DeclarationOfFriendship)
                         changed = true
+                        refreshOpenDiplomacyScreen()
                     }
                     if (denounced.contains(other.civID) && !hasDenounced) {
                         dm.setFlag(com.unciv.logic.civilization.diplomacy.DiplomacyFlags.Denunciation, 30)
                         changed = true
+                        refreshOpenDiplomacyScreen()
                     } else if (!denounced.contains(other.civID) && hasDenounced) {
                         dm.removeFlag(com.unciv.logic.civilization.diplomacy.DiplomacyFlags.Denunciation)
                         changed = true
+                        refreshOpenDiplomacyScreen()
                     }
                 }
                 // 金币 (自己文明的, 服务器权威)
