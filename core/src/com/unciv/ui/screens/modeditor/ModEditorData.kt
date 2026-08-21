@@ -7,6 +7,7 @@ import com.badlogic.gdx.utils.JsonValue
 import com.badlogic.gdx.utils.JsonWriter
 import com.unciv.UncivGame
 import com.unciv.json.json
+import com.unciv.json.stripJsonComments
 import com.unciv.models.metadata.BaseRuleset
 import com.unciv.models.ruleset.Building
 import com.unciv.models.ruleset.Policy
@@ -338,8 +339,9 @@ object ModEditorData {
         val result = mutableListOf<TechGroupData>()
         val file = modFolder.child("jsons/Techs.json")
         if (!file.exists()) return result
+        // JSONC 兼容 (带注释/尾随逗号的 mod jsons) — 2026-08-21
+        val parsed = parseModJson(modFolder, "Techs.json") ?: return result
         try {
-            val parsed = JsonReader().parse(file.readString(Charsets.UTF_8.name()))
             if (!parsed.isArray) return result
             // 基础规则集同列已占用的行号（mod 没写 row 时自动分配后续行）
             val usedRows = HashMap<Int, MutableSet<Int>>()
@@ -1572,18 +1574,30 @@ object ModEditorData {
         return RulesetCache[chosen] ?: RulesetCache[BaseRuleset.Civ_V_GnK.fullName]!!
     }
 
-    private fun getModNames(modFolder: FileHandle, fileName: String): List<String> {
+    /** 解析模组 jsons: 标准解析失败时剥离注释/尾随逗号重试 (JSONC 兼容, 与规则集加载同款, 2026-08-21) */
+    private fun parseModJson(modFolder: FileHandle, fileName: String): JsonValue? {
         val file = modFolder.child("jsons/$fileName")
-        if (!file.exists()) return emptyList()
-        return try {
-            val parsed = JsonReader().parse(file.readString(Charsets.UTF_8.name()))
-            if (!parsed.isArray) return emptyList()
-            val names = mutableListOf<String>()
-            for (entry in parsed) {
-                names.add(if (entry.has("name")) entry.getString("name") else entry.asString())
+        if (!file.exists()) return null
+        val text = try { file.readString(Charsets.UTF_8.name()) } catch (e: Exception) { return null }
+        try {
+            return JsonReader().parse(text)
+        } catch (e: Exception) {
+            return try {
+                JsonReader().parse(stripJsonComments(text))
+            } catch (e2: Exception) {
+                null
             }
-            names
-        } catch (e: Exception) { emptyList() }
+        }
+    }
+
+    private fun getModNames(modFolder: FileHandle, fileName: String): List<String> {
+        val parsed = parseModJson(modFolder, fileName) ?: return emptyList()
+        if (!parsed.isArray) return emptyList()
+        val names = mutableListOf<String>()
+        for (entry in parsed) {
+            names.add(if (entry.has("name")) entry.getString("name") else entry.asString())
+        }
+        return names
     }
 
     fun getUnitTypes(modFolder: FileHandle): List<String> =
@@ -1594,24 +1608,24 @@ object ModEditorData {
         val base = getBaseRuleset(modFolder)
         val merged = LinkedHashSet<String>()
         merged.addAll(base.technologies.keys)
-        merged.addAll(getModNames(modFolder, "Techs.json"))
 
         // 模组自带科技的 era/列号（Techs.json 是分组结构：era + columnNumber + techs[]）
+        // ⚠️ 2026-08-21 修复: 原来用 getModNames 解析 Techs.json — 分组对象没有 "name" 字段,
+        // entry.asString() 抛异常 → 返回空 → 科技列表只剩基础规则集 (G&K) 的科技
         val eraOrder = base.eras.keys.toList()
         val modInfo = HashMap<String, Pair<Int, Int>>()
-        val modFile = modFolder.child("jsons/Techs.json")
-        if (modFile.exists()) {
-            try {
-                val parsed = JsonReader().parse(modFile.readString(Charsets.UTF_8.name()))
-                if (parsed.isArray) for (group in parsed) {
-                    val eraIndex = eraOrder.indexOf(group.getString("era", ""))
-                    val column = group.getInt("columnNumber", 0)
-                    val techs = group.get("techs")
-                    if (techs != null && techs.isArray) for (t in techs) {
-                        modInfo[t.getString("name", "")] = Pair(eraIndex, column)
-                    }
+        val parsed = parseModJson(modFolder, "Techs.json")
+        if (parsed != null && parsed.isArray) for (group in parsed) {
+            val eraIndex = eraOrder.indexOf(group.getString("era", ""))
+            val column = group.getInt("columnNumber", 0)
+            val techs = group.get("techs")
+            if (techs != null && techs.isArray) for (t in techs) {
+                val name = t.getString("name", "")
+                if (name.isNotEmpty()) {
+                    modInfo[name] = Pair(eraIndex, column)
+                    merged.add(name)  // 模组自带科技并入下拉列表
                 }
-            } catch (e: Exception) { }
+            }
         }
 
         fun eraIndex(name: String): Int {

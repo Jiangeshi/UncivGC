@@ -95,7 +95,7 @@ private fun nextStartsValue(text: String, commentStart: Int): Boolean {
 }
 
 /** 剥离 JSON 注释 (行注释 // 和块注释 /* ... */) — 跳过字符串内的内容 (https:// 等不受影响) */
-private fun stripJsonComments(text: String): String {
+internal fun stripJsonComments(text: String): String {
     val sb = StringBuilder(text.length)
     var inString = false
     var i = 0
