@@ -502,10 +502,10 @@ class GameOptionsTable(
             .colspan(2).left().padBottom(4f).row()
         val segments = arrayOf("0-25", "26-50", "51-75", "76-100", "100+")
         val options = arrayOf(
-            arrayOf(0.5f, 1f, 2f, 3f),
-            arrayOf(2f, 3f, 4f, 5f),
-            arrayOf(3f, 4f, 5f, 7f),
-            arrayOf(4f, 5f, 7f, 10f),
+            arrayOf(0.5f, 1f, 2f, 3f, 5f),
+            arrayOf(2f, 3f, 4f, 5f, 7f),
+            arrayOf(3f, 4f, 5f, 7f, 10f),
+            arrayOf(4f, 5f, 7f, 10f, 12f),
             arrayOf(5f, 7f, 10f, 15f)
         )
         for (i in 0..4) {
@@ -532,8 +532,8 @@ class GameOptionsTable(
     }
 
     private companion object {
-        /** 5 段默认保底 (分钟): [0-25, 26-50, 51-75, 76-100, 100+] — 与服务器默认一致 */
-        val DEFAULT_FS_TURN_TIMES = arrayOf(1f, 3f, 4f, 5f, 7f)
+        /** 5 段默认保底 (分钟): [0-25, 26-50, 51-75, 76-100, 100+] — 与服务器默认一致 (2026-08-21 用户: 默认改大 5/7/10/12/15) */
+        val DEFAULT_FS_TURN_TIMES = arrayOf(5f, 7f, 10f, 12f, 15f)
     }
 
     private fun Table.addDurationSelectBox(

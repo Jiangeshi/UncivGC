@@ -20,6 +20,7 @@ import com.unciv.models.translations.tr
 import com.unciv.ui.components.extensions.darken
 import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.components.input.onClick
+import com.unciv.ui.screens.worldscreen.bottombar.BattleTableHelpers.battleAnimationDeferred
 import com.unciv.ui.popups.ToastPopup
 import com.unciv.ui.screens.basescreen.BaseScreen
 import com.unciv.utils.Concurrency
@@ -1319,13 +1320,41 @@ object FrameSync {
 
     private fun handleBattleMessage(msg: JsonObject) {
         val attackerCiv = msg["attackerCiv"]?.jsonPrimitive?.contentOrNull ?: return
+        val attackerId = msg["attackerId"]?.jsonPrimitive?.intOrNull ?: return
+        val damage = msg["damage"]?.jsonPrimitive?.intOrNull ?: 0          // 攻击者对防守者
+        val defenderDamage = msg["defenderDamage"]?.jsonPrimitive?.intOrNull ?: 0  // 防守者对攻击者
+        val x = msg["x"]?.jsonPrimitive?.intOrNull ?: return
+        val y = msg["y"]?.jsonPrimitive?.intOrNull ?: return
         Concurrency.runOnGLThread {
             val worldScreen = currentWorldScreenOrNull() ?: return@runOnGLThread
             val gameInfo = worldScreen.gameInfo ?: return@runOnGLThread
             if (gameInfo.gameId != gameId) return@runOnGLThread
+            try {
+                // 战斗动画/伤害飘字 (原版 battleAnimationDeferred): 服务器广播 battle 后播放 —
+                // 帧同步本地不执行 Battle, 无动画 → "打人不显示伤害" (2026-08-21)
+                val attackerUnit = findUnit(gameInfo, attackerId) ?: return@runOnGLThread
+                val targetTile = gameInfo.tileMap.get(x, y) ?: return@runOnGLThread
+                val targetId = msg["targetId"]?.jsonPrimitive?.intOrNull ?: -1
+                val defender: com.unciv.logic.battle.ICombatant =
+                    if (targetId >= 0) {
+                        findUnit(gameInfo, targetId)
+                            ?.let { com.unciv.logic.battle.MapUnitCombatant(it) }
+                            ?: return@runOnGLThread
+                    } else {
+                        // 城市目标 (targetId=-1): 用坐标找城市
+                        targetTile.getCity()
+                            ?.let { com.unciv.logic.battle.CityCombatant(it) }
+                            ?: return@runOnGLThread
+                    }
+                worldScreen.battleAnimationDeferred(
+                    com.unciv.logic.battle.MapUnitCombatant(attackerUnit),
+                    defenderDamage,   // 攻击者受到的伤害
+                    defender,
+                    damage)           // 防守者受到的伤害
+            } catch (ignored: Exception) {
+            }
             // 战斗通知统一走服务器广播 (checkRuinRewards 全量转发, 含攻击方/被攻击方/厌战度等),
             // 这里不再本地 addNotification — 否则与广播重复 (用户实测"通知两次"的根因之一)
-            // 仅保留伤害数字气泡显示 (WorldScreen 战斗浮字)
             worldScreen.shouldUpdate = true
         }
     }
