@@ -36,6 +36,8 @@ class GameParameters : IsPartOfGameInfoSerialization { // Default values are the
     var simultaneousTurns = false
     /** UncivGC 帧同步: 每段回合保底时长 (分钟) — 5 段 [0-25, 26-50, 51-75, 76-100, 100+]; 0=无限制 (该段不设倒计时, 全员完成才过回合); null=服务器默认 */
     var fsTurnTimes: Array<Float>? = null
+    /** UncivGC 帧同步: 回合结算后强制停留/锁定秒数 (客户端结算锁定+提示条时长; 0=不锁定) — 2026-08-22 用户要求可设置, 默认 3 */
+    var fsSettleLockSeconds: Int = 3
     var noStartBias = false
     var shufflePlayerOrder = false
 
@@ -97,6 +99,7 @@ class GameParameters : IsPartOfGameInfoSerialization { // Default values are the
         parameters.nuclearWeaponsEnabled = nuclearWeaponsEnabled
         parameters.espionageEnabled = espionageEnabled
         parameters.simultaneousTurns = simultaneousTurns
+        parameters.fsSettleLockSeconds = fsSettleLockSeconds
         parameters.noStartBias = noStartBias
         parameters.shufflePlayerOrder = shufflePlayerOrder
         parameters.victoryTypes = ArrayList(victoryTypes)

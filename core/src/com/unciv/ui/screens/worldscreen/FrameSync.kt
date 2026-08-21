@@ -102,8 +102,8 @@ object FrameSync {
     /** 回合结算提示条 (整个 Table — 存 Label 会导致移除时只删文字、背景框残留, 2026-08-21 观战者反馈) */
     private var settlingHint: com.badlogic.gdx.scenes.scene2d.ui.Table? = null  // 回合结算提示 (2 秒)
     @Volatile private var settlingHintUntil = 0L
-    @Volatile private var inputLockedUntil = 0L  // 回合结算强制锁定: 新回合开始后 2 秒内禁止操作 (2026-08-21 用户要求)
-    @Volatile private var serverSettling = false  // 服务器结算中 (turnStatus settling): 全程锁定, 不受 2 秒限制
+    @Volatile private var inputLockedUntil = 0L  // 回合结算强制锁定: 新回合开始后停留秒数内禁止操作 (房间设置 fsSettleLockSeconds, 默认 3, 2026-08-22 用户要求可设置)
+    @Volatile private var serverSettling = false  // 服务器结算中 (turnStatus settling): 全程锁定, 不受停留秒数限制
     /** 暂停发起者昵称 (弹窗被盖住后返回世界屏时补弹用) */
     @Volatile private var pauseNickname: String? = null
     private var lastErrorShown = ""
@@ -806,9 +806,9 @@ object FrameSync {
         if (settling) {
             showSettlingHint()  // 显示提示条 + 全程锁定 (serverSettling 控制实际锁定)
         } else if (wasSettling) {
-            // 结算刚结束: 2 秒保底锁定 (给玩家准备时间); 同回合内后续 turnStatus 不再刷新
-            inputLockedUntil = System.currentTimeMillis() + 2000
-            if (settlingHint != null) settlingHintUntil = System.currentTimeMillis() + 2000  // 提示条顺延
+            // 结算刚结束: 停留秒数保底锁定 (给玩家准备时间); 同回合内后续 turnStatus 不再刷新
+            inputLockedUntil = System.currentTimeMillis() + settleLockMs()
+            if (settlingHint != null) settlingHintUntil = System.currentTimeMillis() + settleLockMs()  // 提示条顺延
         }
         val deadlineSec = msg["deadline"]?.jsonPrimitive?.contentOrNull?.toDoubleOrNull() ?: 0.0
         // deadline=0 的广播不覆盖已有倒计时 (连接补推竞态); deadline<0 = 无限制段 (无限, 不设倒计时)
@@ -932,17 +932,24 @@ object FrameSync {
         pauseBlocker = null
     }
 
-    /** 回合结算提示 + 强制锁定: 新回合开始后 2 秒内禁止操作 (给玩家准备时间), 屏幕中央提示「回合正在结算…」 */
+    /** 回合结算后强制停留/锁定毫秒数 — 房间设置 fsSettleLockSeconds (秒, 默认 3; 0=不锁定) 2026-08-22 */
+    private fun settleLockMs(): Long {
+        val ws = worldScreenRef?.get()
+        val secs = ws?.gameInfo?.gameParameters?.fsSettleLockSeconds ?: 3
+        return secs.coerceAtLeast(0) * 1000L
+    }
+
+    /** 回合结算提示 + 强制锁定: 新回合开始后停留秒数内禁止操作 (给玩家准备时间), 屏幕中央提示「回合正在结算…」 */
     private fun showSettlingHint() {
         val worldScreen = currentWorldScreenOrNull() ?: return
         val gameInfo = worldScreen.gameInfo ?: return
         if (gameInfo.gameId != gameId) return
-        inputLockedUntil = System.currentTimeMillis() + 2000  // 强制锁定: 先于 UI 提示设置
+        inputLockedUntil = System.currentTimeMillis() + settleLockMs()  // 强制锁定: 先于 UI 提示设置
         Concurrency.runOnGLThread {
             try {
                 if (settlingHint != null) {
                     // 已有提示 (快速连续回合) → 只顺延
-                    settlingHintUntil = System.currentTimeMillis() + 2000
+                    settlingHintUntil = System.currentTimeMillis() + settleLockMs()
                     return@runOnGLThread
                 }
                 val hint = "Settling turn...".tr().toLabel(fontSize = 22)
@@ -957,8 +964,8 @@ object FrameSync {
                 table.setPosition((worldScreen.stage.width - table.width) / 2f, worldScreen.stage.height * 0.42f)
                 worldScreen.stage.addActor(table)
                 settlingHint = table  // 存整个框 — remove() 时背景和文字一起移除
-                settlingHintUntil = System.currentTimeMillis() + 2000
-                // 后台线程等 2 秒 → GL 线程移除 (期间新回合会顺延 until)
+                settlingHintUntil = System.currentTimeMillis() + settleLockMs()
+                // 后台线程等停留秒数 → GL 线程移除 (期间新回合会顺延 until)
                 Concurrency.run("SettlingHintTimer") {
                     while (System.currentTimeMillis() < settlingHintUntil) Thread.sleep(100)
                     launchOnGLThread {

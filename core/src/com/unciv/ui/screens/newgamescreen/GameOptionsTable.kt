@@ -31,6 +31,7 @@ import com.unciv.ui.components.widgets.AutoScrollPane
 import com.unciv.ui.components.widgets.ExpanderTab
 import com.unciv.ui.components.widgets.TranslatedSelectBox
 import com.unciv.ui.components.widgets.UncivSlider
+import com.unciv.ui.components.widgets.UncivTextField
 import com.unciv.ui.images.ImageGetter
 import com.unciv.ui.popups.Popup
 import com.unciv.ui.screens.basescreen.BaseScreen
@@ -495,7 +496,7 @@ class GameOptionsTable(
         { gameParameters.startingEra = it; null }
     }
 
-    /** UncivGC 帧同步: 5 段保底时长下拉 (同步回合模式开启时展开; 缩进, 仿 Show Civ Stats 子选项) */
+    /** UncivGC 帧同步: 5 段保底时长下拉 + 结算停留秒数输入 (同步回合模式开启时展开; 缩进, 仿 Show Civ Stats 子选项) */
     private fun addFsTurnTimeTable(target: Table) {
         val table = Table().apply { defaults().growX().left().padLeft(30f).padBottom(10f) }
         table.add("Turn time per stage (minutes)".tr().toLabel(hideIcons = true))
@@ -523,6 +524,14 @@ class GameOptionsTable(
             table.add("Turn ${segments[i]}:".tr().toLabel(hideIcons = true)).right().padRight(6f)
             table.add(box).left().row()
         }
+        // 回合结算后强制停留秒数 (0=不锁定) — 2026-08-22 用户要求可设置, 默认 3
+        val lockField = UncivTextField.Numeric(
+            "Lock input after turn (seconds)", gameParameters.fsSettleLockSeconds, integerOnly = true)
+        lockField.onChange {
+            gameParameters.fsSettleLockSeconds = (lockField.value?.toInt() ?: 0).coerceAtLeast(0)
+        }
+        table.add("Lock input after turn (seconds)".tr().toLabel(hideIcons = true)).right().padRight(6f)
+        table.add(lockField).width(120f).left().row()
         target.add(table).left().row()
     }
 
