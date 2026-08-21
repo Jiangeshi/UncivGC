@@ -109,6 +109,11 @@ object UnitActionsReligion {
             UnitActionType.SpreadReligion, useFrequency,
             title = title,
             action = {
+                if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(unit.civ.gameInfo)) {
+                    // UncivGC 帧同步: 服务器权威执行 (本地执行会被广播 state 回滚 → “无法传教”, 2026-08-21)
+                    com.unciv.ui.screens.worldscreen.FrameSync.sendOp("unit.spreadReligion",
+                        mapOf("unitId" to unit.id, "tileX" to tile.position.x, "tileY" to tile.position.y))
+                } else {
                 val followersOfOtherReligions = city.religion.getFollowersOfOtherReligionsThan(unit.religion!!)
                 for (unique in unit.getMatchingUniques(UniqueType.StatsWhenSpreading, checkCivInfoUniques = true)) {
                     unit.civ.addStat(Stat.valueOf(unique.params[1]), followersOfOtherReligions * unique.params[0].toInt())
@@ -128,7 +133,7 @@ object UnitActionsReligion {
                 if (city.civ != unit.civ // Set flag only if they don't want our religion, which is when they can get their own
                     && (city.civ.religionManager.remainingFoundableReligions() != 0 || city.civ.religionManager.religionState > ReligionState.Pantheon))
                     city.civ.getDiplomacyManager(unit.civ)!!.setFlag(DiplomacyFlags.SpreadReligionInOurCities, 30, true)
-
+                }
             }.takeIf { unit.civ.religionManager.maySpreadReligionNow(unit)
                 && UnitActionModifiers.canActivateSideEffects(unit, newStyleUnique)}
         ))
