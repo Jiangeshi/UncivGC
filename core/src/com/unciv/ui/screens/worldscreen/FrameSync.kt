@@ -3187,7 +3187,8 @@ private fun jsonValue(v: Any?): String = when (v) {
     }
     is List<*> -> v.joinToString(prefix = "[", postfix = "]") { jsonValue(it) }
     is Set<*> -> v.joinToString(prefix = "[", postfix = "]") { jsonValue(it) }
-    else -> "\"" + v.toString().replace("\\", "\\\\").replace("\"", "\\\"") + "\""
+    else -> "\"" + v.toString().replace("\\", "\\\\").replace("\"", "\\\"")
+        .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t") + "\""
 }
 
 /** UncivGame 访问辅助 (避免 FrameSync 与 UncivGame 强耦合) */
