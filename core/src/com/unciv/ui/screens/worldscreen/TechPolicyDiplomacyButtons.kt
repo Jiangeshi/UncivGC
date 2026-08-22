@@ -157,18 +157,23 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
         }
     }
 
-    /** UncivGC 实验性 UI: 排行面板 (科技按钮下方) — 开启时显示并刷新, 否则隐藏; 总宽对齐科技按钮 */
+    /** UncivGC 实验性 UI: 排行面板 (科技按钮下方) — 开启时显示并刷新, 否则隐藏; 总宽对齐科技按钮
+     *  防御: 面板异常不得中断 WorldScreen.update (相遇弹窗/回合推进都在其后 — 2026-08-22) */
     private fun updateRankingPanel() {
-        if (GUI.getSettings().experimentalUi) {
-            // 面板总宽 = 科技按钮布局宽度 (首次布局前用 prefWidth 兜底)
-            val techWidth = if (techButtonHolder.width > 0f) techButtonHolder.width
-            else techButtonHolder.actor?.prefWidth ?: 320f
-            rankingPanel.update(techWidth)
-            rankingPanelHolder.actor = rankingPanel
-            rankingPanelHolder.touchable = Touchable.enabled
-        } else {
+        try {
+            if (GUI.getSettings().experimentalUi) {
+                // 面板总宽 = 科技按钮布局宽度 (首次布局前用 prefWidth 兜底)
+                val techWidth = if (techButtonHolder.width > 0f) techButtonHolder.width
+                else techButtonHolder.actor?.prefWidth ?: 320f
+                rankingPanel.update(techWidth)
+                rankingPanelHolder.actor = rankingPanel
+                rankingPanelHolder.touchable = Touchable.enabled
+            } else {
+                rankingPanelHolder.actor = null
+                rankingPanelHolder.touchable = Touchable.disabled
+            }
+        } catch (e: Exception) {
             rankingPanelHolder.actor = null
-            rankingPanelHolder.touchable = Touchable.disabled
         }
     }
 

@@ -80,6 +80,9 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
     /** UncivGC 帧同步: 玩家状态按钮 (在线/过回合/文明) — 放暂停按钮左边 */
     private var fsStatusButton: com.badlogic.gdx.scenes.scene2d.ui.TextButton? = null
 
+    /** UncivGC: 聊天按钮 (帧同步模式移到顶栏, 与 状态/暂停/概览 并列 — 2026-08-22 用户要求) */
+    private var fsChatButton: com.badlogic.gdx.scenes.scene2d.Actor? = null
+
     companion object {
         /** When the "fillers" are used, this is added to the required height, alleviating the "gap" problem a little. */
         const val gapFillingExtraHeight = 1f
@@ -107,6 +110,7 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
             val btn = com.badlogic.gdx.scenes.scene2d.ui.TextButton("Pause".tr(), BaseScreen.skin)
             btn.onClick { com.unciv.ui.screens.worldscreen.FrameSync.togglePause() }
             btn.pack()
+            btn.setSize(maxOf(btn.width, 60f), btn.height)  // 统一最小宽, 间距视觉一致 (2026-08-22)
             fsPauseButton = btn
             com.unciv.ui.screens.worldscreen.FrameSync.registerFsPauseButton(btn)
         }
@@ -116,7 +120,17 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
             val btn = com.badlogic.gdx.scenes.scene2d.ui.TextButton("Status".tr(), BaseScreen.skin)
             btn.onClick { showPlayerStatusPopup() }
             btn.pack()
+            btn.setSize(maxOf(btn.width, 60f), btn.height)
             fsStatusButton = btn
+        }
+
+        // UncivGC: 聊天按钮 (帧同步模式顶栏; 复用 worldScreen.chatButton — 未读角标/闪烁/可见性逻辑保留)
+        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo)) {
+            val chatBtn = worldScreen.chatButton
+            chatBtn.refreshVisibility()
+            chatBtn.pack()
+            chatBtn.setSize(maxOf(chatBtn.width, 80f), chatBtn.height)
+            fsChatButton = chatBtn
         }
     }
 
@@ -214,6 +228,14 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
         fsStatusButton?.let { btn ->
             if (btn.parent !== this) addActor(btn)
             val anchorX = fsPauseButton?.let { it.x - btn.width - 5f } ?: (overviewButton.x - btn.width - 5f)
+            btn.setPosition(anchorX, (centerButtonsToHeight - btn.height) / 2f)
+        }
+        // UncivGC: 聊天按钮放状态按钮左边 (聊天 | 状态 | 暂停 | 概览 — 2026-08-22 用户要求并列)
+        fsChatButton?.let { btn ->
+            if (btn.parent !== this) addActor(btn)
+            val anchorX = fsStatusButton?.let { it.x - btn.width - 5f }
+                ?: fsPauseButton?.let { it.x - btn.width - 5f }
+                ?: (overviewButton.x - btn.width - 5f)
             btn.setPosition(anchorX, (centerButtonsToHeight - btn.height) / 2f)
         }
     }
