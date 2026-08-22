@@ -46,8 +46,10 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
     private val policyScreenButton = Button(skin)
     private val diplomacyButtonHolder = Container<Button?>()
     private val diplomacyButton = Button(skin)
-    /** 外交按钮 cell 引用 — 实验性 UI 下动态设置尺寸 (宽=科技1/2, 高相等; 2026-08-23) */
+    /** 外交按钮 cell 引用 — 实验性 UI 下动态设置尺寸 (宽=科技1/3, 高50; 2026-08-23) */
     private var diplomacyCell: com.badlogic.gdx.scenes.scene2d.ui.Cell<Container<Button?>>? = null
+    /** 科技按钮 cell 引用 — 实验性 UI 下固定高度 50 (与外交同高) */
+    private var techCell: com.badlogic.gdx.scenes.scene2d.ui.Cell<Container<Table?>>? = null
     private val undoButtonHolder = Container<Button?>()
     private val undoButton = Button(skin)
     private val espionageButtonHolder = Container<Button?>()
@@ -61,7 +63,7 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
         defaults().left()
         add(fogOfWarButtonHolder).colspan(4).row()
         // UncivGC 2026-08-23 用户要求: 科技 + 外交 并排一行 (科技左, 外交右; 常开)
-        add(techButtonHolder).padTop(10f).growX()
+        techCell = add(techButtonHolder).padTop(10f).growX()
         diplomacyCell = add(diplomacyButtonHolder).padTop(10f).padRight(10f).top()  // 顶部对齐 (不随科技高度漂移)
         row()
         add(rankingPanelHolder).colspan(4).padTop(10f).row()  // 排行面板下一行
@@ -80,7 +82,7 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
         }
 
         pickTechButton.background = BaseScreen.skinStrings.getUiBackground("WorldScreen/PickTechButton", BaseScreen.skinStrings.roundedEdgeRectangleShape, colorFromRGB(7, 46, 43))
-        pickTechButton.defaults().pad(20f)
+        pickTechButton.defaults().pad(8f)  // pad 20→8: 高度接近 50, 与外交/科技同高 (2026-08-23)
         pickTechButton.add(pickTechLabel)
         techButtonHolder.onActivation(UncivSound.Paper, KeyboardBinding.TechnologyTree) {
             game.pushScreen(TechPickerScreen(viewingCiv))
@@ -197,6 +199,10 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
                 // 科技按钮内容宽 (布局前用 prefWidth)
                 val techWidth = techButtonHolder.actor?.prefWidth
                     ?: (if (techButtonHolder.width > 0f) techButtonHolder.width else 320f)
+                // 科技按钮容器: 高度固定 50 + fill (与外交同高 — 2026-08-23 用户反馈科技仍比外交高)
+                techCell?.height(50f)
+                techButtonHolder.fill()
+                techButtonHolder.setSize(techWidth, 50f)
                 // 外交按钮: 宽 = 科技按钮 1/3 (缩短1/3 — 用户 2026-08-23), 高度固定 50
                 diplomacyCell?.width(techWidth / 3f)
                 diplomacyCell?.height(50f)
@@ -209,6 +215,7 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
                 rankingPanelHolder.touchable = Touchable.disabled
                 diplomacyCell?.width(-1f)  // 恢复默认尺寸
                 diplomacyCell?.height(-1f)
+                techCell?.height(-1f)
             }
         } catch (e: Exception) {
             rankingPanelHolder.actor = null
@@ -227,6 +234,12 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
     }
 
     private fun updatePolicyButton() {
+        // UncivGC 实验性 UI: 政策按钮常开 (F5 快捷键对应 — 2026-08-23 用户要求)
+        if (GUI.getSettings().experimentalUi) {
+            policyButtonHolder.touchable = Touchable.enabled
+            policyButtonHolder.actor = policyScreenButton
+            return
+        }
         // Don't show policies until they become relevant
         if (viewingCiv.policies.adoptedPolicies.isNotEmpty() || viewingCiv.policies.canAdoptPolicy()) {
             policyButtonHolder.touchable = Touchable.enabled
