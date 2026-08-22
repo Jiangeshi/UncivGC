@@ -380,7 +380,12 @@ class MapUnit : IsPartOfGameInfoSerialization {
 
         val restoredUnits = mutableListOf<MapUnit>()
         for (snapshot in formationSnapshots) {
-            val newUnit = civ.units.placeUnitNearTile(getTile().position, civ.gameInfo.ruleset.units[snapshot.unitName]!!)
+            // 副单位跟随主单位当前 baseUnit (军团升级后拆分 → 恢复的也是升级后的单位, 2026-08-22 用户要求);
+            // 快照的 unitName 仅作兜底 (合并时的单位)
+            val unitBase = civ.gameInfo.ruleset.units[baseUnit.name]
+                ?: civ.gameInfo.ruleset.units[snapshot.unitName]
+                ?: continue
+            val newUnit = civ.units.placeUnitNearTile(getTile().position, unitBase)
             if (newUnit != null) {
                 newUnit.health = avgHp
                 newUnit.promotions.numberOfPromotions = snapshot.level
@@ -507,9 +512,12 @@ class MapUnit : IsPartOfGameInfoSerialization {
     @Readonly
     fun getResourceRequirementsPerTurn(): Counter<String> {
         val resourceRequirements = Counter<String>()
-        if (baseUnit.requiredResource != null) resourceRequirements[baseUnit.requiredResource!!] = 1
+        // 编队单位按单位数倍率消耗 (军团/舰队×2, 集团军/无敌舰队×3) — 2026-08-22 方案A:
+        // 防"合并减少统计计数 → 触发免费单位"刷编队 (LM2 巴勒斯坦 Number of Fighters 机制)
+        val formationMultiplier = formation.tier + 1
+        if (baseUnit.requiredResource != null) resourceRequirements[baseUnit.requiredResource!!] = formationMultiplier
         for (unique in getMatchingUniques(UniqueType.ConsumesResources, cache.state))
-            resourceRequirements.add(unique.params[1], unique.params[0].toInt())
+            resourceRequirements.add(unique.params[1], unique.params[0].toInt() * formationMultiplier)
         return resourceRequirements
     }
 

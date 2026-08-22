@@ -62,7 +62,8 @@ enum class Countables(
     },
     Units("Units", shortDocumentation = "The number of units the relevant Civilization owns") {
         override fun eval(parameterText: String, gameContext: GameContext) =
-            gameContext.civInfo?.units?.getCivUnitsSize()
+            // 编队单位按等效单位数计 (军团/舰队=2, 集团军/无敌舰队=3) — 2026-08-22 防"合并减计数刷免费单位"
+            gameContext.civInfo?.units?.getCivUnits()?.sumOf { it.formation.tier + 1 }
     },
 
     Stats {
@@ -140,7 +141,8 @@ enum class Countables(
         override fun eval(parameterText: String, gameContext: GameContext): Int? {
             val filter = parameterText.getPlaceholderParameters()[0]
             val unitManager = gameContext.civInfo?.units ?: return null
-            return unitManager.getCivUnits().count { it.matchesFilter(filter) }
+            // 编队单位按等效单位数计 (军团/舰队=2, 集团军/无敌舰队=3) — 2026-08-22
+            return unitManager.getCivUnits().sumOf { if (it.matchesFilter(filter)) it.formation.tier + 1 else 0 }
         }
         override fun getErrorSeverity(parameterText: String, ruleset: Ruleset): UniqueType.UniqueParameterErrorSeverity? =
             UniqueParameterType.MapUnitFilter.getTranslatedErrorSeverity(parameterText, ruleset)
