@@ -476,7 +476,28 @@ class WorldScreen(
                     UncivGame.Current.pushScreen(DiplomaticVoteResultScreen(gameInfo.diplomaticVictoryVotesCast, viewingCiv))
                 !gameInfo.oneMoreTurnMode && (viewingCiv.isDefeated() || gameInfo.checkForVictory()) &&
                     // 帧同步: 观战者不弹胜负界面 (战败重进=观战者, 弹失败界面会卡住; 2026-08-21)
-                    !(com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo) && viewingCiv.isSpectator()) ->
+                    !(com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo) && viewingCiv.isSpectator()) -> {
+                    // 帧同步: 胜利判定详细日志 — 排查"一进去就显示印尼获胜"误判 (2026-08-22)
+                    if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo)) {
+                        try {
+                            val sb = StringBuilder("胜利判定触发! viewingCiv=" + viewingCiv.civName
+                                + " defeated=" + viewingCiv.isDefeated()
+                                + " victoryData=" + gameInfo.victoryData
+                                + " oneMoreTurnMode=" + gameInfo.oneMoreTurnMode)
+                            for (c in gameInfo.civilizations) {
+                                if (c.isBarbarian || c.isSpectator()) continue
+                                sb.append("\n  ").append(c.civName)
+                                    .append(" cities=").append(c.cities.size)
+                                    .append(" units=").append(c.units.getCivUnitsSize())
+                                    .append(" defeated=").append(c.isDefeated())
+                                    .append(" victoryType=").append(try {
+                                        c.victoryManager.getVictoryTypeAchieved()
+                                    } catch (e: Exception) { "ERR" })
+                            }
+                            com.unciv.ui.screens.worldscreen.FrameSync.log(sb.toString())
+                        } catch (e: Exception) {
+                        }
+                    }
                     // 帧同步: 对局结束提示只弹一次 — 否则关闭胜利屏后 update 再次检测到胜利 → 死循环
                     // (观战/成员进打完的局: 胜利屏关闭 → 回 WorldScreen → 又弹 → 困住)
                     if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo)) {
@@ -492,6 +513,7 @@ class WorldScreen(
                     } else {
                         game.pushScreen(VictoryScreen(this))
                     }
+                }
                 viewingCiv.greatPeople.freeGreatPeople > 0 ->
                     game.pushScreen(GreatPersonPickerScreen(this, viewingCiv))
                 viewingCiv.popupAlerts.any() -> AlertPopup(this, viewingCiv.popupAlerts.first())

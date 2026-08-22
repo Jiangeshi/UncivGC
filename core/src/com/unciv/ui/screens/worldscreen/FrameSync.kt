@@ -76,6 +76,9 @@ object FrameSync {
         }
     }
 
+    /** 供其他类写入帧同步调试日志 (WorldScreen 胜利判定等; 2026-08-22) */
+    fun log(msg: String) = dbg(msg)
+
     /** fs_server 端口 (生产 30125; 测试服 30127; 本地联调 -Duncivgc.fsPort=30125) */
     private val FS_PORT: Int
         get() = System.getProperty("uncivgc.fsPort")?.toIntOrNull() ?: 30127
