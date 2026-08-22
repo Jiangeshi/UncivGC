@@ -184,7 +184,9 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
         }
 
         // Check whether it gets cramped on narrow aspect ratios
-        val centerButtonsToHeight = when {
+        // UncivGC 实验性 UI: 禁用 cramped 下移 — 手机矮屏按钮全部下移 (用户反馈 APK 布局错乱);
+        // 左对齐布局下按钮固定在上部, 不随 fillers 模式移动 (2026-08-22)
+        val centerButtonsToHeight = if (GUI.getSettings().experimentalUi) baseHeight else when {
             leftRightNeeded * 2f > targetWidth - resourceWidth -> {
                 // Need to shift buttons down to below both stats and resources
                 addFillers(overlayHeight)

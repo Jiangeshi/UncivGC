@@ -59,9 +59,10 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
         defaults().left()
         add(fogOfWarButtonHolder).colspan(4).row()
         add(techButtonHolder).colspan(4).row()
-        add(rankingPanelHolder).colspan(4).padTop(10f).row()  // 与科技按钮保持间距 (2026-08-22)
-        add(policyButtonHolder).padTop(10f).padRight(10f)
+        // UncivGC 2026-08-22 用户要求: 外交按钮 + 排行面板 同行并列 (科技按钮下方; 外交左, 排行右)
         add(diplomacyButtonHolder).padTop(10f).padRight(10f)
+        add(rankingPanelHolder).padTop(10f).growX().row()
+        add(policyButtonHolder).padTop(10f).padRight(10f)
         add(espionageButtonHolder).padTop(10f).padRight(10f)
         add(undoButtonHolder).padTop(10f).padRight(10f)
         add().growX()  // Allows Policy and Diplo buttons to keep to the left
@@ -157,15 +158,16 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
         }
     }
 
-    /** UncivGC 实验性 UI: 排行面板 (科技按钮下方) — 开启时显示并刷新, 否则隐藏; 总宽对齐科技按钮
+    /** UncivGC 实验性 UI: 排行面板 (与外交按钮同行并列 — 科技按钮下方; 2026-08-22 用户要求)
      *  防御: 面板异常不得中断 WorldScreen.update (相遇弹窗/回合推进都在其后 — 2026-08-22) */
     private fun updateRankingPanel() {
         try {
             if (GUI.getSettings().experimentalUi) {
-                // 面板总宽 = 科技按钮布局宽度 (首次布局前用 prefWidth 兜底)
+                // 面板总宽 = 科技按钮宽度 - 外交按钮宽度 (同行并列; 首次布局前用 prefWidth 兜底)
                 val techWidth = if (techButtonHolder.width > 0f) techButtonHolder.width
                 else techButtonHolder.actor?.prefWidth ?: 320f
-                rankingPanel.update(techWidth)
+                val panelWidth = (techWidth - diplomacyButton.prefWidth - 12f).coerceAtLeast(120f)
+                rankingPanel.update(panelWidth)
                 rankingPanelHolder.actor = rankingPanel
                 rankingPanelHolder.touchable = Touchable.enabled
             } else {

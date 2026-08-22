@@ -113,16 +113,18 @@ class UnitIconGroup(val unit: MapUnit, val size: Float) : NonTransformGroup() {
         val flagIconSizeMultiplier: Float = if (unit.isCivilian()) 0.5f else 0.65f
         flagIcon.setSize(size * flagIconSizeMultiplier)
 
-        // UncivGC 实验性 UI (2026-08-22 方案B): 其他玩家/势力的单位本回合攻击次数用完 → 右上角小锁标记
-        // (用户要求: 从灰显改为小锁图标 — OtherIcons/LockSmall)
+        // UncivGC 实验性 UI (2026-08-22 方案B): 其他玩家/势力的单位本回合攻击次数用完 → 单位图标右上角小锁
+        // (用户要求: 灰显改为小锁图标; 位置基于 flagIcon 右上 — 修复锁掉到图标下方)
         val viewingCiv = GUI.getWorldScreen()?.viewingCiv
         if (GUI.getSettings().experimentalUi && viewingCiv != null && unit.civ.civID != viewingCiv.civID
             && com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(unit.civ.gameInfo)
             && unit.isMilitary() && unit.attacksThisTurn >= unit.maxAttacksPerTurn()) {
             val lockIcon = ImageGetter.getImage("OtherIcons/LockSmall")
             lockIcon.setSize(size * 0.32f, size * 0.32f)
-            // 右上角 (编队角标在右下, 不冲突)
-            lockIcon.setPosition(width - lockIcon.width * 0.65f, height - lockIcon.height * 0.55f)
+            // flagIcon 右上角 (flagIcon 已被 addToCenter; 编队角标在右下不冲突)
+            lockIcon.setPosition(
+                flagIcon.x + flagIcon.width - lockIcon.width * 0.7f,
+                flagIcon.y + flagIcon.height - lockIcon.height * 0.4f)
             addActor(lockIcon)
         }
 
