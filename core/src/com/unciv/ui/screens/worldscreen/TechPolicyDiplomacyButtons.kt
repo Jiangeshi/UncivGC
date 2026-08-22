@@ -71,8 +71,8 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
         // UncivGC 2026-08-23 用户要求: 按钮顺序 科技 政策 外交 间谍 (间谍有才显示); 撤销保留在最后
         // 2026-08-23 用户要求: 顶对齐, 全部贴着上面的边 (外交/政策曾比科技低); 政策外交不再跟科技绑定, 只顶对齐
         techCell = add(techButtonHolder).padRight(10f).top()
-        policyCell = add(policyButtonHolder).padLeft(10f).padRight(10f).top()
-        diplomacyCell = add(diplomacyButtonHolder).padLeft(10f).padRight(10f).top()
+        policyCell = add(policyButtonHolder).padLeft(10f).padRight(10f).padTop(-5f).top()
+        diplomacyCell = add(diplomacyButtonHolder).padLeft(10f).padRight(10f).padTop(-5f).top()
         espionageCell = add(espionageButtonHolder).padRight(10f).top()
         undoCell = add(undoButtonHolder).padRight(10f).top()
         add().growX()
