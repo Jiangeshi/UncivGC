@@ -229,9 +229,10 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
         addActor(selectedCivTable) // needs to be after size
         addActor(overviewButton)
         // UncivGC 帧同步: 暂停按钮放概览按钮旁边 (顶栏子 actor; updateLayout 的 clear() 会清掉 → 每次重新挂载+定位)
+        // 2026-08-23 用户反馈: 概览↔暂停间距比暂停↔状态大 — 概览 Table 内部 pad(10f), 文本按钮左缘实际在 x+10 → 暂停右移 10 对齐
         fsPauseButton?.let { btn ->
             if (btn.parent !== this) addActor(btn)
-            btn.setPosition(overviewButton.x - btn.width - 5f, (centerButtonsToHeight - btn.height) / 2f)
+            btn.setPosition(overviewButton.x - btn.width + 5f, (centerButtonsToHeight - btn.height) / 2f)
         }
         // UncivGC 帧同步: 状态按钮放暂停按钮左边 (状态 | 暂停 | 概览)
         fsStatusButton?.let { btn ->
