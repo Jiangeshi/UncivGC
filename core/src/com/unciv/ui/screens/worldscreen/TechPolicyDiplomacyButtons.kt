@@ -82,29 +82,29 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
         // 2026-08-23 用户反馈: 过回合后政策/外交稳定变矮 — 重建 WorldScreen 后新 init 的 cell 未固定尺寸
         // (固定尺寸只在 update() 里设, 重建后第一帧/首帧前渲染默认高度) → init 末尾直接固定
         // 2026-08-23 04:46 用户补充: 只要有操作就变矮 — init 时按钮本体还是 prefHeight(60, 图标30+pad15*2),
-        // 操作触发 updateRankingPanel 后才被压到 58 → init 里把按钮本体尺寸+fill 全部固定, 高度恒定不再跳变
+        // 操作触发 updateRankingPanel 后才被压到 60 → init 里把按钮本体尺寸+fill 全部固定, 高度恒定不再跳变
         if (GUI.getSettings().experimentalUi) {
             try {
-                techCell?.size(260f, 58f)
-                policyCell?.size(80f, 58f)
-                diplomacyCell?.size(80f, 58f)
-                espionageCell?.size(50f, 58f)
-                undoCell?.size(50f, 58f)
+                techCell?.size(260f, 60f)
+                policyCell?.size(80f, 60f)
+                diplomacyCell?.size(80f, 60f)
+                espionageCell?.size(50f, 60f)
+                undoCell?.size(50f, 60f)
                 // 按钮本体尺寸 + fill 也必须在 init 固定 (只设 cell 不够: 本体 prefHeight=60 会溢出/跳变)
                 techButtonHolder.fill()
                 policyButtonHolder.fill()
                 diplomacyButtonHolder.fill()
                 espionageButtonHolder.fill()
                 undoButtonHolder.fill()
-                techButtonHolder.setSize(260f, 58f)
-                policyButtonHolder.setSize(80f, 58f)
-                policyScreenButton.setSize(80f, 58f)
-                diplomacyButtonHolder.setSize(80f, 58f)
-                diplomacyButton.setSize(80f, 58f)
-                espionageButtonHolder.setSize(50f, 58f)
-                espionageButton.setSize(50f, 58f)
-                undoButtonHolder.setSize(50f, 58f)
-                undoButton.setSize(50f, 58f)
+                techButtonHolder.setSize(260f, 60f)
+                policyButtonHolder.setSize(80f, 60f)
+                policyScreenButton.setSize(80f, 60f)
+                diplomacyButtonHolder.setSize(80f, 60f)
+                diplomacyButton.setSize(80f, 60f)
+                espionageButtonHolder.setSize(50f, 60f)
+                espionageButton.setSize(50f, 60f)
+                undoButtonHolder.setSize(50f, 60f)
+                undoButton.setSize(50f, 60f)
             } catch (ignored: Exception) {}
         }
         fsLog("init 完成: expUi=" + GUI.getSettings().experimentalUi + " techCellH=" + (techCell?.prefHeight ?: -1)
@@ -217,7 +217,7 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
             }
             try {
                 val act = techButtonHolder.actor
-                if (act != null) act.setSize(act.prefWidth, 58f)
+                if (act != null) act.setSize(act.prefWidth, 60f)
             } catch (ignored: Exception) {}
             return
         }
@@ -260,11 +260,11 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
                 } catch (ignored: Exception) {}
             }
         }
-        // UncivGC 实验性 UI: 科技按钮高度固定 50 (与外交同高 — 2026-08-23 用户要求; 过回合后外交变扁根因)
+        // UncivGC 实验性 UI: 科技按钮高度固定 60 (与外交同高 — 2026-08-23 用户要求; 过回合后外交变扁根因)
         if (GUI.getSettings().experimentalUi) {
             try {
                 val act = techButtonHolder.actor
-                if (act != null) act.setSize(act.prefWidth, 50f)
+                if (act != null) act.setSize(act.prefWidth, 60f)
             } catch (ignored: Exception) {}
         }
     }
@@ -279,25 +279,25 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
                     ?: (if (techButtonHolder.width > 0f) techButtonHolder.width else 320f)
                 // ===== 科技/政策/外交/间谍/撤销 全部固定尺寸 (任何情况不变 — 2026-08-23 用户要求) =====
                 // 高度统一 60 (用户 2026-08-23: 三个都 60; 统一高度后自然对齐, 不再一上一下)
-                techCell?.size(260f, 58f)
+                techCell?.size(260f, 60f)
                 techButtonHolder.fill()
-                techButtonHolder.setSize(260f, 58f)
-                policyCell?.size(80f, 58f)
+                techButtonHolder.setSize(260f, 60f)
+                policyCell?.size(80f, 60f)
                 policyButtonHolder.fill()
-                policyButtonHolder.setSize(80f, 58f)
-                policyScreenButton.setSize(80f, 58f)
-                diplomacyCell?.size(80f, 58f)
+                policyButtonHolder.setSize(80f, 60f)
+                policyScreenButton.setSize(80f, 60f)
+                diplomacyCell?.size(80f, 60f)
                 diplomacyButtonHolder.fill()
-                diplomacyButtonHolder.setSize(80f, 58f)
-                diplomacyButton.setSize(80f, 58f)
-                espionageCell?.size(50f, 58f)
+                diplomacyButtonHolder.setSize(80f, 60f)
+                diplomacyButton.setSize(80f, 60f)
+                espionageCell?.size(50f, 60f)
                 espionageButtonHolder.fill()
-                espionageButtonHolder.setSize(50f, 58f)
-                espionageButton.setSize(50f, 58f)
-                undoCell?.size(50f, 58f)
+                espionageButtonHolder.setSize(50f, 60f)
+                espionageButton.setSize(50f, 60f)
+                undoCell?.size(50f, 60f)
                 undoButtonHolder.fill()
-                undoButtonHolder.setSize(50f, 58f)
-                undoButton.setSize(50f, 58f)
+                undoButtonHolder.setSize(50f, 60f)
+                undoButton.setSize(50f, 60f)
                 rankingPanel.update()
                 rankingPanelHolder.actor = rankingPanel
                 rankingPanelHolder.touchable = Touchable.enabled
