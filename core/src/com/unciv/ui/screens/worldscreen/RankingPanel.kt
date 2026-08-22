@@ -58,6 +58,9 @@ class RankingPanel(private val worldScreen: WorldScreen) : Table(BaseScreen.skin
         Color(0.3f, 0.3f, 0.3f, 0.25f) // 战败: 灰底
     )
 
+    /** 大数显示: >=10000 用 k 单位 (10k/12k — 用户 2026-08-23); 四位数内原样 */
+    private fun formatValue(v: Int): String = if (v >= 10000) "${v / 1000}k" else v.toString()
+
     /** 取值: 分数/军力为累计值; 科技/文化/金钱/产能为每回合增量 (与顶栏一致 — 用户 2026-08-22) */
     private fun getValue(civ: Civilization, category: RankingType): Int = when (category) {
         RankingType.Score, RankingType.Force -> civ.getStatForRanking(category)
@@ -68,8 +71,8 @@ class RankingPanel(private val worldScreen: WorldScreen) : Table(BaseScreen.skin
         else -> civ.getStatForRanking(category)
     }
 
-    /** @param targetWidth 面板总宽 (= 科技按钮宽度, 由调用方传入) */
-    fun update(targetWidth: Float) {
+    /** @param columnWidth 每列 (文明) 宽度 — 固定, 容纳 4 位数 (用户 2026-08-23); 最多 4 列 */
+    fun update(columnWidth: Float) {
         clear()
         align(Align.topLeft)
         defaults().left().pad(0f)
@@ -84,11 +87,11 @@ class RankingPanel(private val worldScreen: WorldScreen) : Table(BaseScreen.skin
                 myCiv.isSpectator() || civ.civID == myCiv.civID || myCiv.diplomacy.containsKey(civ.civID)
             }
             .sortedByDescending { if (it.isDefeated()) Int.MIN_VALUE else it.getStatForRanking(RankingType.Score) }
+            .take(4)  // 最多 4 列 (每多遇到一个加一列, 最多 4 — 用户 2026-08-23)
 
         if (civs.isEmpty()) return
 
-        // 列宽均分, 扣除列间缝 (每列 pad 1f 左右共 2px), 总宽精确 = 科技按钮宽度
-        val colWidth = (targetWidth - 2f * civs.size) / civs.size
+        val colWidth = columnWidth  // 固定列宽
 
         // 每个文明一列 = 一个完整的长方形背景
         for (civ in civs) {
@@ -111,7 +114,7 @@ class RankingPanel(private val worldScreen: WorldScreen) : Table(BaseScreen.skin
             for (category in categories) {
                 val icon = getCategoryIcon(category)
                 val value = getValue(civ, category)
-                val label = value.toString().toLabel(fontSize = 13)
+                val label = formatValue(value).toLabel(fontSize = 13)
                 if (defeated) {
                     icon.color = gray
                     label.setColor(gray)

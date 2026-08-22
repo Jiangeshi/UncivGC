@@ -46,6 +46,8 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
     private val policyScreenButton = Button(skin)
     private val diplomacyButtonHolder = Container<Button?>()
     private val diplomacyButton = Button(skin)
+    /** 外交按钮 cell 引用 — 实验性 UI 下动态设置尺寸 (宽=科技1/2, 高相等; 2026-08-23) */
+    private var diplomacyCell: com.badlogic.gdx.scenes.scene2d.ui.Cell<Container<Button?>>? = null
     private val undoButtonHolder = Container<Button?>()
     private val undoButton = Button(skin)
     private val espionageButtonHolder = Container<Button?>()
@@ -58,11 +60,12 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
     init {
         defaults().left()
         add(fogOfWarButtonHolder).colspan(4).row()
-        add(techButtonHolder).colspan(4).row()
-        // UncivGC 2026-08-22 用户要求: 外交按钮 + 排行面板 同行并列 (科技按钮下方; 外交左, 排行右)
-        add(diplomacyButtonHolder).padTop(10f).padRight(10f)
-        add(rankingPanelHolder).padTop(10f).growX().row()
+        // UncivGC 2026-08-23 用户要求: 外交 + 科技 并排一行 (外交左, 科技右)
+        diplomacyCell = add(diplomacyButtonHolder).padTop(10f).padRight(10f)
+        add(techButtonHolder).padTop(10f).growX().row()
+        add(rankingPanelHolder).colspan(4).padTop(10f).row()  // 排行面板下一行
         add(policyButtonHolder).padTop(10f).padRight(10f)
+        add(diplomacyButtonHolder).padTop(10f).padRight(10f)
         add(espionageButtonHolder).padTop(10f).padRight(10f)
         add(undoButtonHolder).padTop(10f).padRight(10f)
         add().growX()  // Allows Policy and Diplo buttons to keep to the left
@@ -183,16 +186,24 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
     private fun updateRankingPanel() {
         try {
             if (GUI.getSettings().experimentalUi) {
-                // 面板总宽 = 科技按钮宽度 - 外交按钮宽度 (同行并列; 首次布局前用 prefWidth 兜底)
-                val techWidth = if (techButtonHolder.width > 0f) techButtonHolder.width
-                else techButtonHolder.actor?.prefWidth ?: 320f
-                val panelWidth = (techWidth - diplomacyButton.prefWidth - 12f).coerceAtLeast(120f)
-                rankingPanel.update(panelWidth)
+                // 科技按钮内容宽 (布局前用 prefWidth)
+                val techWidth = techButtonHolder.actor?.prefWidth
+                    ?: (if (techButtonHolder.width > 0f) techButtonHolder.width else 320f)
+                // 外交按钮: 宽 = 科技按钮 1/2, 高相等 (用户 2026-08-23; cell 尺寸控制)
+                val techHeight = techButtonHolder.actor?.height ?: 50f
+                diplomacyCell?.width(techWidth / 2f)
+                diplomacyCell?.height(techHeight)
+                diplomacyButton.setSize(techWidth / 2f, techHeight)
+                // 排行每列宽 = (外交 + 科技) / 4 (固定列宽, 容纳 4 位数 — 用户 2026-08-23)
+                val columnWidth = (diplomacyButton.prefWidth + techWidth) / 4f
+                rankingPanel.update(columnWidth)
                 rankingPanelHolder.actor = rankingPanel
                 rankingPanelHolder.touchable = Touchable.enabled
             } else {
                 rankingPanelHolder.actor = null
                 rankingPanelHolder.touchable = Touchable.disabled
+                diplomacyCell?.width(-1f)  // 恢复默认尺寸
+                diplomacyCell?.height(-1f)
             }
         } catch (e: Exception) {
             rankingPanelHolder.actor = null
