@@ -68,16 +68,27 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
     init {
         defaults().left()
         add(fogOfWarButtonHolder).colspan(4).row()
-        // UncivGC 2026-08-23 用户要求: 按钮顺序 科技 政策 外交 间谍 (间谍有才显示); 撤销保留在最后
-        // 2026-08-23 用户要求: 顶对齐, 全部贴着上面的边 (外交/政策曾比科技低); 政策外交不再跟科技绑定, 只顶对齐
-        techCell = add(techButtonHolder).padRight(10f).top()
-        policyCell = add(policyButtonHolder).padLeft(10f).padRight(10f).padTop(-6f).top()
-        diplomacyCell = add(diplomacyButtonHolder).padLeft(10f).padRight(10f).padTop(-6f).top()
-        espionageCell = add(espionageButtonHolder).padRight(10f).top()
-        undoCell = add(undoButtonHolder).padRight(10f).top()
-        add().growX()
-        row()
-        add(rankingPanelHolder).colspan(4).padTop(10f).row()  // 排行面板下一行
+        if (GUI.getSettings().experimentalUi) {
+            // UncivGC 2026-08-23 用户要求: 按钮顺序 科技 政策 外交 间谍 (间谍有才显示); 撤销保留在最后
+            // 2026-08-23 用户要求: 顶对齐, 全部贴着上面的边 (外交/政策曾比科技低); 政策外交不再跟科技绑定, 只顶对齐
+            // 注意: 全部改动只生效于 experimentalUi — 非实验性 UI 保持原版布局 (2026-08-23 用户强调)
+            techCell = add(techButtonHolder).padRight(10f).top()
+            policyCell = add(policyButtonHolder).padLeft(10f).padRight(10f).padTop(-6f).top()
+            diplomacyCell = add(diplomacyButtonHolder).padLeft(10f).padRight(10f).padTop(-6f).top()
+            espionageCell = add(espionageButtonHolder).padRight(10f).top()
+            undoCell = add(undoButtonHolder).padRight(10f).top()
+            add().growX()
+            row()
+            add(rankingPanelHolder).colspan(4).padTop(10f).row()  // 排行面板下一行
+        } else {
+            // 原版布局 (非实验性 UI): 科技单独一行, 政策/外交/间谍/撤销一行
+            add(techButtonHolder).colspan(4).row()
+            add(policyButtonHolder).padTop(10f).padRight(10f)
+            add(diplomacyButtonHolder).padTop(10f).padRight(10f)
+            add(espionageButtonHolder).padTop(10f).padRight(10f)
+            add(undoButtonHolder).padTop(10f).padRight(10f)
+            add().growX()  // Allows Policy and Diplo buttons to keep to the left
+        }
 
         // 2026-08-23 用户反馈: 过回合后政策/外交稳定变矮 — 重建 WorldScreen 后新 init 的 cell 未固定尺寸
         // (固定尺寸只在 update() 里设, 重建后第一帧/首帧前渲染默认高度) → init 末尾直接固定
