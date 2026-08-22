@@ -137,7 +137,15 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
     private fun updateTechButton() {
         techButtonHolder.touchable = Touchable.disabled
         techButtonHolder.actor = null
-        if (worldScreen.gameInfo.ruleset.technologies.isEmpty() || viewingCiv.cities.isEmpty()) return
+        if (worldScreen.gameInfo.ruleset.technologies.isEmpty() || viewingCiv.cities.isEmpty()) {
+            // 调试: 科技按钮不显示排查 (2026-08-23 用户反馈玩家视角无科技按钮)
+            try {
+                com.unciv.ui.screens.worldscreen.FrameSync.log(
+                    "updateTechButton: return early (techs=" + worldScreen.gameInfo.ruleset.technologies.size
+                        + " cities=" + viewingCiv.cities.size + " civ=" + viewingCiv.civName + ")")
+            } catch (ignored: Exception) {}
+            return
+        }
         techButtonHolder.touchable = Touchable.enabled
 
         if (viewingCiv.tech.currentTechnology() != null) {
@@ -148,12 +156,24 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
             val turnsToTech = viewingCiv.tech.turnsToTech(currentTech)
             innerButton.text.setText(currentTech.tr(true))
             innerButton.turns.setText(turnsToTech + Fonts.turn)
+            try {
+                com.unciv.ui.screens.worldscreen.FrameSync.log("updateTechButton: show TechButton " + currentTech)
+            } catch (ignored: Exception) {}
         } else {
             val canResearch = viewingCiv.tech.canResearchTech()
             if (canResearch || viewingCiv.tech.researchedTechnologies.size != 0) {
                 val text = if (canResearch) "{Pick a tech}!" else "Technologies"
                 pickTechLabel.setText(text.tr())
                 techButtonHolder.actor = pickTechButton
+                try {
+                    com.unciv.ui.screens.worldscreen.FrameSync.log("updateTechButton: show pickTech (canResearch=" + canResearch
+                        + " researched=" + viewingCiv.tech.researchedTechnologies.size + ")")
+                } catch (ignored: Exception) {}
+            } else {
+                try {
+                    com.unciv.ui.screens.worldscreen.FrameSync.log("updateTechButton: NO button (canResearch=" + canResearch
+                        + " researched=" + viewingCiv.tech.researchedTechnologies.size + ")")
+                } catch (ignored: Exception) {}
             }
         }
     }
