@@ -69,11 +69,11 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
         defaults().left()
         add(fogOfWarButtonHolder).colspan(4).row()
         // UncivGC 2026-08-23 用户要求: 按钮顺序 科技 政策 外交 间谍 (间谍有才显示); 撤销保留在最后
-        techCell = add(techButtonHolder).padTop(10f).padRight(10f).top()
-        policyCell = add(policyButtonHolder).padTop(10f).padRight(10f).top()
-        diplomacyCell = add(diplomacyButtonHolder).padTop(10f).padRight(10f).top()
-        espionageCell = add(espionageButtonHolder).padTop(10f).padRight(10f).top()
-        undoCell = add(undoButtonHolder).padTop(10f).padRight(10f).top()
+        techCell = add(techButtonHolder).padTop(10f).padRight(10f).bottom()
+        policyCell = add(policyButtonHolder).padTop(10f).padRight(10f).bottom()
+        diplomacyCell = add(diplomacyButtonHolder).padTop(10f).padRight(10f).bottom()
+        espionageCell = add(espionageButtonHolder).padTop(10f).padRight(10f).bottom()
+        undoCell = add(undoButtonHolder).padTop(10f).padRight(10f).bottom()
         add().growX()
         row()
         add(rankingPanelHolder).colspan(4).padTop(10f).row()  // 排行面板下一行
@@ -172,7 +172,7 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
             }
             try {
                 val act = techButtonHolder.actor
-                if (act != null) act.setSize(act.prefWidth, 60f)
+                if (act != null) act.setSize(act.prefWidth, 58f)
             } catch (ignored: Exception) {}
             return
         }
@@ -234,17 +234,17 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
                     ?: (if (techButtonHolder.width > 0f) techButtonHolder.width else 320f)
                 // ===== 科技/政策/外交/间谍/撤销 全部固定尺寸 (任何情况不变 — 2026-08-23 用户要求) =====
                 // 高度统一 60 (用户 2026-08-23: 三个都 60; 统一高度后自然对齐, 不再一上一下)
-                techCell?.size(280f, 60f)
+                techCell?.size(260f, 58f)
                 techButtonHolder.fill()
-                techButtonHolder.setSize(280f, 60f)
-                policyCell?.size(80f, 60f)
-                policyScreenButton.setSize(80f, 60f)
-                diplomacyCell?.size(80f, 60f)
-                diplomacyButton.setSize(80f, 60f)
-                espionageCell?.size(50f, 60f)
-                espionageButton.setSize(50f, 60f)
-                undoCell?.size(50f, 60f)
-                undoButton.setSize(50f, 60f)
+                techButtonHolder.setSize(260f, 58f)
+                policyCell?.size(80f, 58f)
+                policyScreenButton.setSize(80f, 58f)
+                diplomacyCell?.size(80f, 58f)
+                diplomacyButton.setSize(80f, 58f)
+                espionageCell?.size(50f, 58f)
+                espionageButton.setSize(50f, 58f)
+                undoCell?.size(50f, 58f)
+                undoButton.setSize(50f, 58f)
                 rankingPanel.update()
                 rankingPanelHolder.actor = rankingPanel
                 rankingPanelHolder.touchable = Touchable.enabled
