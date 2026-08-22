@@ -80,10 +80,10 @@ class UnitPresenter(private val unitTable: UnitTable, private val worldScreen: W
             descriptionTable.add(Fonts.movement + unit.getMovementString()).padRight(10f)
 
             if (!unit.isCivilian())
-                descriptionTable.add(Fonts.strength + unit.baseUnit.strength.tr()).padRight(10f)
+                descriptionTable.add(Fonts.strength + unit.getDisplayStrength().tr()).padRight(10f)
 
             if (unit.baseUnit.rangedStrength != 0)
-                descriptionTable.add(Fonts.rangedStrength + unit.baseUnit.rangedStrength.tr())
+                descriptionTable.add(Fonts.rangedStrength + unit.getDisplayStrength().tr())
                     .padRight(10f)
 
             if (unit.baseUnit.isRanged())

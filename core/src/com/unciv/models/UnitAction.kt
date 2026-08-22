@@ -221,6 +221,10 @@ enum class UnitActionType(
         { ImageGetter.getUnitActionPortrait("HideMore") }, false, defaultPage = 1),
     AddInCapital( "Add in capital",
         { ImageGetter.getUnitActionPortrait("AddInCapital")}, UncivSound.Chimes),
+    FormCorps("Form Corps",
+        { ImageGetter.getUnitActionPortrait("FormCorps") }, false, defaultPage = 0),
+    SplitFormation("Split Formation",
+        { ImageGetter.getUnitActionPortrait("SplitFormation") }, false, defaultPage = 1),
     ;
 
     // Allow shorter initializations

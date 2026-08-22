@@ -2,6 +2,7 @@ package com.unciv.logic.battle
 
 import com.unciv.logic.civilization.Civilization
 import com.unciv.logic.map.mapunit.MapUnit
+import com.unciv.logic.map.mapunit.UnitFormation
 import com.unciv.logic.map.tile.Tile
 import com.unciv.models.UncivSound
 import com.unciv.models.ruleset.unique.GameContext
@@ -38,19 +39,38 @@ class MapUnitCombatant(val unit: MapUnit) : ICombatant {
     override fun getAttackingStrength(defender: ICombatant?): Int {
         val state = GameContext(this, defender, this.getTile(), CombatAction.Attack)
         val extraStrength = unit.getMatchingUniques(UniqueType.StrengthAmount, state).sumOf { it.params[0].toInt() }
-        return if (isRanged()) unit.baseUnit.rangedStrength + extraStrength
+        val baseStrength = if (isRanged()) unit.baseUnit.rangedStrength + extraStrength
         else unit.baseUnit.strength + extraStrength
+
+        // 军团/集团军加成 (加法，直接加在基础战斗力上)
+        val formationBonus = getFormationBonus(baseStrength)
+        return baseStrength + formationBonus
     }
 
     override fun getDefendingStrength(attacker: ICombatant?): Int {
         val attackedByRanged = attacker?.isRanged() == true
         val state = GameContext(this, attacker, this.getTile(), CombatAction.Defend)
         val extraStrength = unit.getMatchingUniques(UniqueType.StrengthAmount, state).sumOf { it.params[0].toInt() }
-        return if (unit.isEmbarked() && !isCivilian())
-            unit.civ.getEra().embarkDefense
-        else if (isRanged() && attackedByRanged)
-            unit.baseUnit.rangedStrength + extraStrength
-        else unit.baseUnit.strength + extraStrength
+        val baseStrength = when {
+            unit.isEmbarked() && !isCivilian() -> unit.civ.getEra().embarkDefense
+            isRanged() && attackedByRanged -> unit.baseUnit.rangedStrength + extraStrength
+            else -> unit.baseUnit.strength + extraStrength
+        }
+
+        // 军团/集团军加成 (防御同样生效)
+        val formationBonus = getFormationBonus(baseStrength)
+        return baseStrength + formationBonus
+    }
+
+    /** 计算军团/集团军的战斗力加成 */
+    @Readonly
+    private fun getFormationBonus(baseStrength: Int): Int {
+        if (baseStrength <= 0) return 0
+        return when (unit.formation) {
+            UnitFormation.Single -> 0
+            UnitFormation.Corps -> (baseStrength * 0.25f).toInt()
+            UnitFormation.Army -> (baseStrength * 0.33f).toInt()
+        }
     }
 
     override fun getUnitType(): UnitType {

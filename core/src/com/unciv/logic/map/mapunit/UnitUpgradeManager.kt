@@ -71,6 +71,10 @@ class UnitUpgradeManager(val unit: MapUnit) {
         cost *= unit.civ.gameInfo.speed.modifier
         goldCostOfUpgrade += (cost / constants.roundTo).toInt() * constants.roundTo
 
+        // 军团/集团军升级费用 ×2
+        if (unit.formation != UnitFormation.Single)
+            goldCostOfUpgrade *= 2
+
         return goldCostOfUpgrade
     }
 

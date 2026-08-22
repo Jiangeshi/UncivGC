@@ -79,6 +79,12 @@ class MapUnit : IsPartOfGameInfoSerialization {
     var attacksThisTurn = 0
     var promotions = UnitPromotions()
 
+    /** 军团/集团军编队形态 */
+    var formation: UnitFormation = UnitFormation.Single
+
+    /** 军团/集团军合并时保存的副单位快照 (军团1个, 集团军2个, 用 List 存储) */
+    var formationSnapshots: MutableList<FormationSnapshot> = mutableListOf()
+
     /** Indicates if unit should be located with 'next unit' action */
     var due: Boolean = true
 
@@ -200,8 +206,15 @@ class MapUnit : IsPartOfGameInfoSerialization {
                 if (instanceName == null) "[$name]"
                 else "$instanceName ([$name])"
 
-        return if (religion == null) baseName
+        val withReligion = if (religion == null) baseName
         else "$baseName ([${getReligionDisplayName()}])"
+
+        // 军团/集团军名称后缀
+        return when (formation) {
+            UnitFormation.Corps -> "$withReligion (军团)"
+            UnitFormation.Army -> "$withReligion (集团军)"
+            else -> withReligion
+        }
     }
 
     fun shortDisplayName(): String {
@@ -242,6 +255,8 @@ class MapUnit : IsPartOfGameInfoSerialization {
         toReturn.statusMap = newStatusMap
         toReturn.mostRecentMoveType = mostRecentMoveType
         toReturn.attacksSinceTurnStart = ArrayList(attacksSinceTurnStart)
+        toReturn.formation = formation
+        toReturn.formationSnapshots = ArrayList(formationSnapshots)
         return toReturn
     }
 
@@ -261,6 +276,133 @@ class MapUnit : IsPartOfGameInfoSerialization {
 
     @Readonly fun isMilitary() = baseUnit.isMilitary
     @Readonly fun isCivilian() = baseUnit.isCivilian()
+
+    //region Formation (军团/集团军)
+
+    /** 含编队加成的战斗力显示值 (与 MapUnitCombatant 加成算法一致: 军团 +25% / 集团军 +33%, 截断取整) */
+    @Readonly
+    fun getDisplayStrength(): Int {
+        val base = if (baseUnit.rangedStrength != 0) baseUnit.rangedStrength else baseUnit.strength
+        if (base <= 0) return base
+        val bonus = when (formation) {
+            UnitFormation.Corps -> (base * 0.25f).toInt()
+            UnitFormation.Army -> (base * 0.33f).toInt()
+            else -> 0
+        }
+        return base + bonus
+    }
+
+    /** 是否可以组成军团 (陆军军事单位, 无禁止 unique, 当前为 Single) */
+    @Readonly
+    fun canFormCorps(): Boolean {
+        if (!isMilitary() || isCivilian()) return false
+        if (baseUnit.isWaterUnit || baseUnit.isAirUnit()) return false
+        if (formation != UnitFormation.Single) return false
+        if (hasUnique(UniqueType.CannotFormCorps)) return false
+        return true
+    }
+
+    /** 是否可以合并为集团军 (军团形态 + 还能再加一个) */
+    @Readonly
+    fun canFormArmy(): Boolean {
+        return formation == UnitFormation.Corps && formationSnapshots.size < 2
+    }
+
+    /** 获取相邻格中可以被合并的同种单位列表 */
+    @Readonly
+    fun getMergeableNeighbors(): List<MapUnit> {
+        val tile = getTile()
+        return tile.neighbors.flatMap { it.getUnits() }
+            .filter { it != this && it.baseUnit.name == this.baseUnit.name && it.civ == this.civ }
+            .filter {
+                when (formation) {
+                    UnitFormation.Single -> it.formation == UnitFormation.Single && it.hasMovement()
+                    UnitFormation.Corps -> it.formation == UnitFormation.Single && it.hasMovement()
+                    UnitFormation.Army -> false // 集团军不能再合并
+                }
+            }.toList()
+    }
+
+    /** 执行合并: 将 [target] 合并进 this */
+    fun mergeWith(target: MapUnit) {
+        // 保存副单位快照
+        val snapshot = FormationSnapshot(
+            unitName = target.baseUnit.name,
+            level = target.promotions.numberOfPromotions,
+            promotions = target.promotions.promotions.toList(),
+            xp = target.promotions.XP
+        )
+        formationSnapshots.add(snapshot)
+
+        // HP 合并 (上限 100)
+        health = (health + target.health).coerceAtMost(100)
+
+        // 升级形态
+        formation = when (formation) {
+            UnitFormation.Single -> UnitFormation.Corps
+            UnitFormation.Corps -> UnitFormation.Army
+            UnitFormation.Army -> UnitFormation.Army // 不会走到这里，canFormArmy 已过滤
+        }
+
+        // 消耗全部移动力
+        currentMovement = 0f
+
+        // 丢弃被合并单位的状态 (休眠/驻守/自动化)
+        // 由调用者负责从地图移除 target
+    }
+
+    /** 是否可以拆分编队 */
+    @Readonly
+    fun canSplitFormation(): Boolean {
+        if (formation == UnitFormation.Single) return false
+        if (currentMovement <= 0f) return false
+        // 需要足够的相邻空格
+        val neededSlots = when (formation) {
+            UnitFormation.Corps -> 1
+            UnitFormation.Army -> 2
+            else -> 0
+        }
+        val emptyNeighbors = getTile().neighbors.count { it.isLand && !it.isImpassible() && it.militaryUnit == null }
+        return emptyNeighbors >= neededSlots
+    }
+
+    /** 执行拆分: 返回恢复的副单位列表 (调用者负责放置到地图) */
+    fun splitFormation(): List<MapUnit> {
+        if (formation == UnitFormation.Single) return emptyList()
+
+        val totalParts = when (formation) {
+            UnitFormation.Corps -> 2
+            UnitFormation.Army -> 3
+            else -> 1
+        }
+        val avgHp = health / totalParts
+
+        val restoredUnits = mutableListOf<MapUnit>()
+        for (snapshot in formationSnapshots) {
+            val newUnit = civ.units.placeUnitNearTile(getTile().position, civ.gameInfo.ruleset.units[snapshot.unitName]!!)
+            if (newUnit != null) {
+                newUnit.health = avgHp
+                newUnit.promotions.numberOfPromotions = snapshot.level
+                newUnit.promotions.XP = snapshot.xp
+                for (promo in snapshot.promotions) {
+                    if (promo !in newUnit.promotions.promotions)
+                        newUnit.promotions.addPromotion(promo, isFree = true)
+                }
+                newUnit.currentMovement = 0f // 拆分消耗全部移动力
+                restoredUnits.add(newUnit)
+            }
+        }
+
+        // 主单位重置
+        health = avgHp
+        formation = UnitFormation.Single
+        formationSnapshots.clear()
+        currentMovement = 0f // 拆分消耗全部移动力
+
+        return restoredUnits
+    }
+
+    //endregion Formation
 
     @Readonly fun isActionUntilHealed() = action?.endsWith("until healed") == true
 
@@ -770,6 +912,9 @@ class MapUnit : IsPartOfGameInfoSerialization {
         newUnit.currentMovement = currentMovement
         newUnit.attacksThisTurn = attacksThisTurn
         newUnit.isTransported = isTransported
+        // 保留军团/集团军形态
+        newUnit.formation = formation
+        newUnit.formationSnapshots = ArrayList(formationSnapshots)
         for (promotion in newUnit.promotions.promotions)
             if (promotion !in promotions.promotions)
                 promotions.addPromotion(promotion, isFree = true)

@@ -97,7 +97,9 @@ object UnitActions {
         UnitActionType.RemoveHeresy to UnitActionsReligion::getRemoveHeresyActions,
         UnitActionType.TriggerUnique to UnitActionsFromUniques::getTriggerUniqueActions,
         UnitActionType.AddInCapital to UnitActionsFromUniques::getAddInCapitalActions,
-        UnitActionType.GiftUnit to UnitActions::getGiftActions
+        UnitActionType.GiftUnit to UnitActions::getGiftActions,
+        UnitActionType.FormCorps to UnitActionsFormation::getFormCorpsActions,
+        UnitActionType.SplitFormation to UnitActionsFormation::getSplitFormationActions
     )
 
     /** Gets the preferred "page" to display a [UnitAction] of type [unitActionType] on, possibly dynamic depending on the state or situation [unit] is in. */

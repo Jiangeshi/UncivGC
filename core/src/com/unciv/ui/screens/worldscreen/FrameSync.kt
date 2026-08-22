@@ -1649,6 +1649,13 @@ object FrameSync {
             obj["hp"]?.jsonPrimitive?.intOrNull?.let { unit.health = it }
             obj["actions"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull()?.let { unit.currentMovement = it }
             obj["due"]?.jsonPrimitive?.contentOrNull?.let { unit.due = it == "true" }
+            // 编队形态同步 (军团/集团军; 可选字段 — 缺失保持默认 Single)
+            obj["formation"]?.jsonPrimitive?.contentOrNull?.let { fName ->
+                try {
+                    unit.formation = com.unciv.logic.map.mapunit.UnitFormation.valueOf(fName)
+                } catch (ignored: Exception) {
+                }
+            }
             unit.putInTile(tile)  // 可能 throw (格被占) → 返回 null, 回合末重载兜底
             civ.units.addUnit(unit, false)
             return unit
@@ -1725,6 +1732,18 @@ object FrameSync {
                     if (unit.due != newDue) {
                         unit.due = newDue
                         serverDueChanged.add(id)
+                    }
+                }
+                // 编队形态同步 (军团/集团军: 图标角标/战斗力加成/拆分按钮; 服务器权威 — 2026-08-22)
+                obj["formation"]?.jsonPrimitive?.contentOrNull?.let { fName ->
+                    try {
+                        val f = com.unciv.logic.map.mapunit.UnitFormation.valueOf(fName)
+                        if (unit.formation != f) {
+                            unit.formation = f
+                            unitsChanged = true
+                            worldScreen.shouldUpdate = true
+                        }
+                    } catch (ignored: Exception) {
                     }
                 }
                 // 单位实例名同步 (自定义改名; 可选字段 — 缺失/null 时清除本地, 防"取消改名"传不到对方)

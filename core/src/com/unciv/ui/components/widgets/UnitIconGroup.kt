@@ -11,6 +11,7 @@ import com.badlogic.gdx.utils.Align
 import com.unciv.GUI
 import com.unciv.UncivGame
 import com.unciv.logic.map.mapunit.MapUnit
+import com.unciv.logic.map.mapunit.UnitFormation
 import com.unciv.ui.components.NonTransformGroup
 import com.unciv.ui.components.extensions.addToCenter
 import com.unciv.ui.components.extensions.centerX
@@ -18,6 +19,7 @@ import com.unciv.ui.components.extensions.colorFromRGB
 import com.unciv.ui.components.extensions.setSize
 import com.unciv.ui.components.extensions.surroundWithCircle
 import com.unciv.ui.components.extensions.surroundWithThinCircle
+import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.images.ImageGetter
 
 private class FlagBackground(drawable: TextureRegionDrawable, size: Float) : Image(drawable) {
@@ -130,6 +132,27 @@ class UnitIconGroup(val unit: MapUnit, val size: Float) : NonTransformGroup() {
             val hp = ImageGetter.getHealthBar(unit.health.toFloat(), 100f, size * 0.78f)
             addActor(hp)
             hp.centerX(this)
+        }
+
+        // 军团/集团军角标 (数字 2/3) — 2026-08-22 修复: 用 toLabel(fontSize) 正确缩放 (Unciv 字体原始 100px,
+        // 直接 setFontScale 会是 70px 巨字); 圆大小包住数字, 右下角定位 (参照 PortraitResource 数字角标)
+        if (unit.formation != UnitFormation.Single) {
+            val badgeNumber = when (unit.formation) {
+                UnitFormation.Corps -> "2"
+                UnitFormation.Army -> "3"
+                else -> ""
+            }
+            if (badgeNumber.isNotEmpty()) {
+                val badgeLabel = badgeNumber.toLabel(
+                    fontSize = (size * 0.12f).toInt().coerceIn(7, 14),
+                    fontColor = Color.WHITE,
+                    alignment = Align.center)
+                val badgeCircle = badgeLabel.surroundWithCircle(
+                    size * 0.25f, true, Color(0f, 0f, 0f, 0.65f))
+                // 右下角 (参照 PortraitResource): x 偏右, y 略下沉
+                badgeCircle.setPosition(width - badgeCircle.width * 0.9f, -badgeCircle.height * 0.15f)
+                addActor(badgeCircle)
+            }
         }
     }
 
