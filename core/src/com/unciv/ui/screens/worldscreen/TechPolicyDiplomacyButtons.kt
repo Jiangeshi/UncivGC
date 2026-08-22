@@ -79,6 +79,21 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
         row()
         add(rankingPanelHolder).colspan(4).padTop(10f).row()  // 排行面板下一行
 
+        // 2026-08-23 用户反馈: 过回合后政策/外交稳定变矮 — 重建 WorldScreen 后新 init 的 cell 未固定尺寸
+        // (固定尺寸只在 update() 里设, 重建后第一帧/首帧前渲染默认高度) → init 末尾直接固定
+        if (GUI.getSettings().experimentalUi) {
+            try {
+                techCell?.size(260f, 58f)
+                policyCell?.size(80f, 58f)
+                diplomacyCell?.size(80f, 58f)
+                espionageCell?.size(50f, 58f)
+                undoCell?.size(50f, 58f)
+            } catch (ignored: Exception) {}
+        }
+        fsLog("init 完成: expUi=" + GUI.getSettings().experimentalUi + " techCellH=" + (techCell?.prefHeight ?: -1)
+            + " policyCellH=" + (policyCell?.prefHeight ?: -1) + " diploCellH=" + (diplomacyCell?.prefHeight ?: -1))
+
+
         fogOfWarButton.label.setFontSize(30)
         fogOfWarButton.labelCell.pad(10f)
         fogOfWarButton.pack()
@@ -133,7 +148,19 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
         updateRankingPanel()
         pack()
         setPosition(10f, worldScreen.topBar.y - height - 15f)
+        fsLog("update() pack后: techH=" + (techButtonHolder.height.toInt()) + " policyH=" + (policyButtonHolder.height.toInt())
+            + " diploH=" + (diplomacyButtonHolder.height.toInt()) + " expUi=" + GUI.getSettings().experimentalUi)
         return result
+    }
+
+    companion object {
+        /** 调试日志 (用户规则: 机制类修复加日志到 ~/fs_debug.log, 2026-08-22) */
+        fun fsLog(msg: String) {
+            try {
+                val f = java.io.File(System.getProperty("user.home"), "fs_debug.log")
+                f.appendText(java.time.LocalDateTime.now().toString().substring(11, 23) + " [Buttons] " + msg + "\n")
+            } catch (ignored: Exception) {}
+        }
     }
 
     private fun updateFogOfWarButton() {
@@ -257,6 +284,8 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
                 rankingPanel.update()
                 rankingPanelHolder.actor = rankingPanel
                 rankingPanelHolder.touchable = Touchable.enabled
+                fsLog("updateRankingPanel: 设后 techH=" + (techButtonHolder.height.toInt()) + " policyH=" + (policyButtonHolder.height.toInt())
+                    + " diploH=" + (diplomacyButtonHolder.height.toInt()) + " panelH=" + (rankingPanel.height.toInt()))
             } else {
                 rankingPanelHolder.actor = null
                 rankingPanelHolder.touchable = Touchable.disabled
