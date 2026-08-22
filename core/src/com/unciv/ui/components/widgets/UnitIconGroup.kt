@@ -113,26 +113,28 @@ class UnitIconGroup(val unit: MapUnit, val size: Float) : NonTransformGroup() {
         val flagIconSizeMultiplier: Float = if (unit.isCivilian()) 0.5f else 0.65f
         flagIcon.setSize(size * flagIconSizeMultiplier)
 
+        addToCenter(flagSelection)
+        addToCenter(flagBg)
+        if (flagMask != null)
+            addToCenter(flagMask!!)
+        addToCenter(flagIcon)
+
         // UncivGC 实验性 UI (2026-08-22 方案B): 其他玩家/势力的单位本回合攻击次数用完 → 单位图标右上角小锁
         // (用户要求: 灰显改为小锁图标; 位置基于 flagIcon 右上 — 修复锁掉到图标下方)
+        // 2026-08-23 05:37 用户反馈锁全没了: 锁在 addToCenter(flagIcon) 之前创建 → flagIcon.x/y=0 定位错位,
+        // 且 flagIcon 后 add 绘制在锁上层把它完全盖住 → 移到 flagIcon 居中之后创建 (此时坐标正确且锁在最上层)
         val viewingCiv = GUI.getWorldScreen()?.viewingCiv
         if (GUI.getSettings().experimentalUi && viewingCiv != null && unit.civ.civID != viewingCiv.civID
             && com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(unit.civ.gameInfo)
             && unit.isMilitary() && unit.attacksThisTurn >= unit.maxAttacksPerTurn()) {
             val lockIcon = ImageGetter.getImage("OtherIcons/LockSmall")
             lockIcon.setSize(size * 0.32f, size * 0.32f)
-            // flagIcon 右上角 (flagIcon 已被 addToCenter; 编队角标在右下不冲突)
+            // flagIcon 右上角 (flagIcon 已被 addToCenter, 坐标已定; 编队角标在右下不冲突)
             lockIcon.setPosition(
                 flagIcon.x + flagIcon.width - lockIcon.width * 0.7f,
                 flagIcon.y + flagIcon.height - lockIcon.height * 0.4f)
             addActor(lockIcon)
         }
-
-        addToCenter(flagSelection)
-        addToCenter(flagBg)
-        if (flagMask != null)
-            addToCenter(flagMask!!)
-        addToCenter(flagIcon)
 
         val actionImage = getActionImage()
         if (actionImage != null) {
