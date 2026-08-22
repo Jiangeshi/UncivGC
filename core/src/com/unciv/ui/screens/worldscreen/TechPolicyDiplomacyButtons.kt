@@ -148,6 +148,34 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
     private fun updateTechButton() {
         techButtonHolder.touchable = Touchable.disabled
         techButtonHolder.actor = null
+        // UncivGC 实验性 UI: 科技按钮常开 (开局没建城也显示 — 2026-08-23 用户要求)
+        if (GUI.getSettings().experimentalUi) {
+            techButtonHolder.touchable = Touchable.enabled
+            if (viewingCiv.tech.currentTechnology() != null) {
+                val currentTech = viewingCiv.tech.currentTechnologyName()!!
+                val innerButton = TechButton(currentTech, viewingCiv.tech)
+                innerButton.setButtonColor(colorFromRGB(7, 46, 43))
+                techButtonHolder.actor = innerButton
+                val turnsToTech = viewingCiv.tech.turnsToTech(currentTech)
+                innerButton.text.setText(currentTech.tr(true))
+                innerButton.turns.setText(turnsToTech + Fonts.turn)
+            } else {
+                val canResearch = viewingCiv.tech.canResearchTech()
+                if (canResearch || viewingCiv.tech.researchedTechnologies.size != 0) {
+                    val text = if (canResearch) "{Pick a tech}!" else "Technologies"
+                    pickTechLabel.setText(text.tr())
+                    techButtonHolder.actor = pickTechButton
+                } else {
+                    pickTechLabel.setText("{Pick a tech}!".tr())
+                    techButtonHolder.actor = pickTechButton
+                }
+            }
+            try {
+                val act = techButtonHolder.actor
+                if (act != null) act.setSize(act.prefWidth, 70f)
+            } catch (ignored: Exception) {}
+            return
+        }
         if (worldScreen.gameInfo.ruleset.technologies.isEmpty() || viewingCiv.cities.isEmpty()) {
             // 调试: 科技按钮不显示排查 (2026-08-23 用户反馈玩家视角无科技按钮)
             try {
@@ -205,16 +233,16 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
                 val techWidth = techButtonHolder.actor?.prefWidth
                     ?: (if (techButtonHolder.width > 0f) techButtonHolder.width else 320f)
                 // ===== 科技/政策/外交/间谍/撤销 全部固定尺寸 (任何情况不变 — 2026-08-23 用户要求) =====
-                // 科技: 280×50 (内容 ellipsis 截断, 不随科技名长度变)
-                techCell?.size(280f, 50f)
+                // 科技: 280×70 (用户指定)
+                techCell?.size(280f, 70f)
                 techButtonHolder.fill()
-                techButtonHolder.setSize(280f, 50f)
-                // 政策: 50×50
-                policyCell?.size(50f, 50f)
-                policyScreenButton.setSize(50f, 50f)
-                // 外交: 90×50 (固定, 不再随科技宽度)
-                diplomacyCell?.size(90f, 50f)
-                diplomacyButton.setSize(90f, 50f)
+                techButtonHolder.setSize(280f, 70f)
+                // 政策: 80×50 (用户指定)
+                policyCell?.size(80f, 50f)
+                policyScreenButton.setSize(80f, 50f)
+                // 外交: 80×50 (用户指定)
+                diplomacyCell?.size(80f, 50f)
+                diplomacyButton.setSize(80f, 50f)
                 // 间谍: 50×50 (有间谍才显示 — updateEspionageButton 控制)
                 espionageCell?.size(50f, 50f)
                 espionageButton.setSize(50f, 50f)
