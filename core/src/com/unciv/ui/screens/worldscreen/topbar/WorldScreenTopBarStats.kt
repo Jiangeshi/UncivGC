@@ -106,13 +106,6 @@ internal class WorldScreenTopBarStats(topbar: WorldScreenTopBar) : ScalingTableW
 
         addStat("Science", scienceLabel) { TechPickerScreen(worldScreen.selectedCiv) }
 
-        val invokeResourcesPage = {            worldScreen.openEmpireOverview(EmpireOverviewCategories.Resources)
-        }
-        happinessContainer.onClick(invokeResourcesPage)
-        happinessLabel.onClick(invokeResourcesPage)
-        add(happinessContainer).padBottom(defaultImageBottomPad).size(defaultImageSize)
-        add(happinessLabel).padRight(padRightBetweenStats)
-
         addStat("Culture", cultureLabel) {
             if (worldScreen.gameInfo.ruleset.policyBranches.isEmpty()) null
             else PolicyPickerScreen(worldScreen.selectedCiv, worldScreen.canChangeState)
@@ -122,6 +115,14 @@ internal class WorldScreenTopBarStats(topbar: WorldScreenTopBar) : ScalingTableW
             addStat("Faith", faithLabel, EmpireOverviewCategories.Religion, true)
             addPerTurnLabel(faithPerTurnLabel)
         } else add("Religion: Off".toLabel())
+
+        // UncivGC 2026-08-22 用户要求: 快乐在信仰后面 (金钱,科研,文化,信仰,快乐,地块,人口)
+        val invokeResourcesPage = {            worldScreen.openEmpireOverview(EmpireOverviewCategories.Resources)
+        }
+        happinessContainer.onClick(invokeResourcesPage)
+        happinessLabel.onClick(invokeResourcesPage)
+        add(happinessContainer).padBottom(defaultImageBottomPad).size(defaultImageSize)
+        add(happinessLabel).padRight(padRightBetweenStats)
 
         // UncivGC 实验性 UI (2026-08-22): 领土 + 人口 (信仰后, 图标/数字, 开关控制显示)
         val invokeStatsPage = { worldScreen.openEmpireOverview(EmpireOverviewCategories.Stats) }

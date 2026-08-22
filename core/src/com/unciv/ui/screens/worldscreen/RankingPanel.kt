@@ -77,8 +77,12 @@ class RankingPanel(private val worldScreen: WorldScreen) : Table(BaseScreen.skin
         val gameInfo = worldScreen.gameInfo
         val myCiv = worldScreen.viewingCiv
         // 主要文明 (不含城邦/蛮族/观战); 战败包含但灰显 (文明6 式)
+        // 只显示已遇到 (met) 的文明 — 未遇到不显示 (2026-08-22 用户要求); 自己/观战者总是显示全部
         val civs = gameInfo.civilizations
             .filter { it.isMajorCiv() }
+            .filter { civ ->
+                myCiv.isSpectator() || civ.civID == myCiv.civID || myCiv.diplomacy.containsKey(civ.civID)
+            }
             .sortedByDescending { if (it.isDefeated()) Int.MIN_VALUE else it.getStatForRanking(RankingType.Score) }
 
         if (civs.isEmpty()) return

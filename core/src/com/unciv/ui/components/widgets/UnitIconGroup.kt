@@ -113,12 +113,12 @@ class UnitIconGroup(val unit: MapUnit, val size: Float) : NonTransformGroup() {
         val flagIconSizeMultiplier: Float = if (unit.isCivilian()) 0.5f else 0.65f
         flagIcon.setSize(size * flagIconSizeMultiplier)
 
-        // UncivGC 实验性 UI (2026-08-22 方案B): 其他玩家/势力的单位剩余移动力为 0 → 图标灰显 (已行动, 不能攻击/移动)
-        // 数据来自服务器广播 (actions=currentMovement 实时同步); 跟随 experimentalUi 开关 (UI 改动不写进正式版)
+        // UncivGC 实验性 UI (2026-08-22 方案B): 其他玩家/势力的单位本回合攻击次数用完 → 图标灰显
+        // (用户要求: 判断条件从"无法移动"改为"没攻击次数" — 攻击过/不能攻击了才灰)
         val viewingCiv = GUI.getWorldScreen()?.viewingCiv
         if (GUI.getSettings().experimentalUi && viewingCiv != null && unit.civ.civID != viewingCiv.civID
             && com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(unit.civ.gameInfo)
-            && unit.currentMovement <= 0f) {
+            && unit.isMilitary() && unit.attacksThisTurn >= unit.maxAttacksPerTurn()) {
             flagIcon.color = Color(0.55f, 0.55f, 0.55f, 0.65f)
         }
 

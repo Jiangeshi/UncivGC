@@ -81,14 +81,20 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
     private var fsStatusButton: com.badlogic.gdx.scenes.scene2d.ui.TextButton? = null
 
     /** UncivGC: 聊天按钮 (帧同步模式移到顶栏, 与 状态/暂停/概览 并列 — 2026-08-22 用户要求)
-     *  lazy: WorldScreen.chatButton 声明在 topBar 之后, init 直接访问会 NPE (开房卡住根因) */
+     *  纯文字按钮 (去掉 icon, 大小与其他按钮一致); lazy: WorldScreen.chatButton 声明在 topBar 之后,
+     *  init 直接访问会 NPE (开房卡住根因) */
     private val fsChatButton: com.badlogic.gdx.scenes.scene2d.Actor? by lazy {
         if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo)) {
-            worldScreen.chatButton.apply {
-                refreshVisibility()
-                pack()
-                setSize(maxOf(width, 80f), height)
+            val btn = com.badlogic.gdx.scenes.scene2d.ui.TextButton("Chat".tr(), BaseScreen.skin)
+            btn.onClick {
+                val chat = com.unciv.logic.multiplayer.chat.ChatStore.getChatByGameId(worldScreen.gameInfo.gameId)
+                chat.unreadCount = 0
+                com.unciv.logic.multiplayer.chat.ChatStore.hasGlobalMessage = false
+                com.unciv.ui.screens.worldscreen.chat.ChatPopup(chat, worldScreen).open()
             }
+            btn.pack()
+            btn.setSize(maxOf(btn.width, 60f), btn.height)  // 与其他按钮同宽 (2026-08-22)
+            btn
         } else null
     }
 
