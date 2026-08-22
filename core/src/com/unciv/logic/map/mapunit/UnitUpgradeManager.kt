@@ -71,9 +71,9 @@ class UnitUpgradeManager(val unit: MapUnit) {
         cost *= unit.civ.gameInfo.speed.modifier
         goldCostOfUpgrade += (cost / constants.roundTo).toInt() * constants.roundTo
 
-        // 军团/集团军升级费用 ×2
+        // 编队升级费用按单位数翻倍: 军团/舰队 ×2, 集团军/无敌舰队 ×3 (2026-08-22 用户要求对应翻倍)
         if (unit.formation != UnitFormation.Single)
-            goldCostOfUpgrade *= 2
+            goldCostOfUpgrade *= unit.formation.tier + 1
 
         return goldCostOfUpgrade
     }

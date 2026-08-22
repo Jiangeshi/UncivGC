@@ -2490,7 +2490,20 @@ object FrameSync {
                                 tradesChanged = true
                             }
                         }
-                        if (tradesChanged) changed = true
+                        if (tradesChanged) {
+                            changed = true
+                            // 贸易效果即时生效 (纯拦截下客户端不执行 acceptTrade, 2026-08-22 用户反馈):
+                            // ①开放边境缓存 (updateHasOpenBorders) ②资源供应缓存 (奢侈/战略资源快乐即时显示)
+                            try {
+                                for (other in gameInfo.civilizations) {
+                                    if (other.civID == civ.civID) continue
+                                    val dm = civ.getDiplomacyManager(other) ?: continue
+                                    dm.updateHasOpenBorders()
+                                }
+                                civ.cache.updateCivResources()
+                            } catch (ignored: Exception) {
+                            }
+                        }
                     } catch (e: Exception) {
                     }
                 }
