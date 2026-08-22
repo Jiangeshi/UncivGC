@@ -181,7 +181,8 @@ class WorldScreen(
         stage.addActor(topBar)
         stage.addActor(statusButtons)
         stage.addActor(techPolicyAndDiplomacy)
-        stage.addActor(chatButton)
+        // UncivGC: 帧同步模式聊天按钮移到顶栏 (与 状态/暂停/概览 并列) — 2026-08-22; 原版模式照旧挂 stage
+        if (!FrameSync.isFsMode(gameInfo)) stage.addActor(chatButton)
 
         stage.addActor(zoomController)
         zoomController.isVisible = UncivGame.Current.settings.showZoomButtons
@@ -802,8 +803,8 @@ class WorldScreen(
         }
         statusButtons.setPosition(stage.width - statusButtons.width - 10f, topBar.y - statusButtons.height - 10f)
 
-        // Update chat button position to always be below techPolicyAndDiplomacy
-        chatButton.updatePosition()
+        // Update chat button position to always be below techPolicyAndDiplomacy (帧同步模式在顶栏, 跳过)
+        if (!FrameSync.isFsMode(gameInfo)) chatButton.updatePosition()
     }
 
     private fun updateAutoPlayStatusButton() {

@@ -2720,6 +2720,11 @@ object FrameSync {
                         for (c in civ.cities) c.cityStats.update()
                     } catch (e: Exception) {
                     }
+                    // 政策变化 → 重算文明每回合产出 (顶栏金币/科技/文化立即更新 — 2026-08-23 用户反馈"政策不立即生效")
+                    try {
+                        civ.updateStatsForNextTurn()
+                    } catch (e: Exception) {
+                    }
                     // 政策变化也刷新打开的城市界面 (城市面板统计行实时更新)
                     if (civ.civID == viewingCivId) cityStateChanged = true
                 }

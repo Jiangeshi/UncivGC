@@ -346,6 +346,9 @@ class WorldMapHolder(
                     selectedUnit.action = null
                 // 保持选中 (与原版一致): 刷新单位面板/移动力显示; 防进城市中心后选中状态丢失
                 if (selectedUnit.hasMovement()) worldScreen.bottomUnitTable.selectUnit(selectedUnit)
+                // 移动已提交服务器 → 立即移除地块上的移动按钮 (MoveHere overlay) — 原版非帧同步路径移动后移除,
+                // 帧同步分支漏了 → 按钮残留到再次点击别处 (2026-08-22 用户反馈)
+                launchOnGLThread { worldScreen.mapHolder.removeUnitActionOverlay() }
                 if (selectedUnits.size > 1) { // 多单位连续移动: 逐个发操作
                     moveUnitToTargetTile(selectedUnits.subList(1, selectedUnits.size), targetTile)
                 }

@@ -522,7 +522,7 @@ open class UncivGame(val isConsoleMode: Boolean = false) : Game(), PlatformSpeci
 
     companion object {
         //region AUTOMATICALLY GENERATED VERSION DATA - DO NOT CHANGE THIS REGION, INCLUDING THIS COMMENT
-        val VERSION = Version("4.21.10.gc.v1.9.2", 12510)
+        val VERSION = Version("4.21.10.gc.v1.9.2", 12511)
         //endregion
 
         /** UncivGC 构建版本 (应用内更新检查用, 与服务器 apk/version.json 的 version 对比; 发新版时同步改) */

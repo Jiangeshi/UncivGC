@@ -51,6 +51,10 @@ open class ScalingTableWrapper(
     fun add(actor: Actor): Cell<Actor> = innerTable.add(actor)
     fun add(): Cell<Actor?> = innerTable.add()
     fun row(): Cell<Actor> = innerTable.row()
+    /** 设置内部 Table 的对齐 (内容在行内的水平位置) — 2026-08-22 顶栏左对齐用 */
+    fun setAlign(alignment: Int) { innerTable.align(alignment) }
+    /** 设置内部 Table 左侧内边距 (避开顶栏左侧的文明/菜单 overlay) — 2026-08-22 */
+    fun padLeft(padding: Float) { innerTable.padLeft(padding) }
     //endregion
 
     fun resetScale() {

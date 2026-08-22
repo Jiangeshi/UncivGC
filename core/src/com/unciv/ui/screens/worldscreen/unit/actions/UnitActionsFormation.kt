@@ -59,6 +59,8 @@ object UnitActionsFormation {
     /** 获取"拆分编队"按钮 */
     fun getSplitFormationActions(unit: MapUnit, tile: Tile) = sequence {
         if (unit.formation == UnitFormation.Single) return@sequence
+        // 移动力为 0 或相邻空格不足时按钮不显示 (点了没反应体验差 — 2026-08-22 用户确认)
+        if (!unit.canSplitFormation()) return@sequence
 
         val worldScreen = GUI.getWorldScreen()
 

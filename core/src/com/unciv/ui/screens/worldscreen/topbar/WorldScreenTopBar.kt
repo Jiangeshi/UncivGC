@@ -9,6 +9,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.Container
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.utils.Align
 import com.unciv.Constants
+import com.unciv.GUI
 import com.unciv.logic.civilization.Civilization
 import com.unciv.models.translations.tr
 import com.unciv.ui.components.extensions.darken
@@ -79,6 +80,24 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
     /** UncivGC 帧同步: 玩家状态按钮 (在线/过回合/文明) — 放暂停按钮左边 */
     private var fsStatusButton: com.badlogic.gdx.scenes.scene2d.ui.TextButton? = null
 
+    /** UncivGC: 聊天按钮 (帧同步模式移到顶栏, 与 状态/暂停/概览 并列 — 2026-08-22 用户要求)
+     *  纯文字按钮 (去掉 icon, 大小与其他按钮一致); lazy: WorldScreen.chatButton 声明在 topBar 之后,
+     *  init 直接访问会 NPE (开房卡住根因) */
+    private val fsChatButton: com.badlogic.gdx.scenes.scene2d.Actor? by lazy {
+        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo)) {
+            val btn = com.badlogic.gdx.scenes.scene2d.ui.TextButton("Chat".tr(), BaseScreen.skin)
+            btn.onClick {
+                val chat = com.unciv.logic.multiplayer.chat.ChatStore.getChatByGameId(worldScreen.gameInfo.gameId)
+                chat.unreadCount = 0
+                com.unciv.logic.multiplayer.chat.ChatStore.hasGlobalMessage = false
+                com.unciv.ui.screens.worldscreen.chat.ChatPopup(chat, worldScreen).open()
+            }
+            btn.pack()
+            btn.setSize(maxOf(btn.width, 60f), btn.height)  // 与其他按钮同宽 (2026-08-22)
+            btn
+        } else null
+    }
+
     companion object {
         /** When the "fillers" are used, this is added to the required height, alleviating the "gap" problem a little. */
         const val gapFillingExtraHeight = 1f
@@ -106,6 +125,7 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
             val btn = com.badlogic.gdx.scenes.scene2d.ui.TextButton("Pause".tr(), BaseScreen.skin)
             btn.onClick { com.unciv.ui.screens.worldscreen.FrameSync.togglePause() }
             btn.pack()
+            btn.setSize(maxOf(btn.width, 60f), btn.height)  // 统一最小宽, 间距视觉一致 (2026-08-22)
             fsPauseButton = btn
             com.unciv.ui.screens.worldscreen.FrameSync.registerFsPauseButton(btn)
         }
@@ -115,8 +135,10 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
             val btn = com.badlogic.gdx.scenes.scene2d.ui.TextButton("Status".tr(), BaseScreen.skin)
             btn.onClick { showPlayerStatusPopup() }
             btn.pack()
+            btn.setSize(maxOf(btn.width, 60f), btn.height)
             fsStatusButton = btn
         }
+
     }
 
     internal fun update(civInfo: Civilization) {
@@ -162,7 +184,9 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
         }
 
         // Check whether it gets cramped on narrow aspect ratios
-        val centerButtonsToHeight = when {
+        // UncivGC 实验性 UI: 禁用 cramped 下移 — 手机矮屏按钮全部下移 (用户反馈 APK 布局错乱);
+        // 左对齐布局下按钮固定在上部, 不随 fillers 模式移动 (2026-08-22)
+        val centerButtonsToHeight = if (GUI.getSettings().experimentalUi) baseHeight else when {
             leftRightNeeded * 2f > targetWidth - resourceWidth -> {
                 // Need to shift buttons down to below both stats and resources
                 addFillers(overlayHeight)
@@ -183,19 +207,45 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
         setSize(targetWidth, prefHeight)  // sizing to prefHeight is half a pack()
         setPosition(0f, stage.height - prefHeight)
 
+        // UncivGC 实验性 UI (2026-08-22): 左对齐 + 左侧留出 菜单+文明名+文明贴图 空间, 防止重叠;
+        // 每次 update 都重新应用 (开关切换立即生效, 不用等重建); overlay 下移 (cramped/fillers 模式) 时左侧没有 overlay → 不需要留白
+        if (GUI.getSettings().experimentalUi) {
+            statsTable.setAlign(Align.left)
+            resourceTable.setAlign(Align.left)
+            if (centerButtonsToHeight == baseHeight) {
+                val leftPad = selectedCivWidth + 10f
+                statsTable.padLeft(leftPad)
+                resourceTable.padLeft(leftPad)
+            }
+        } else {
+            statsTable.setAlign(Align.center)
+            resourceTable.setAlign(Align.center)
+            statsTable.padLeft(0f)
+            resourceTable.padLeft(0f)
+        }
+
         selectedCivTable.setPosition(0f, (centerButtonsToHeight - selectedCivHeight) / 2f)
         overviewButton.setPosition(targetWidth - overviewWidth, (centerButtonsToHeight - overviewHeight) / 2f)
         addActor(selectedCivTable) // needs to be after size
         addActor(overviewButton)
         // UncivGC 帧同步: 暂停按钮放概览按钮旁边 (顶栏子 actor; updateLayout 的 clear() 会清掉 → 每次重新挂载+定位)
+        // 2026-08-23 用户反馈: 概览↔暂停间距比暂停↔状态大 — 概览 Table 内部 pad(10f), 文本按钮左缘实际在 x+10 → 暂停右移 10 对齐
         fsPauseButton?.let { btn ->
             if (btn.parent !== this) addActor(btn)
-            btn.setPosition(overviewButton.x - btn.width - 5f, (centerButtonsToHeight - btn.height) / 2f)
+            btn.setPosition(overviewButton.x - btn.width + 5f, (centerButtonsToHeight - btn.height) / 2f)
         }
         // UncivGC 帧同步: 状态按钮放暂停按钮左边 (状态 | 暂停 | 概览)
         fsStatusButton?.let { btn ->
             if (btn.parent !== this) addActor(btn)
             val anchorX = fsPauseButton?.let { it.x - btn.width - 5f } ?: (overviewButton.x - btn.width - 5f)
+            btn.setPosition(anchorX, (centerButtonsToHeight - btn.height) / 2f)
+        }
+        // UncivGC: 聊天按钮放状态按钮左边 (聊天 | 状态 | 暂停 | 概览 — 2026-08-22 用户要求并列)
+        fsChatButton?.let { btn ->
+            if (btn.parent !== this) addActor(btn)
+            val anchorX = fsStatusButton?.let { it.x - btn.width - 5f }
+                ?: fsPauseButton?.let { it.x - btn.width - 5f }
+                ?: (overviewButton.x - btn.width - 5f)
             btn.setPosition(anchorX, (centerButtonsToHeight - btn.height) / 2f)
         }
     }
