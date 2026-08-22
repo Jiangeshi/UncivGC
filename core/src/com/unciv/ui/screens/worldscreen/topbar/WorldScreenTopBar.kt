@@ -80,8 +80,17 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
     /** UncivGC 帧同步: 玩家状态按钮 (在线/过回合/文明) — 放暂停按钮左边 */
     private var fsStatusButton: com.badlogic.gdx.scenes.scene2d.ui.TextButton? = null
 
-    /** UncivGC: 聊天按钮 (帧同步模式移到顶栏, 与 状态/暂停/概览 并列 — 2026-08-22 用户要求) */
-    private var fsChatButton: com.badlogic.gdx.scenes.scene2d.Actor? = null
+    /** UncivGC: 聊天按钮 (帧同步模式移到顶栏, 与 状态/暂停/概览 并列 — 2026-08-22 用户要求)
+     *  lazy: WorldScreen.chatButton 声明在 topBar 之后, init 直接访问会 NPE (开房卡住根因) */
+    private val fsChatButton: com.badlogic.gdx.scenes.scene2d.Actor? by lazy {
+        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo)) {
+            worldScreen.chatButton.apply {
+                refreshVisibility()
+                pack()
+                setSize(maxOf(width, 80f), height)
+            }
+        } else null
+    }
 
     companion object {
         /** When the "fillers" are used, this is added to the required height, alleviating the "gap" problem a little. */
@@ -124,14 +133,6 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
             fsStatusButton = btn
         }
 
-        // UncivGC: 聊天按钮 (帧同步模式顶栏; 复用 worldScreen.chatButton — 未读角标/闪烁/可见性逻辑保留)
-        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo)) {
-            val chatBtn = worldScreen.chatButton
-            chatBtn.refreshVisibility()
-            chatBtn.pack()
-            chatBtn.setSize(maxOf(chatBtn.width, 80f), chatBtn.height)
-            fsChatButton = chatBtn
-        }
     }
 
     internal fun update(civInfo: Civilization) {
