@@ -326,11 +326,13 @@ class MapUnit : IsPartOfGameInfoSerialization {
     /** 执行合并: 将 [target] 合并进 this */
     fun mergeWith(target: MapUnit) {
         // 保存副单位快照 (含实例名, 拆分时恢复 — 2026-08-22 用户要求)
+        // 注意: 不能用 toList() — 单晋升时 Kotlin 优化返回 Collections$SingletonList,
+        // libGDX Json 反序列化无无参构造直接崩 (存档加载失败"版本不兼容" 2026-08-22 根因)
         val snapshot = FormationSnapshot(
             unitName = target.baseUnit.name,
             name = target.name,
             level = target.promotions.numberOfPromotions,
-            promotions = target.promotions.promotions.toList(),
+            promotions = ArrayList(target.promotions.promotions),
             xp = target.promotions.XP
         )
         formationSnapshots.add(snapshot)

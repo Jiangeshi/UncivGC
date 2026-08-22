@@ -28,6 +28,8 @@ internal class DisplayTab(
 
         addHeader("Screen")
 
+        addCheckbox("Use experimental UI", settings::experimentalUi, updateWorld = true)
+
         addScreenSizeSelectBox()
         addScreenOrientationSelectBox()
         addScreenModeSelectBox()

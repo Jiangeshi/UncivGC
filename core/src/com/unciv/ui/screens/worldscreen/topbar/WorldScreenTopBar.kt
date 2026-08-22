@@ -9,6 +9,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.Container
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.utils.Align
 import com.unciv.Constants
+import com.unciv.GUI
 import com.unciv.logic.civilization.Civilization
 import com.unciv.models.translations.tr
 import com.unciv.ui.components.extensions.darken
@@ -182,6 +183,23 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
         // Don't use align with setPosition as we haven't pack()ed and element dimensions might not be final
         setSize(targetWidth, prefHeight)  // sizing to prefHeight is half a pack()
         setPosition(0f, stage.height - prefHeight)
+
+        // UncivGC 实验性 UI (2026-08-22): 左对齐 + 左侧留出 菜单+文明名+文明贴图 空间, 防止重叠;
+        // 每次 update 都重新应用 (开关切换立即生效, 不用等重建); overlay 下移 (cramped/fillers 模式) 时左侧没有 overlay → 不需要留白
+        if (GUI.getSettings().experimentalUi) {
+            statsTable.setAlign(Align.left)
+            resourceTable.setAlign(Align.left)
+            if (centerButtonsToHeight == baseHeight) {
+                val leftPad = selectedCivWidth + 10f
+                statsTable.padLeft(leftPad)
+                resourceTable.padLeft(leftPad)
+            }
+        } else {
+            statsTable.setAlign(Align.center)
+            resourceTable.setAlign(Align.center)
+            statsTable.padLeft(0f)
+            resourceTable.padLeft(0f)
+        }
 
         selectedCivTable.setPosition(0f, (centerButtonsToHeight - selectedCivHeight) / 2f)
         overviewButton.setPosition(targetWidth - overviewWidth, (centerButtonsToHeight - overviewHeight) / 2f)

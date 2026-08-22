@@ -9,6 +9,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.Container
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.unciv.models.UncivSound
 import com.unciv.models.translations.tr
+import com.unciv.GUI
 import com.unciv.ui.components.extensions.colorFromRGB
 import com.unciv.ui.components.extensions.disable
 import com.unciv.ui.components.extensions.setFontSize
@@ -37,6 +38,10 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
     private val pickTechButton = Table(skin)
     private val pickTechLabel = "".toLabel(Color.WHITE, 30)
 
+    /** UncivGC 实验性 UI: 文明6 式实时排行面板 (科技按钮下方) */
+    private val rankingPanel = RankingPanel(worldScreen)
+    private val rankingPanelHolder = Container<Table?>()
+
     private val policyButtonHolder = Container<Button?>()
     private val policyScreenButton = Button(skin)
     private val diplomacyButtonHolder = Container<Button?>()
@@ -49,10 +54,12 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
     private val viewingCiv = worldScreen.viewingCiv
     private val game = worldScreen.game
 
+
     init {
         defaults().left()
         add(fogOfWarButtonHolder).colspan(4).row()
         add(techButtonHolder).colspan(4).row()
+        add(rankingPanelHolder).colspan(4).padTop(10f).row()  // 与科技按钮保持间距 (2026-08-22)
         add(policyButtonHolder).padTop(10f).padRight(10f)
         add(diplomacyButtonHolder).padTop(10f).padRight(10f)
         add(espionageButtonHolder).padTop(10f).padRight(10f)
@@ -110,6 +117,7 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
         val result = updateDiplomacyButton()
         if (game.gameInfo!!.isEspionageEnabled())
             updateEspionageButton()
+        updateRankingPanel()
         pack()
         setPosition(10f, worldScreen.topBar.y - height - 15f)
         return result
@@ -146,6 +154,21 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
                 pickTechLabel.setText(text.tr())
                 techButtonHolder.actor = pickTechButton
             }
+        }
+    }
+
+    /** UncivGC 实验性 UI: 排行面板 (科技按钮下方) — 开启时显示并刷新, 否则隐藏; 总宽对齐科技按钮 */
+    private fun updateRankingPanel() {
+        if (GUI.getSettings().experimentalUi) {
+            // 面板总宽 = 科技按钮布局宽度 (首次布局前用 prefWidth 兜底)
+            val techWidth = if (techButtonHolder.width > 0f) techButtonHolder.width
+            else techButtonHolder.actor?.prefWidth ?: 320f
+            rankingPanel.update(techWidth)
+            rankingPanelHolder.actor = rankingPanel
+            rankingPanelHolder.touchable = Touchable.enabled
+        } else {
+            rankingPanelHolder.actor = null
+            rankingPanelHolder.touchable = Touchable.disabled
         }
     }
 

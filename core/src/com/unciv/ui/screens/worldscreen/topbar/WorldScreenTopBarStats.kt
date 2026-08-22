@@ -3,6 +3,7 @@ package com.unciv.ui.screens.worldscreen.topbar
 import com.badlogic.gdx.scenes.scene2d.Group
 import com.badlogic.gdx.scenes.scene2d.ui.Label
 import com.unciv.Constants
+import com.unciv.GUI
 import com.unciv.logic.civilization.Civilization
 import com.unciv.models.stats.Stats
 import com.unciv.models.translations.tr
@@ -15,6 +16,7 @@ import com.unciv.ui.components.input.onClick
 import com.unciv.ui.components.widgets.ScalingTableWrapper
 import com.unciv.ui.images.ImageGetter
 import com.unciv.ui.screens.basescreen.BaseScreen
+import com.unciv.ui.screens.victoryscreen.RankingType
 import com.unciv.ui.screens.overviewscreen.EmpireOverviewCategories
 import com.unciv.ui.screens.overviewscreen.EmpireOverviewScreen
 import com.unciv.ui.screens.pickerscreens.PolicyPickerScreen
@@ -35,6 +37,12 @@ internal class WorldScreenTopBarStats(topbar: WorldScreenTopBar) : ScalingTableW
     private val faithLabel = "0".toLabel(colorFromRGB(168, 196, 241)) // #a8c4f1
     private val faithPerTurnLabel = "+0"
         .toLabel(colorFromRGB(168, 196, 241), 14)
+
+    // UncivGC 实验性 UI (2026-08-22): 领土数量 + 人口数量 (信仰后; 人口用工作地块小人图标)
+    private val territoryLabel = "0".toLabel(colorFromRGB(141, 178, 122)) // 绿
+    private val populationLabel = "0".toLabel(colorFromRGB(230, 190, 120)) // 橙
+    private val territoryIconCell: com.badlogic.gdx.scenes.scene2d.ui.Container<com.badlogic.gdx.scenes.scene2d.ui.Image> = com.badlogic.gdx.scenes.scene2d.ui.Container()
+    private val populationIconCell: com.badlogic.gdx.scenes.scene2d.ui.Container<com.badlogic.gdx.scenes.scene2d.ui.Image> = com.badlogic.gdx.scenes.scene2d.ui.Container()
 
     private val happinessContainer = Group()
 
@@ -98,8 +106,7 @@ internal class WorldScreenTopBarStats(topbar: WorldScreenTopBar) : ScalingTableW
 
         addStat("Science", scienceLabel) { TechPickerScreen(worldScreen.selectedCiv) }
 
-        val invokeResourcesPage = {
-            worldScreen.openEmpireOverview(EmpireOverviewCategories.Resources)
+        val invokeResourcesPage = {            worldScreen.openEmpireOverview(EmpireOverviewCategories.Resources)
         }
         happinessContainer.onClick(invokeResourcesPage)
         happinessLabel.onClick(invokeResourcesPage)
@@ -116,9 +123,21 @@ internal class WorldScreenTopBarStats(topbar: WorldScreenTopBar) : ScalingTableW
             addPerTurnLabel(faithPerTurnLabel)
         } else add("Religion: Off".toLabel())
 
-
+        // UncivGC 实验性 UI (2026-08-22): 领土 + 人口 (信仰后, 图标/数字, 开关控制显示)
+        val invokeStatsPage = { worldScreen.openEmpireOverview(EmpireOverviewCategories.Stats) }
+        val territoryIcon = ImageGetter.getImage("OtherIcons/Hexagon").apply { onClick(invokeStatsPage) }
+        val populationIcon = ImageGetter.getImage("TileIcons/Worked").apply { onClick(invokeStatsPage) }
+        territoryLabel.onClick(invokeStatsPage)
+        populationLabel.onClick(invokeStatsPage)
+        territoryIconCell.actor = territoryIcon
+        populationIconCell.actor = populationIcon
+        territoryLabel.isVisible = false
+        populationLabel.isVisible = false
+        add(territoryIconCell).padBottom(defaultImageBottomPad).size(defaultImageSize)
+        add(territoryLabel).padRight(padRightBetweenStats)
+        add(populationIconCell).padBottom(defaultImageBottomPad).size(defaultImageSize)
+        add(populationLabel).padRight(padRightBetweenStats)
     }
-
 
     fun update(civInfo: Civilization) {
         resetScale()
@@ -128,7 +147,9 @@ internal class WorldScreenTopBarStats(topbar: WorldScreenTopBar) : ScalingTableW
         goldLabel.setText(civInfo.gold.tr())
         goldPerTurnLabel.setText(rateLabel(nextTurnStats.gold))
 
-        scienceLabel.setText(rateLabel(nextTurnStats.science))
+        scienceLabel.setText(if (GUI.getSettings().experimentalUi)
+            getScienceText(civInfo, nextTurnStats)  // UncivGC 实验性 UI: 科技显示 +x (剩余回合数), 与文化一致
+        else rateLabel(nextTurnStats.science))
 
         happinessLabel.setText(getHappinessText(civInfo))
 
@@ -147,7 +168,25 @@ internal class WorldScreenTopBarStats(topbar: WorldScreenTopBar) : ScalingTableW
         faithLabel.setText(civInfo.religionManager.storedFaith.tr())
         faithPerTurnLabel.setText(rateLabel(nextTurnStats.faith))
 
+        // UncivGC 实验性 UI: 领土/人口 (信仰后) — 开关控制显示
+        val expUi = GUI.getSettings().experimentalUi
+        territoryLabel.setText(civInfo.getStatForRanking(RankingType.Territory).toString())
+        populationLabel.setText(civInfo.getStatForRanking(RankingType.Population).toString())
+        territoryLabel.isVisible = expUi
+        populationLabel.isVisible = expUi
+        territoryIconCell.isVisible = expUi
+        populationIconCell.isVisible = expUi
+
         scaleTo(worldScreen.stage.width)
+    }
+
+    /** UncivGC 实验性 UI (2026-08-22): 科技显示 +x (剩余回合数), 格式与文化一致; 无当前科技时显示 +x (∞) */
+    private fun getScienceText(civInfo: Civilization, nextTurnStats: Stats): String {
+        val scienceString = rateLabel(nextTurnStats.science)
+        val currentTech = civInfo.tech.currentTechnology() ?:
+            return scienceString + "\u2004(" + Fonts.infinity + ")"
+        val turnsToNextTech = civInfo.tech.turnsToTech(currentTech.name)
+        return scienceString + "\u2004(" + Fonts.turn + "\u2009" + turnsToNextTech + ")"
     }
 
     private fun getCultureText(civInfo: Civilization, nextTurnStats: Stats): String {

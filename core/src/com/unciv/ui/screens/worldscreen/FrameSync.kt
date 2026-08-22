@@ -823,8 +823,9 @@ object FrameSync {
         if (settling) {
             dbg("settling=true → 锁定 + 提示条")
             showSettlingHint()  // 显示提示条 + 全程锁定 (serverSettling 控制实际锁定)
-        } else if (wasSettling) {
+        } else {
             // 结算结束 (延迟到期, 服务器已广播新回合): 解锁 + 移除提示条
+            // 无条件 hide (不要求 wasSettling) — 防 applyState 曾显示/状态错位导致提示条残留 (2026-08-22)
             dbg("settling=false → 解锁, 移除提示条")
             hideSettlingHint()
         }
@@ -1482,8 +1483,10 @@ object FrameSync {
             // 新回合: “已查看”闲置单位标记重置 — 上回合点过“下一个单位”的单位本回合重新参与循环
             // (不重置 → reapplyLocalDueSeen 把本回合 due=true 的单位设回 false → 闲置循环漏单位)
             localDueSeen.clear()
-            // 回合结算提示 (帧同步结算在服务器瞬时完成, 本地无动画缓冲 → 至少停留 2 秒) — 2026-08-21 用户要求
-            showSettlingHint()
+            // 新回合 state 到达 = 结算完成 (settle_finish 广播): 移除提示条/解锁 — 2026-08-22 修复“回合正在结算”残留
+            // (旧逻辑这里无条件 showSettlingHint, 而 turnStatus 隐藏需 wasSettling → 状态对不上时提示条永不消失)
+            serverSettling = false
+            hideSettlingHint()
         }
         lastTurn = newTurn ?: lastTurn
         lastPaused = state["paused"]?.jsonPrimitive?.contentOrNull == "true"

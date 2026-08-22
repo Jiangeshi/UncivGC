@@ -36,6 +36,8 @@ class GameSettings {
     /** Orientation for mobile platforms */
     var displayOrientation = ScreenOrientation.Landscape
     var screenMode = 0
+    /** UncivGC 2026-08-22: 实验性 UI (顶栏左对齐等新布局), 默认关 = 原版 UI */
+    var experimentalUi = false
     /** Allows panning the map by moving the pointer to the screen edges */
     var mapAutoScroll = false
     /** How fast the map pans using keyboard or with [mapAutoScroll] and mouse */
