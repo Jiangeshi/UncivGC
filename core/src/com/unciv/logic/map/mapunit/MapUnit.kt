@@ -28,6 +28,7 @@ import yairm210.purity.annotations.LocalState
 import yairm210.purity.annotations.Readonly
 import java.text.DecimalFormat
 import kotlin.math.pow
+import kotlin.math.roundToInt
 import kotlin.math.ulp
 import com.unciv.logic.automation.Timers.Companion.timeThis
 import com.unciv.logic.civilization.MapUnitAction
@@ -209,10 +210,10 @@ class MapUnit : IsPartOfGameInfoSerialization {
         val withReligion = if (religion == null) baseName
         else "$baseName ([${getReligionDisplayName()}])"
 
-        // 军团/集团军名称后缀
+        // 军团/集团军名称后缀 (翻译词条: Corps/Army)
         return when (formation) {
-            UnitFormation.Corps -> "$withReligion (军团)"
-            UnitFormation.Army -> "$withReligion (集团军)"
+            UnitFormation.Corps -> "$withReligion (${"Corps".tr()})"
+            UnitFormation.Army -> "$withReligion (${"Army".tr()})"
             else -> withReligion
         }
     }
@@ -279,14 +280,14 @@ class MapUnit : IsPartOfGameInfoSerialization {
 
     //region Formation (军团/集团军)
 
-    /** 含编队加成的战斗力显示值 (与 MapUnitCombatant 加成算法一致: 军团 +25% / 集团军 +33%, 截断取整) */
+    /** 含编队加成的战斗力显示值 (与 MapUnitCombatant 加成算法一致: 军团 +25% / 集团军 +33%, 四舍五入) */
     @Readonly
     fun getDisplayStrength(): Int {
         val base = if (baseUnit.rangedStrength != 0) baseUnit.rangedStrength else baseUnit.strength
         if (base <= 0) return base
         val bonus = when (formation) {
-            UnitFormation.Corps -> (base * 0.25f).toInt()
-            UnitFormation.Army -> (base * 0.33f).toInt()
+            UnitFormation.Corps -> (base * 0.25f).roundToInt()
+            UnitFormation.Army -> (base * 0.33f).roundToInt()
             else -> 0
         }
         return base + bonus

@@ -29,17 +29,9 @@ object UnitActionsFormation {
         // 集团军不能再合并
         if (isCorps && unit.formationSnapshots.size >= 2) return@sequence
 
+        // 只有相邻有可合并单位时才显示按钮 (2026-08-22 用户: 不要常驻)
         val mergeableNeighbors = unit.getMergeableNeighbors()
-
-        if (mergeableNeighbors.isEmpty()) {
-            yield(UnitAction(
-                type = UnitActionType.FormCorps,
-                title = label.tr(),
-                useFrequency = 80f,
-                action = null
-            ))
-            return@sequence
-        }
+        if (mergeableNeighbors.isEmpty()) return@sequence
 
         yield(UnitAction(
             type = UnitActionType.FormCorps,

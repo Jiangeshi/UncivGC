@@ -145,10 +145,10 @@ class UnitIconGroup(val unit: MapUnit, val size: Float) : NonTransformGroup() {
             if (badgeNumber.isNotEmpty()) {
                 val badgeLabel = badgeNumber.toLabel(
                     fontSize = (size * 0.12f).toInt().coerceIn(7, 14),
-                    fontColor = Color.WHITE,
+                    fontColor = Color.BLACK,
                     alignment = Align.center)
                 val badgeCircle = badgeLabel.surroundWithCircle(
-                    size * 0.25f, true, Color(0f, 0f, 0f, 0.65f))
+                    size * 0.25f, true, Color(1f, 1f, 1f, 0.9f))
                 // 右下角 (参照 PortraitResource): x 偏右, y 略下沉
                 badgeCircle.setPosition(width - badgeCircle.width * 0.9f, -badgeCircle.height * 0.15f)
                 addActor(badgeCircle)

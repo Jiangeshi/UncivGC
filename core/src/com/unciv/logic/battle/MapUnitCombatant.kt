@@ -8,6 +8,7 @@ import com.unciv.models.UncivSound
 import com.unciv.models.ruleset.unique.GameContext
 import com.unciv.models.ruleset.unique.Unique
 import com.unciv.models.ruleset.unique.UniqueType
+import kotlin.math.roundToInt
 import com.unciv.models.ruleset.unit.UnitType
 import yairm210.purity.annotations.Readonly
 
@@ -62,14 +63,14 @@ class MapUnitCombatant(val unit: MapUnit) : ICombatant {
         return baseStrength + formationBonus
     }
 
-    /** 计算军团/集团军的战斗力加成 */
+    /** 计算军团/集团军的战斗力加成 (四舍五入, 与客户端显示 getDisplayStrength 一致) */
     @Readonly
     private fun getFormationBonus(baseStrength: Int): Int {
         if (baseStrength <= 0) return 0
         return when (unit.formation) {
             UnitFormation.Single -> 0
-            UnitFormation.Corps -> (baseStrength * 0.25f).toInt()
-            UnitFormation.Army -> (baseStrength * 0.33f).toInt()
+            UnitFormation.Corps -> (baseStrength * 0.25f).roundToInt()
+            UnitFormation.Army -> (baseStrength * 0.33f).roundToInt()
         }
     }
 
