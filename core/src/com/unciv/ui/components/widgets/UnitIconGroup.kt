@@ -113,13 +113,17 @@ class UnitIconGroup(val unit: MapUnit, val size: Float) : NonTransformGroup() {
         val flagIconSizeMultiplier: Float = if (unit.isCivilian()) 0.5f else 0.65f
         flagIcon.setSize(size * flagIconSizeMultiplier)
 
-        // UncivGC 实验性 UI (2026-08-22 方案B): 其他玩家/势力的单位本回合攻击次数用完 → 图标灰显
-        // (用户要求: 判断条件从"无法移动"改为"没攻击次数" — 攻击过/不能攻击了才灰)
+        // UncivGC 实验性 UI (2026-08-22 方案B): 其他玩家/势力的单位本回合攻击次数用完 → 右上角小锁标记
+        // (用户要求: 从灰显改为小锁图标 — OtherIcons/LockSmall)
         val viewingCiv = GUI.getWorldScreen()?.viewingCiv
         if (GUI.getSettings().experimentalUi && viewingCiv != null && unit.civ.civID != viewingCiv.civID
             && com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(unit.civ.gameInfo)
             && unit.isMilitary() && unit.attacksThisTurn >= unit.maxAttacksPerTurn()) {
-            flagIcon.color = Color(0.55f, 0.55f, 0.55f, 0.65f)
+            val lockIcon = ImageGetter.getImage("OtherIcons/LockSmall")
+            lockIcon.setSize(size * 0.32f, size * 0.32f)
+            // 右上角 (编队角标在右下, 不冲突)
+            lockIcon.setPosition(width - lockIcon.width * 0.65f, height - lockIcon.height * 0.55f)
+            addActor(lockIcon)
         }
 
         addToCenter(flagSelection)
