@@ -138,6 +138,8 @@ enum class UniqueParameterType(
             "Melee", "Ranged", "Civilian", "Military", "non-air",
             "Nuclear Weapon", "Great Person", "Religious",
             "relevant", // used for UniqueType.UnitStartingPromotions
+            // 编队形态过滤 (2026-08-22): 由 MapUnit.matchesFilter 匹配单位实例的 formation 状态
+            "Single", "Corps", "Army", "Fleet", "Armada",
         ) + Constants.all
 
         override fun getErrorSeverity(parameterText: String, ruleset: Ruleset) = getErrorSeverityForFilter(parameterText, ruleset)

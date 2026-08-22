@@ -796,6 +796,12 @@ class MapUnit : IsPartOfGameInfoSerialization {
             "City-State" -> civ.isCityState
             Constants.embarked -> isEmbarked()
             "Non-City" -> true
+            // 编队形态过滤 (军团/集团军/舰队/无敌舰队/单体 — 2026-08-22): 匹配单位实例的 formation
+            "Single" -> formation == UnitFormation.Single
+            "Corps" -> formation == UnitFormation.Corps
+            "Army" -> formation == UnitFormation.Army
+            "Fleet" -> formation == UnitFormation.Fleet
+            "Armada" -> formation == UnitFormation.Armada
             else -> {
                 if (baseUnit.matchesFilter(filter, cache.state, false)) return true
                 if (civ.matchesFilter(filter, cache.state, false)) return true
