@@ -69,11 +69,13 @@ enum class UnitOverviewTabColumn(
 
     Strength(Fonts.strength.toString(), "Strength", true) {
         override val defaultSort get() = SortableGrid.SortDirection.Descending
-        override fun getEntryValue(item: MapUnit) = item.baseUnit.strength
+        // 军团/集团军/舰队/无敌舰队: 显示含编队加成的战斗力 (2026-08-22)
+        override fun getEntryValue(item: MapUnit) = item.getDisplayStrength()
     },
     RangedStrength(Fonts.rangedStrength.toString(), "Ranged strength", true) {
         override val defaultSort get() = SortableGrid.SortDirection.Descending
-        override fun getEntryValue(item: MapUnit) = item.baseUnit.rangedStrength
+        // 同上: 远程编队显示加成后战斗力
+        override fun getEntryValue(item: MapUnit) = item.getDisplayStrength()
     },
     Movement(Fonts.movement.toString(), "Movement", true) {
         override val defaultSort get() = SortableGrid.SortDirection.Descending
