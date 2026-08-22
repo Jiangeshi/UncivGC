@@ -9,6 +9,8 @@ import com.unciv.logic.IsPartOfGameInfoSerialization
 data class FormationSnapshot(
     /** 副单位的基础单位名 (baseUnit.name) */
     val unitName: String = "",
+    /** 副单位的实例名 (自定义/默认单位名, 拆分时恢复) — 2026-08-22 */
+    val name: String = "",
     /** 副单位的晋升次数 (numberOfPromotions) */
     val level: Int = 0,
     /** 副单位的晋升名称列表 */

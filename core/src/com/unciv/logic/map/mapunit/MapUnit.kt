@@ -325,9 +325,10 @@ class MapUnit : IsPartOfGameInfoSerialization {
 
     /** 执行合并: 将 [target] 合并进 this */
     fun mergeWith(target: MapUnit) {
-        // 保存副单位快照
+        // 保存副单位快照 (含实例名, 拆分时恢复 — 2026-08-22 用户要求)
         val snapshot = FormationSnapshot(
             unitName = target.baseUnit.name,
+            name = target.name,
             level = target.promotions.numberOfPromotions,
             promotions = target.promotions.promotions.toList(),
             xp = target.promotions.XP
@@ -387,6 +388,8 @@ class MapUnit : IsPartOfGameInfoSerialization {
                 ?: continue
             val newUnit = civ.units.placeUnitNearTile(getTile().position, unitBase)
             if (newUnit != null) {
+                // 恢复副单位合并前的实例名 (2026-08-22 用户要求)
+                if (snapshot.name.isNotEmpty()) newUnit.name = snapshot.name
                 newUnit.health = avgHp
                 newUnit.promotions.numberOfPromotions = snapshot.level
                 newUnit.promotions.XP = snapshot.xp
