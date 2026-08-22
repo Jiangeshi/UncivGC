@@ -65,7 +65,7 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
         add(techButtonHolder).padTop(10f).growX().row()
         add(rankingPanelHolder).colspan(4).padTop(10f).row()  // 排行面板下一行
         add(policyButtonHolder).padTop(10f).padRight(10f)
-        add(diplomacyButtonHolder).padTop(10f).padRight(10f)
+        // 注意: 外交按钮 holder 已在上方外交+科技行 add 过 — 不能重复 add (同一 actor 两次 add 布局错乱, 科技按钮消失根因 2026-08-23)
         add(espionageButtonHolder).padTop(10f).padRight(10f)
         add(undoButtonHolder).padTop(10f).padRight(10f)
         add().growX()  // Allows Policy and Diplo buttons to keep to the left
@@ -194,8 +194,8 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
                 diplomacyCell?.width(techWidth / 2f)
                 diplomacyCell?.height(techHeight)
                 diplomacyButton.setSize(techWidth / 2f, techHeight)
-                // 排行每列宽 = (外交 + 科技) / 4 (固定列宽, 容纳 4 位数 — 用户 2026-08-23)
-                val columnWidth = (diplomacyButton.prefWidth + techWidth) / 4f
+                // 排行每列宽 = (外交 + 科技) / 4 × 3 (用户 2026-08-23: 单列太窄翻三倍)
+                val columnWidth = (diplomacyButton.prefWidth + techWidth) / 4f * 3f
                 rankingPanel.update(columnWidth)
                 rankingPanelHolder.actor = rankingPanel
                 rankingPanelHolder.touchable = Touchable.enabled
