@@ -210,10 +210,12 @@ class MapUnit : IsPartOfGameInfoSerialization {
         val withReligion = if (religion == null) baseName
         else "$baseName ([${getReligionDisplayName()}])"
 
-        // 军团/集团军名称后缀 (翻译词条: Corps/Army)
+        // 编队名称后缀 (翻译词条: Corps/Army/Fleet/Armada)
         return when (formation) {
             UnitFormation.Corps -> "$withReligion (${"Corps".tr()})"
             UnitFormation.Army -> "$withReligion (${"Army".tr()})"
+            UnitFormation.Fleet -> "$withReligion (${"Fleet".tr()})"
+            UnitFormation.Armada -> "$withReligion (${"Armada".tr()})"
             else -> withReligion
         }
     }
@@ -285,9 +287,9 @@ class MapUnit : IsPartOfGameInfoSerialization {
     fun getDisplayStrength(): Int {
         val base = if (baseUnit.rangedStrength != 0) baseUnit.rangedStrength else baseUnit.strength
         if (base <= 0) return base
-        val bonus = when (formation) {
-            UnitFormation.Corps -> (base * 0.25f).roundToInt()
-            UnitFormation.Army -> (base * 0.33f).roundToInt()
+        val bonus = when (formation.tier) {
+            1 -> (base * 0.25f).roundToInt()
+            2 -> (base * 0.40f).roundToInt()  // 1.40 (2026-08-22 用户定)
             else -> 0
         }
         return base + bonus
@@ -297,16 +299,16 @@ class MapUnit : IsPartOfGameInfoSerialization {
     @Readonly
     fun canFormCorps(): Boolean {
         if (!isMilitary() || isCivilian()) return false
-        if (baseUnit.isWaterUnit || baseUnit.isAirUnit()) return false
+        if (baseUnit.isAirUnit()) return false  // 空军不能合并; 水军可合并为舰队/无敌舰队 (2026-08-22)
         if (formation != UnitFormation.Single) return false
         if (hasUnique(UniqueType.CannotFormCorps)) return false
         return true
     }
 
-    /** 是否可以合并为集团军 (军团形态 + 还能再加一个) */
+    /** 是否可以升级编队等级 (军团/舰队形态 + 还能再加一个 → 集团军/无敌舰队) */
     @Readonly
     fun canFormArmy(): Boolean {
-        return formation == UnitFormation.Corps && formationSnapshots.size < 2
+        return formation.tier == 1 && formationSnapshots.size < 2
     }
 
     /** 获取相邻格中可以被合并的同种单位列表 */
@@ -316,11 +318,8 @@ class MapUnit : IsPartOfGameInfoSerialization {
         return tile.neighbors.flatMap { it.getUnits() }
             .filter { it != this && it.baseUnit.name == this.baseUnit.name && it.civ == this.civ }
             .filter {
-                when (formation) {
-                    UnitFormation.Single -> it.formation == UnitFormation.Single && it.hasMovement()
-                    UnitFormation.Corps -> it.formation == UnitFormation.Single && it.hasMovement()
-                    UnitFormation.Army -> false // 集团军不能再合并
-                }
+                // 发起者 tier<=1 (单体/军团/舰队) 且目标为同种单体; 集团军/无敌舰队 (tier>=2) 不能再合并
+                formation.tier < 2 && it.formation == UnitFormation.Single && it.hasMovement()
             }.toList()
     }
 
@@ -338,11 +337,12 @@ class MapUnit : IsPartOfGameInfoSerialization {
         // HP 合并 (上限 100)
         health = (health + target.health).coerceAtMost(100)
 
-        // 升级形态
+        // 升级形态: 水军 → 舰队/无敌舰队, 陆军 → 军团/集团军 (2026-08-22)
         formation = when (formation) {
-            UnitFormation.Single -> UnitFormation.Corps
+            UnitFormation.Single -> if (target.baseUnit.isWaterUnit) UnitFormation.Fleet else UnitFormation.Corps
             UnitFormation.Corps -> UnitFormation.Army
-            UnitFormation.Army -> UnitFormation.Army // 不会走到这里，canFormArmy 已过滤
+            UnitFormation.Fleet -> UnitFormation.Armada
+            else -> formation // 不会走到这里 (tier>=2 已过滤)
         }
 
         // 消耗全部移动力

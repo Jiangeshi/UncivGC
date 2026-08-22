@@ -63,14 +63,14 @@ class MapUnitCombatant(val unit: MapUnit) : ICombatant {
         return baseStrength + formationBonus
     }
 
-    /** 计算军团/集团军的战斗力加成 (四舍五入, 与客户端显示 getDisplayStrength 一致) */
+    /** 计算编队战斗力加成 (按 tier: 双单位 +25% / 三单位 +40%; 四舍五入, 与显示 getDisplayStrength 一致) */
     @Readonly
     private fun getFormationBonus(baseStrength: Int): Int {
         if (baseStrength <= 0) return 0
-        return when (unit.formation) {
-            UnitFormation.Single -> 0
-            UnitFormation.Corps -> (baseStrength * 0.25f).roundToInt()
-            UnitFormation.Army -> (baseStrength * 0.33f).roundToInt()
+        return when (unit.formation.tier) {
+            1 -> (baseStrength * 0.25f).roundToInt()
+            2 -> (baseStrength * 0.40f).roundToInt()
+            else -> 0
         }
     }
 

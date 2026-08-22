@@ -137,11 +137,7 @@ class UnitIconGroup(val unit: MapUnit, val size: Float) : NonTransformGroup() {
         // 军团/集团军角标 (数字 2/3) — 2026-08-22 修复: 用 toLabel(fontSize) 正确缩放 (Unciv 字体原始 100px,
         // 直接 setFontScale 会是 70px 巨字); 圆大小包住数字, 右下角定位 (参照 PortraitResource 数字角标)
         if (unit.formation != UnitFormation.Single) {
-            val badgeNumber = when (unit.formation) {
-                UnitFormation.Corps -> "2"
-                UnitFormation.Army -> "3"
-                else -> ""
-            }
+            val badgeNumber = (unit.formation.tier + 1).toString()  // 2 (双单位) / 3 (三单位)
             if (badgeNumber.isNotEmpty()) {
                 val badgeLabel = badgeNumber.toLabel(
                     fontSize = (size * 0.12f).toInt().coerceIn(7, 14),

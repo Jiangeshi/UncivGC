@@ -23,11 +23,17 @@ object UnitActionsFormation {
         if (unit.hasUnique(UniqueType.CannotFormCorps)) return@sequence
 
         val worldScreen = GUI.getWorldScreen()
-        val isCorps = unit.formation == UnitFormation.Corps
-        val label = if (isCorps) "Form Army" else "Form Corps"
+        // 按钮文字: 陆军 军团/集团军, 海军 舰队/无敌舰队 (2026-08-22)
+        val isWater = unit.baseUnit.isWaterUnit
+        val label = when {
+            isWater && unit.formation.tier == 1 -> "Form Armada"
+            isWater -> "Form Fleet"
+            unit.formation.tier == 1 -> "Form Army"
+            else -> "Form Corps"
+        }
 
-        // 集团军不能再合并
-        if (isCorps && unit.formationSnapshots.size >= 2) return@sequence
+        // 三单位编队 (集团军/无敌舰队) 不能再合并
+        if (unit.formation.tier >= 2) return@sequence
 
         // 只有相邻有可合并单位时才显示按钮 (2026-08-22 用户: 不要常驻)
         val mergeableNeighbors = unit.getMergeableNeighbors()
