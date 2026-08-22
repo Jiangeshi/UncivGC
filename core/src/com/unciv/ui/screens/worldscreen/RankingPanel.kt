@@ -64,8 +64,8 @@ class RankingPanel(private val worldScreen: WorldScreen) : Table(BaseScreen.skin
         else -> civ.getStatForRanking(category)
     }
 
-    /** 固定列宽 (用户 2026-08-23: 宽度高度都不变, 容纳 4 位数; 一文明一列, 最多 4 列) */
-    private val colWidth = 232f
+    /** 固定列宽 (用户 2026-08-23: 宽度高度都不变; 232→1/3≈77) */
+    private val colWidth = 77f
 
     fun update() {
         clear()
@@ -126,6 +126,9 @@ class RankingPanel(private val worldScreen: WorldScreen) : Table(BaseScreen.skin
         }
         row()
         pack()
+        // 面板宽度固定 = 最多 4 列宽 (列左对齐, 列数少时右侧留空) — 否则面板宽随列数变化会撑宽外层 Table,
+        // 导致科技/外交按钮位置大小漂移 (用户 2026-08-23 反馈)
+        setSize(4f * (colWidth + 2f) + 4f, height)
     }
 
     private fun getCategoryIcon(category: RankingType): Image {

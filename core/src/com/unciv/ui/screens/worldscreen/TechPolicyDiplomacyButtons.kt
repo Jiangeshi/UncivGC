@@ -62,7 +62,7 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
         add(fogOfWarButtonHolder).colspan(4).row()
         // UncivGC 2026-08-23 用户要求: 科技 + 外交 并排一行 (科技左, 外交右; 常开)
         add(techButtonHolder).padTop(10f).growX()
-        diplomacyCell = add(diplomacyButtonHolder).padTop(10f).padRight(10f)
+        diplomacyCell = add(diplomacyButtonHolder).padTop(10f).padRight(10f).top()  // 顶部对齐 (不随科技高度漂移)
         row()
         add(rankingPanelHolder).colspan(4).padTop(10f).row()  // 排行面板下一行
         add(policyButtonHolder).padTop(10f).padRight(10f)
@@ -190,11 +190,10 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
                 // 科技按钮内容宽 (布局前用 prefWidth)
                 val techWidth = techButtonHolder.actor?.prefWidth
                     ?: (if (techButtonHolder.width > 0f) techButtonHolder.width else 320f)
-                // 外交按钮: 宽 = 科技按钮 1/2, 高相等 (用户 2026-08-23; cell 尺寸控制)
-                val techHeight = techButtonHolder.actor?.height ?: 50f
+                // 外交按钮: 宽 = 科技按钮 1/2, 高度固定 50 (不随科技按钮高度变化 — 用户 2026-08-23 反馈高度漂移)
                 diplomacyCell?.width(techWidth / 2f)
-                diplomacyCell?.height(techHeight)
-                diplomacyButton.setSize(techWidth / 2f, techHeight)
+                diplomacyCell?.height(50f)
+                diplomacyButton.setSize(techWidth / 2f, 50f)
                 rankingPanel.update()
                 rankingPanelHolder.actor = rankingPanel
                 rankingPanelHolder.touchable = Touchable.enabled
