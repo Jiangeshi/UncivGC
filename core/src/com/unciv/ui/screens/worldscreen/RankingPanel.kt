@@ -82,7 +82,7 @@ class RankingPanel(private val worldScreen: WorldScreen) : Table(BaseScreen.skin
                 myCiv.isSpectator() || civ.civID == myCiv.civID || myCiv.diplomacy.containsKey(civ.civID)
             }
             .sortedByDescending { if (it.isDefeated()) Int.MIN_VALUE else it.getStatForRanking(RankingType.Score) }
-            .take(4)  // 最多 4 列 (每多遇到一个加一列, 最多 4 — 用户 2026-08-23)
+            .take(5)  // 最多 5 列 (每多遇到一个加一列 — 用户 2026-08-23)
 
         if (civs.isEmpty()) return
 
@@ -126,9 +126,9 @@ class RankingPanel(private val worldScreen: WorldScreen) : Table(BaseScreen.skin
         }
         row()
         pack()
-        // 面板宽度固定 = 最多 4 列宽 (列左对齐, 列数少时右侧留空) — 否则面板宽随列数变化会撑宽外层 Table,
+        // 面板宽度固定 = 最多 5 列宽 (列左对齐, 列数少时右侧留空) — 否则面板宽随列数变化会撑宽外层 Table,
         // 导致科技/外交按钮位置大小漂移 (用户 2026-08-23 反馈)
-        setSize(4f * (colWidth + 2f) + 4f, height)
+        setSize(5f * (colWidth + 2f) + 4f, height)
     }
 
     private fun getCategoryIcon(category: RankingType): Image {

@@ -180,6 +180,13 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
                 } catch (ignored: Exception) {}
             }
         }
+        // UncivGC 实验性 UI: 科技按钮高度固定 50 (与外交同高 — 2026-08-23 用户要求; 过回合后外交变扁根因)
+        if (GUI.getSettings().experimentalUi) {
+            try {
+                val act = techButtonHolder.actor
+                if (act != null) act.setSize(act.prefWidth, 50f)
+            } catch (ignored: Exception) {}
+        }
     }
 
     /** UncivGC 实验性 UI: 排行面板 (与外交按钮同行并列 — 科技按钮下方; 2026-08-22 用户要求)
@@ -190,10 +197,10 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
                 // 科技按钮内容宽 (布局前用 prefWidth)
                 val techWidth = techButtonHolder.actor?.prefWidth
                     ?: (if (techButtonHolder.width > 0f) techButtonHolder.width else 320f)
-                // 外交按钮: 宽 = 科技按钮 1/2, 高度固定 50 (不随科技按钮高度变化 — 用户 2026-08-23 反馈高度漂移)
-                diplomacyCell?.width(techWidth / 2f)
+                // 外交按钮: 宽 = 科技按钮 1/3 (缩短1/3 — 用户 2026-08-23), 高度固定 50
+                diplomacyCell?.width(techWidth / 3f)
                 diplomacyCell?.height(50f)
-                diplomacyButton.setSize(techWidth / 2f, 50f)
+                diplomacyButton.setSize(techWidth / 3f, 50f)
                 rankingPanel.update()
                 rankingPanelHolder.actor = rankingPanel
                 rankingPanelHolder.touchable = Touchable.enabled
