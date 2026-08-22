@@ -60,9 +60,10 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
     init {
         defaults().left()
         add(fogOfWarButtonHolder).colspan(4).row()
-        // UncivGC 2026-08-23 用户要求: 外交 + 科技 并排一行 (外交左, 科技右)
+        // UncivGC 2026-08-23 用户要求: 科技 + 外交 并排一行 (科技左, 外交右; 常开)
+        add(techButtonHolder).padTop(10f).growX()
         diplomacyCell = add(diplomacyButtonHolder).padTop(10f).padRight(10f)
-        add(techButtonHolder).padTop(10f).growX().row()
+        row()
         add(rankingPanelHolder).colspan(4).padTop(10f).row()  // 排行面板下一行
         add(policyButtonHolder).padTop(10f).padRight(10f)
         // 注意: 外交按钮 holder 已在上方外交+科技行 add 过 — 不能重复 add (同一 actor 两次 add 布局错乱, 科技按钮消失根因 2026-08-23)
@@ -194,9 +195,7 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
                 diplomacyCell?.width(techWidth / 2f)
                 diplomacyCell?.height(techHeight)
                 diplomacyButton.setSize(techWidth / 2f, techHeight)
-                // 排行每列宽 = (外交 + 科技) / 4 × 3 (用户 2026-08-23: 单列太窄翻三倍)
-                val columnWidth = (diplomacyButton.prefWidth + techWidth) / 4f * 3f
-                rankingPanel.update(columnWidth)
+                rankingPanel.update()
                 rankingPanelHolder.actor = rankingPanel
                 rankingPanelHolder.touchable = Touchable.enabled
             } else {
@@ -233,6 +232,12 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
     }
 
     private fun updateDiplomacyButton(): Boolean {
+        // UncivGC 实验性 UI: 外交按钮常开 (不建城/不认识文明也显示 — 2026-08-23 用户要求)
+        if (GUI.getSettings().experimentalUi) {
+            diplomacyButtonHolder.touchable = Touchable.enabled
+            diplomacyButtonHolder.actor = diplomacyButton
+            return true
+        }
         return if (viewingCiv.isDefeated() || viewingCiv.isSpectator()
                 || viewingCiv.getKnownCivs().filterNot { it == viewingCiv || it.isBarbarian }.none()
         ) {

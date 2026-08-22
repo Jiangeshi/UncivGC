@@ -42,21 +42,14 @@ class RankingPanel(private val worldScreen: WorldScreen) : Table(BaseScreen.skin
     private val rowHeight = 26f
     private val gray = Color(0.55f, 0.55f, 0.55f, 0.8f)
 
-    private val rowBackground: com.badlogic.gdx.scenes.scene2d.utils.Drawable = BaseScreen.skinStrings.getUiBackground(
-        "RankingPanel/Row",
-        BaseScreen.skinStrings.roundedEdgeRectangleSmallShape,
-        Color(0.12f, 0.25f, 0.55f, 0.25f) // 蓝底半透明 (更透明)
-    )
-    private val myRowBackground: com.badlogic.gdx.scenes.scene2d.utils.Drawable = BaseScreen.skinStrings.getUiBackground(
-        "RankingPanel/MyRow",
-        BaseScreen.skinStrings.roundedEdgeRectangleSmallShape,
-        Color(0.45f, 0.35f, 0.08f, 0.35f) // 自己: 金黄底
-    )
-    private val grayBackground: com.badlogic.gdx.scenes.scene2d.utils.Drawable = BaseScreen.skinStrings.getUiBackground(
-        "RankingPanel/GrayRow",
-        BaseScreen.skinStrings.roundedEdgeRectangleSmallShape,
-        Color(0.3f, 0.3f, 0.3f, 0.25f) // 战败: 灰底
-    )
+    // 纯色半透明背景 (getUiBackground 会被皮肤 defaultVariantTint 覆盖成黑底 — 用户 2026-08-23 反馈;
+    // 用 whiteDot tint 保证蓝底半透明, 与之前一致)
+    private val rowBackground: com.badlogic.gdx.scenes.scene2d.utils.Drawable =
+        ImageGetter.getWhiteDotDrawable().tint(Color(0.12f, 0.25f, 0.55f, 0.25f)) // 蓝底半透明
+    private val myRowBackground: com.badlogic.gdx.scenes.scene2d.utils.Drawable =
+        ImageGetter.getWhiteDotDrawable().tint(Color(0.45f, 0.35f, 0.08f, 0.35f)) // 自己: 金黄底
+    private val grayBackground: com.badlogic.gdx.scenes.scene2d.utils.Drawable =
+        ImageGetter.getWhiteDotDrawable().tint(Color(0.3f, 0.3f, 0.3f, 0.25f)) // 战败: 灰底
 
     /** 大数显示: >=10000 用 k 单位 (10k/12k — 用户 2026-08-23); 四位数内原样 */
     private fun formatValue(v: Int): String = if (v >= 10000) "${v / 1000}k" else v.toString()
@@ -71,8 +64,10 @@ class RankingPanel(private val worldScreen: WorldScreen) : Table(BaseScreen.skin
         else -> civ.getStatForRanking(category)
     }
 
-    /** @param columnWidth 每列 (文明) 宽度 — 固定, 容纳 4 位数 (用户 2026-08-23); 最多 4 列 */
-    fun update(columnWidth: Float) {
+    /** 固定列宽 (用户 2026-08-23: 宽度高度都不变, 容纳 4 位数; 一文明一列, 最多 4 列) */
+    private val colWidth = 232f
+
+    fun update() {
         clear()
         align(Align.topLeft)
         defaults().left().pad(0f)
@@ -91,7 +86,7 @@ class RankingPanel(private val worldScreen: WorldScreen) : Table(BaseScreen.skin
 
         if (civs.isEmpty()) return
 
-        val colWidth = columnWidth  // 固定列宽
+
 
         // 每个文明一列 = 一个完整的长方形背景
         for (civ in civs) {
