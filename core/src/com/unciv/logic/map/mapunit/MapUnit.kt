@@ -288,8 +288,8 @@ class MapUnit : IsPartOfGameInfoSerialization {
         val base = if (baseUnit.rangedStrength != 0) baseUnit.rangedStrength else baseUnit.strength
         if (base <= 0) return base
         val bonus = when (formation.tier) {
-            1 -> (base * 0.25f).roundToInt()
-            2 -> (base * 0.40f).roundToInt()  // 1.40 (2026-08-22 用户定)
+            1 -> (base * 0.33f).roundToInt()
+            2 -> (base * 0.50f).roundToInt()  // 133/150 (2026-08-22 用户定)
             else -> 0
         }
         return base + bonus
