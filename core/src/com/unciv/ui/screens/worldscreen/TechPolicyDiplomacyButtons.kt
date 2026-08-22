@@ -81,6 +81,8 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
 
         // 2026-08-23 用户反馈: 过回合后政策/外交稳定变矮 — 重建 WorldScreen 后新 init 的 cell 未固定尺寸
         // (固定尺寸只在 update() 里设, 重建后第一帧/首帧前渲染默认高度) → init 末尾直接固定
+        // 2026-08-23 04:46 用户补充: 只要有操作就变矮 — init 时按钮本体还是 prefHeight(60, 图标30+pad15*2),
+        // 操作触发 updateRankingPanel 后才被压到 58 → init 里把按钮本体尺寸+fill 全部固定, 高度恒定不再跳变
         if (GUI.getSettings().experimentalUi) {
             try {
                 techCell?.size(260f, 58f)
@@ -88,6 +90,21 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
                 diplomacyCell?.size(80f, 58f)
                 espionageCell?.size(50f, 58f)
                 undoCell?.size(50f, 58f)
+                // 按钮本体尺寸 + fill 也必须在 init 固定 (只设 cell 不够: 本体 prefHeight=60 会溢出/跳变)
+                techButtonHolder.fill()
+                policyButtonHolder.fill()
+                diplomacyButtonHolder.fill()
+                espionageButtonHolder.fill()
+                undoButtonHolder.fill()
+                techButtonHolder.setSize(260f, 58f)
+                policyButtonHolder.setSize(80f, 58f)
+                policyScreenButton.setSize(80f, 58f)
+                diplomacyButtonHolder.setSize(80f, 58f)
+                diplomacyButton.setSize(80f, 58f)
+                espionageButtonHolder.setSize(50f, 58f)
+                espionageButton.setSize(50f, 58f)
+                undoButtonHolder.setSize(50f, 58f)
+                undoButton.setSize(50f, 58f)
             } catch (ignored: Exception) {}
         }
         fsLog("init 完成: expUi=" + GUI.getSettings().experimentalUi + " techCellH=" + (techCell?.prefHeight ?: -1)
