@@ -321,16 +321,17 @@ object FrameSync {
                 // 不走 onlineMultiplayer.downloadGame: 它会更新 preview 触发 MultiplayerGameUpdated
                 // 事件 → WorldScreen 处理器再触发一次重载 (双刷根因)。直接下载+loadGame。
                 val gi = com.unciv.UncivGame.Current.onlineMultiplayer.multiplayerServer.downloadGame(gameId)
-                com.unciv.UncivGame.Current.loadGame(gi)
-                // 视野增量快照清空: 重载后单位是全新对象, 位置/条目可能与快照相同 → 不清会漏重算 → 视野全黑 (2026-08-23)
+                // ⚠️ 快照清空必须在 loadGame 之前! loadGame 同步触发新 WorldScreen → start() →
+                // 本地视野刷新 (含队友探索历史合并), 若清空在 loadGame 后执行, start() 用的是旧快照:
+                // teamExploredMerged 仍 true → 合并被跳过 → 队友历史探索永久缺失 (2026-08-23 用户实测
+                // "过回合后没视野地块变灰丢失" 根因)
                 unitEntrySnapshot.clear()
                 unitVisibilityPos.clear()
                 unitProcessedEntry.clear()
                 meetUnitPos.clear()
                 meetCitySnapshot.clear()
-                // 探索历史合并标记重置: 队友本回合新探索的地块在存档里, 重载后必须重新全量合并,
-                // 否则 A 探索过的地块 B 永远看不到 (2026-08-23 用户实测 "共享的是当前视野不是探索历史")
-                teamExploredMerged = false
+                teamExploredMerged = false  // 重载后重新全量合并队友探索历史
+                com.unciv.UncivGame.Current.loadGame(gi)
                 if (turn >= 0) lastReloadedTurn = turn  // 成功才记录
             } catch (e: Exception) {
                 println("FrameSync reload failed: " + e)
