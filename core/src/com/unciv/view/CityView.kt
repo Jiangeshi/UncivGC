@@ -156,13 +156,14 @@ class CityView(city: City,
 
     fun tryLockTile(tileView: TileView): Boolean {
         if (!canChangeState()) return false
-        if (!isWorked(tileView)) return false
         if (FrameSync.isFsMode(city.civ.gameInfo)) {
-            // 帧同步: 服务器权威 (锁定状态由广播同步)
+            // 帧同步: 服务器权威 (doLockTile 内部处理"未工作先工作再锁定";
+            // 本地 isWorked 不更新 → 不能前置检查, 2026-08-23 帧同步双击锁定失效)
             val pos = getTile(tileView).position
             FrameSync.sendOp("city.lockTile", mapOf("cityId" to city.id, "tileX" to pos.x!!, "tileY" to pos.y!!))
             return true
         }
+        if (!isWorked(tileView)) return false
         return city.lockTile(getTile(tileView))
     }
     fun tryUnlockTile(tileView: TileView): Boolean {

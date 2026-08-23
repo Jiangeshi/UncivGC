@@ -483,12 +483,13 @@ class CityScreen(
         val tile = tileGroup.tile
 
         // Double-click should lead to locked tiles - both for unworked AND worked tiles
+        // UncivGC 帧同步 (2026-08-23): 本地 isWorked 不更新 (拦截), 直接 tryLockTile —
+        // 服务器 doLockTile 内部处理"未工作先工作再锁定"; 本地先发 workTile op 再判断 isWorked 会漏掉锁定
+        if (!tile.isWorked()
+            && !com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(cityView.viewingCiv().civ.gameInfo))
+            tileWorkedIconOnClick(tileGroup) // If not worked, try to work it first
 
-        if (!tile.isWorked()) // If not worked, try to work it first
-            tileWorkedIconOnClick(tileGroup)
-
-        if (tile.isWorked())
-            cityView.tryLockTile(cityView.tileView(tile))
+        cityView.tryLockTile(cityView.tileView(tile))
 
         update()
     }
