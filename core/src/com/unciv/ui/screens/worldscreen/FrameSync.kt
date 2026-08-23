@@ -1566,7 +1566,7 @@ object FrameSync {
             if (tr != null) {
                 val newBlocked = HashSet<String>()
                 tr["blocked"]?.jsonArray?.forEach { it.jsonPrimitive.contentOrNull?.let { b -> newBlocked.add(b) } }
-                val newRestore = HashMap<String, MutableSet<String>>()
+                val newRestore = HashMap<String, HashSet<String>>()
                 tr["restore"]?.jsonArray?.forEach { arr ->
                     val a = arr.jsonArray ?: return@forEach
                     if (a.size < 2) return@forEach
@@ -2239,6 +2239,7 @@ object FrameSync {
                 }
             }
             if (changed) {
+                gameInfo.invalidateTradeRoutes()  // UncivGC 商路: 道路状态变化 → 连接缓存失效 (直接写字段不走 setter)
                 worldScreenRef?.get()?.let { it.shouldUpdate = true }
             }
         } catch (ignored: Exception) {

@@ -1084,6 +1084,8 @@ class Tile : IsPartOfGameInfoSerialization {
             roadOwnerObject = creatingCivInfo
             creatingCivInfo.neutralRoads.add(this.position)
         }
+        // UncivGC 商路 (2026-08-24): 道路状态变化 → 连接网络缓存失效 (单机修路/拆路即时生效, 帧同步劫掠同步后对齐)
+        tileMap.gameInfo.invalidateTradeRoutes()
     }
 
     /** Clear road owner, for console `civ remove` */
@@ -1174,6 +1176,8 @@ class Tile : IsPartOfGameInfoSerialization {
         owningCity?.reassignPopulationDeferred()
         if (owningCity != null)
             owningCity!!.civ.cache.updateCivResources()
+        // UncivGC 商路 (2026-08-24): 劫掠 (含道路劫掠) → 连接缓存失效
+        tileMap.gameInfo.invalidateTradeRoutes()
     }
 
     fun setRepaired() {
@@ -1184,6 +1188,8 @@ class Tile : IsPartOfGameInfoSerialization {
             roadIsPillaged = false
 
         owningCity?.reassignPopulationDeferred()
+        // UncivGC 商路 (2026-08-24): 修复劫掠道路 → 连接缓存失效
+        tileMap.gameInfo.invalidateTradeRoutes()
     }
 
 

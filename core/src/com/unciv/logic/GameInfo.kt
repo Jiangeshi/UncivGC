@@ -128,8 +128,9 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
     //region UncivGC 商路系统 (2026-08-24, 设计稿: 文档/商路系统-设计稿.md)
     /** 屏蔽中的城市对 (无方向 key "cityIdA|cityIdB" 排序拼接) — 仅外商可屏蔽, 单方取消双方断 */
     var tradeRouteBlocked = HashSet<String>()
-    /** 已请求恢复的城市对 → 请求方 civId 集合; 双方都请求 → 移除屏蔽并恢复连接 */
-    var tradeRouteRestoreRequests = HashMap<String, MutableSet<String>>()
+    /** 已请求恢复的城市对 → 请求方 civId 集合; 双方都请求 → 移除屏蔽并恢复连接
+     *  (必须具体类型 HashSet — 序列化框架无法实例化接口类型, 见 CivConstructions.freeBuildings 注释) */
+    var tradeRouteRestoreRequests = HashMap<String, HashSet<String>>()
     //endregion
 
     /** The turn the replay history started recording.
@@ -232,7 +233,7 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
         toReturn.diplomaticVictoryVotesCast.putAll(diplomaticVictoryVotesCast)
         toReturn.tradeRouteBlocked.addAll(tradeRouteBlocked)
         toReturn.tradeRouteRestoreRequests.putAll(
-            tradeRouteRestoreRequests.mapValues { it.value.toMutableSet() }
+            tradeRouteRestoreRequests.mapValues { HashSet(it.value) }
         )
         toReturn.oneMoreTurnMode = oneMoreTurnMode
         toReturn.customSaveLocation = customSaveLocation

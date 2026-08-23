@@ -130,16 +130,19 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
                             gameInfo.tradeRouteRestoreRequests.remove(pair)
                         } else {
                             gameInfo.tradeRouteRestoreRequests.getOrPut(pair) { HashSet() }.add(myCivId)
-                            if (otherRequested) {
+                            // 城邦无玩家操作: 单方请求即恢复 (与服务器逻辑一致)
+                            if (other.civ.isCityState || otherRequested) {
                                 gameInfo.tradeRouteBlocked.remove(pair)
                                 gameInfo.tradeRouteRestoreRequests.remove(pair)
                             }
                         }
                         gameInfo.invalidateTradeRoutes()
-                        FrameSync.sendOp("city.toggleTradeRouteBlocked", mapOf(
-                            "cityId" to city.id,
-                            "otherCityId" to other.id
-                        ))
+                        // 仅帧同步发 op (单机直接本地生效, 不发网络消息)
+                        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo))
+                            FrameSync.sendOp("city.toggleTradeRouteBlocked", mapOf(
+                                "cityId" to city.id,
+                                "otherCityId" to other.id
+                            ))
                         update()
                     }
                 }).pad(2f)
