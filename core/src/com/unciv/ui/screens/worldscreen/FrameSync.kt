@@ -1525,12 +1525,20 @@ object FrameSync {
         val removedUnits = state["removedUnits"]?.jsonArray ?: emptyList()
         val removedCities = state["removedCities"]?.jsonArray ?: emptyList()
         // UncivGC 组队: 队伍分组 (playerId 列表, 按队号索引) — 服务器 state 顶层 teams 段 (2026-08-23)
+        // 只取自己所在队伍的成员 (此前把所有队合并 → 全员队友 → 全员视野共享 bug, 2026-08-23 用户实测)
         try {
             val teams = state["teams"]?.jsonArray
             if (teams != null) {
                 val newTeam = HashSet<String>()
-                for (teamArr in teams) {
-                    val arr = teamArr.jsonArray ?: continue
+                var myTeamIdx = -1
+                teams.forEachIndexed { idx, teamArr ->
+                    val arr = teamArr.jsonArray ?: return@forEachIndexed
+                    for (pid in arr) {
+                        if (pid.jsonPrimitive.contentOrNull == playerId) myTeamIdx = idx
+                    }
+                }
+                if (myTeamIdx >= 0) {
+                    val arr = teams[myTeamIdx].jsonArray ?: emptyList()
                     for (pid in arr) pid.jsonPrimitive.contentOrNull?.let { newTeam.add(it) }
                 }
                 if (newTeam != myTeamPlayerIds) {
