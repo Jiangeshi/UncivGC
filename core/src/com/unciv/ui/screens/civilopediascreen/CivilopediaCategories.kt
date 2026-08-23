@@ -180,11 +180,15 @@ enum class CivilopediaCategories (
     }
 
     /** UncivGC 百科自定义条目 (UGC 改动内容/致谢): 与教程同款 civilopediaText 结构,
-     *  makeLink 指向本类别 (条目展示/搜索链接正确) */
+     *  makeLink 指向本类别; 去掉自动大标题+分隔线 (条目名即标题, 用户要求排版);
+     *  sortOrder 控制条目列表顺序 (默认按名称排序会乱) */
     class UgcPediaEntry(
         override var name: String = "",
-        override var civilopediaText: List<FormattedLine> = emptyList()
+        override var civilopediaText: List<FormattedLine> = emptyList(),
+        val sortOrder: Int = 0,
     ) : ICivilopediaText, com.unciv.models.stats.INamed {
         override fun makeLink() = "UgcChanges/$name"
+        override fun getCivilopediaTextHeader(): FormattedLine? = null
+        override fun getSortGroup(ruleset: Ruleset): Int = sortOrder
     }
 }
