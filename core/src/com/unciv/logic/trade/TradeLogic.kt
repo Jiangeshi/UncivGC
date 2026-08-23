@@ -73,7 +73,9 @@ class TradeLogic(val ourCivilization: Civilization, val otherCivilization: Civil
         offers.add(TradeOffer(Constants.flatGold, TradeOfferType.Gold, civInfo.gold, speed = civInfo.gameInfo.speed))
         offers.add(TradeOffer(Constants.goldPerTurn, TradeOfferType.Gold_Per_Turn, civInfo.stats.statsForNextTurn.gold.toInt(), civInfo.gameInfo.speed))
 
-        if (!civInfo.isOneCityChallenger() && !otherCiv.isOneCityChallenger())
+        // UncivGC 组队: 同队禁止交易城市 (防刷城 — 同队互相送城市, 2026-08-23); 服务器 doTradeOffer 也拦截
+        if (!civInfo.isOneCityChallenger() && !otherCiv.isOneCityChallenger()
+            && !civInfo.isFsTeammate(otherCiv))
             for (city in civInfo.cities.filterNot { it.isCapital() || it.isInResistance() })
                 offers.add(TradeOffer(city.id, TradeOfferType.City, speed = civInfo.gameInfo.speed))
 
