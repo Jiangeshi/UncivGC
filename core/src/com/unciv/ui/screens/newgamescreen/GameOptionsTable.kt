@@ -534,7 +534,7 @@ class GameOptionsTable(
         table.add(lockField).width(120f).left().row()
         // UncivGC 组队 (2026-08-23): 队伍数 (1=不组队, 2/3=组队; 玩家在成员列表自选队伍; 开局后固定)
         val teamBox = SelectBox<String>(BaseScreen.skin)
-        teamBox.setItems(*arrayOf(1, 2, 3).map { if (it == 1) "Off".tr() else "$it teams".tr() }.toTypedArray())
+        teamBox.setItems(*arrayOf(1, 2, 3).map { if (it == 1) "Off".tr() else "[$it] teams".tr() }.toTypedArray())
         teamBox.selectedIndex = (gameParameters.fsTeamCount - 1).coerceIn(0, 2)
         teamBox.onChange { gameParameters.fsTeamCount = teamBox.selectedIndex + 1 }
         table.add("Teams".tr().toLabel(hideIcons = true)).right().padRight(6f)

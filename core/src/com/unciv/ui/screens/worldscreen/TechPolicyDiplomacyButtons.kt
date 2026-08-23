@@ -166,6 +166,19 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
     }
 
     fun update(): Boolean {
+        // 观战者 (看海): 不显示科技/政策/外交/间谍/撤销 — 无操作权限, 只保留迷雾开关 (2026-08-23 用户反馈)
+        if (viewingCiv.isSpectator()) {
+            updateFogOfWarButton()
+            techButtonHolder.actor = null; techButtonHolder.touchable = Touchable.disabled
+            policyButtonHolder.actor = null; policyButtonHolder.touchable = Touchable.disabled
+            diplomacyButtonHolder.actor = null; diplomacyButtonHolder.touchable = Touchable.disabled
+            espionageButtonHolder.actor = null; espionageButtonHolder.touchable = Touchable.disabled
+            undoButtonHolder.actor = null; undoButtonHolder.touchable = Touchable.disabled
+            rankingPanelHolder.actor = null
+            pack()
+            setPosition(10f, worldScreen.topBar.y - height - 15f)
+            return false
+        }
         updateFogOfWarButton()
         updateTechButton()
         updateUndoButton()

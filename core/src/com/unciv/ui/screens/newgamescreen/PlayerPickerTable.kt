@@ -379,9 +379,9 @@ class PlayerPickerTable(
         if (!isAI && teamCount > 1) {
             val teamRow = Table()
             teamRow.defaults().padRight(6f)
-            teamRow.add("Team:".toLabel())
+            teamRow.add("Team:".tr().toLabel())
             val teamItems = (0..teamCount).map { idx ->
-                if (idx == 0) "None" else "Team $idx"
+                if (idx == 0) "None".tr() else "Team [$idx]".tr()
             }
             val current = status?.team ?: 0
             val select = SelectBox<String>(BaseScreen.skin)

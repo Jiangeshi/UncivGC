@@ -237,7 +237,10 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
         // UncivGC 帧同步: 状态按钮放暂停按钮左边 (状态 | 暂停 | 概览)
         fsStatusButton?.let { btn ->
             if (btn.parent !== this) addActor(btn)
-            val anchorX = fsPauseButton?.let { it.x - btn.width - 5f } ?: (overviewButton.x - btn.width - 5f)
+            // 观战者没有暂停按钮: 状态直接贴概览 — 用与暂停按钮同款的 +5f 修正 (对齐 OverviewAndSupplyTable
+            // 内部 pad(10) 的文本按钮; 否则状态与概览文字间距 15px, 比正常视角大, 2026-08-23 用户反馈"看海距离不对")
+            val anchorX = fsPauseButton?.let { it.x - btn.width - 5f }
+                ?: (overviewButton.x - btn.width + 5f)
             btn.setPosition(anchorX, (centerButtonsToHeight - btn.height) / 2f)
         }
         // UncivGC: 聊天按钮放状态按钮左边 (聊天 | 状态 | 暂停 | 概览 — 2026-08-22 用户要求并列)
