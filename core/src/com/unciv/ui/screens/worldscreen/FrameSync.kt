@@ -110,6 +110,10 @@ object FrameSync {
     private val unitEntrySnapshot = HashMap<Int, String>()  // 当前帧广播条目 (applyState 写)
     private val unitVisibilityPos = HashMap<Int, String>()  // 上次处理时的位置
     private val unitProcessedEntry = HashMap<Int, String>()  // 上次处理时的条目
+    /** 相遇检测增量 (2026-08-23 性能优化): 全文明单位位置快照 + 城市快照 —
+     *  不再每帧全扫可见格 (组队后视野∪大), 只检查 移动单位/新城市/视野扩展 三个变化源 */
+    private val meetUnitPos = HashMap<Int, String>()  // unitId -> "x,y" (全文明)
+    private val meetCitySnapshot = HashMap<String, String>()  // cityId -> "x,y,ownerCivID"
 
     /** 玩家昵称映射 (playerId -> nickname): 服务器 state 附加 nicknames 同步;
      *  供概览/政治学等界面显示 "文明名 (昵称)" */
@@ -315,6 +319,8 @@ object FrameSync {
                 unitEntrySnapshot.clear()
                 unitVisibilityPos.clear()
                 unitProcessedEntry.clear()
+                meetUnitPos.clear()
+                meetCitySnapshot.clear()
                 if (turn >= 0) lastReloadedTurn = turn  // 成功才记录
             } catch (e: Exception) {
                 println("FrameSync reload failed: " + e)
@@ -1597,7 +1603,7 @@ object FrameSync {
      *  位置/广播条目没变的单位跳过重算 (视野不可能变); 变化单位才调 updateVisibleTiles
      *  (语义与全量一致: 含 TriggerUponDiscoveringTile unique 触发 + civ cache 全量重建)。
      *  explorerCiv: 组队时队友单位重算后, 其新视野格永久探索给谁 (自己单位传 null = 内部已处理) */
-    private fun refreshCivUnitsVisibility(civ: Civilization, explorerCiv: Civilization? = null) {
+    private fun refreshCivUnitsVisibility(civ: Civilization, explorerCiv: Civilization? = null, checkMeetTiles: MutableSet<Tile>? = null) {
         val aliveIds = HashSet<Int>()
         for (unit in civ.units.getCivUnits()) {
             if (unit.isDestroyed || !unit.hasTile()) continue
@@ -1617,12 +1623,90 @@ object FrameSync {
                     for (tile in unit.viewableTiles) tile.setExplored(explorerCiv, true)
                 } catch (e: Exception) {}
             }
+            // 相遇检测: 视野扩展侧 — 重算单位的新视野格加入候选 (幂等过滤在检查处)
+            checkMeetTiles?.addAll(unit.viewableTiles)
         }
         // 快照防泄漏: 单位消失后清理 (阈值触发, 避免每帧分配)
         if (unitVisibilityPos.size > aliveIds.size * 2 + 64 || unitProcessedEntry.size > aliveIds.size * 2 + 64) {
             unitVisibilityPos.keys.retainAll(aliveIds)
             unitProcessedEntry.keys.retainAll(aliveIds)
             unitEntrySnapshot.keys.retainAll(aliveIds)
+        }
+    }
+
+    /** 相遇检测 (2026-08-23 性能优化版): 不再每帧全扫可见格 (组队后视野∪大 → 上千格 × getFirstUnit/getCity),
+     *  改为检查三个变化源: ①全文明移动过的单位 (位置 diff) ②视野扩展侧 (重算单位的新视野格) ③新城市/被占城市 (快照 diff)。
+     *  帧同步: 相遇的权威执行在服务器 (civ.meet op → makeCivilizationsMeet: 城邦见面给金币/双向建外交/通知),
+     *  客户端只负责弹窗 UI — 本地调 makeCivilizationsMeet 会本地加金币, 被广播回滚 (见面金币丢失 bug 根因)。
+     *  仅未认识的文明才发 op+弹窗; 幂等: shownMeets/diplomacy 过滤, 已认识不再补弹。
+     *  组队: civ.viewableTiles 已含队友视野 → 队友见到的新文明我也自动遇见。 */
+    private fun checkMeetCivs(worldScreen: WorldScreen, gameInfo: GameInfo, extraTiles: MutableSet<Tile>?) {
+        val civ = worldScreen.viewingCiv
+        if (civ.isSpectator()) return
+        val candidates = extraTiles ?: HashSet()
+        // ① 全文明单位位置 diff (含敌方/城邦 — 敌方单位移动进我方视野是相遇主场景)
+        val aliveIds = HashSet<Int>()
+        for (c in gameInfo.civilizations) {
+            if (c.isSpectator() || c.isBarbarian) continue
+            for (u in c.units.getCivUnits()) {
+                if (u.isDestroyed || !u.hasTile()) continue
+                val id = u.id
+                aliveIds.add(id)
+                val p = u.getTile().position.x.toString() + "," + u.getTile().position.y
+                if (meetUnitPos[id] != p) {
+                    meetUnitPos[id] = p
+                    try { candidates.add(u.getTile()) } catch (e: Exception) {}
+                }
+            }
+        }
+        if (meetUnitPos.size > aliveIds.size * 2 + 64) meetUnitPos.keys.retainAll(aliveIds)
+        // ② 城市快照 diff (新建/被占/移除 → 中心格加入候选; 城市数少, 每帧全遍历便宜)
+        for (c in gameInfo.civilizations) {
+            if (c.isSpectator() || c.isBarbarian) continue
+            for (city in c.cities) {
+                val center = city.getCenterTileOrNull() ?: continue
+                val key = center.position.x.toString() + "," + center.position.y + "," + c.civID
+                if (meetCitySnapshot[city.id] != key) {
+                    meetCitySnapshot[city.id] = key
+                    try { candidates.add(center) } catch (e: Exception) {}
+                }
+            }
+        }
+        if (meetCitySnapshot.size > 128) {
+            val aliveCity = HashSet<String>()
+            for (c in gameInfo.civilizations) for (city in c.cities) aliveCity.add(city.id)
+            meetCitySnapshot.keys.retainAll(aliveCity)
+        }
+        if (candidates.isEmpty()) return
+        // 相遇判定: 只检查 候选格 ∩ 我方视野 (含队友视野)
+        for (tile in candidates) {
+            if (tile !in civ.viewableTiles) continue
+            val tileUnit = tile.getFirstUnit()
+            if (tileUnit != null && tileUnit.civ != civ && !tileUnit.civ.isBarbarian
+                && !tileUnit.civ.isSpectator()
+                && tileUnit.civ.civID !in shownMeets) {
+                if (!civ.diplomacy.containsKey(tileUnit.civ.civID)) {
+                    sendOp("civ.meet", mapOf("civ" to tileUnit.civ.civID))
+                    try {
+                        civ.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
+                            com.unciv.logic.civilization.AlertType.FirstContact, tileUnit.civ.civID))
+                    } catch (e3: Exception) {}
+                }
+                shownMeets.add(tileUnit.civ.civID)
+            }
+            val tileCity = tile.getCity()
+            if (tileCity != null && tileCity.civ != civ && !tileCity.civ.isBarbarian
+                && !tileCity.civ.isSpectator()
+                && tileCity.civ.civID !in shownMeets) {
+                if (!civ.diplomacy.containsKey(tileCity.civ.civID)) {
+                    sendOp("civ.meet", mapOf("civ" to tileCity.civ.civID))
+                    try {
+                        civ.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
+                            com.unciv.logic.civilization.AlertType.FirstContact, tileCity.civ.civID))
+                    } catch (e3: Exception) {}
+                }
+                shownMeets.add(tileCity.civ.civID)
+            }
         }
     }
 
@@ -1640,13 +1724,14 @@ object FrameSync {
             // 帧同步客户端从不跑 updateOurTiles → 占领/新建城市后城市中心视野缺失 → 迷雾不揭/城内单位看不见
             // 先重建 ourTilesAndNeighboringTiles (城市拥有的格+邻居, 原版语义), 再刷单位视野 (全量重算 viewableTiles)
             try { civ.cache.updateOurTiles() } catch (e0: Exception) {}
-            refreshCivUnitsVisibility(civ)
+            val checkMeetTiles = HashSet<Tile>()
+            refreshCivUnitsVisibility(civ, checkMeetTiles = checkMeetTiles)
             // ---- 组队: 队友视野共享 ----
             val teammates = getMyTeammates(gameInfo)
             if (teammates.isNotEmpty()) {
                 for (tciv in teammates) {
                     try { tciv.cache.updateOurTiles() } catch (e1: Exception) {}
-                    refreshCivUnitsVisibility(tciv, civ)
+                    refreshCivUnitsVisibility(tciv, civ, checkMeetTiles)
                 }
                 // 队友正在看的格 → 并入我的实时视野 (单位视野 + 城市视野) + 永久探索 (单循环)
                 val merged = LinkedHashSet(civ.viewableTiles)
@@ -1667,39 +1752,8 @@ object FrameSync {
                     teamExploredMerged = true
                 }
             }
-            // 主动相遇检测: 每个文明只弹一次 (shownMeets 防重, 跨重载/重建有效)
-            // 帧同步: 相遇的权威执行在服务器 (civ.meet op → makeCivilizationsMeet: 城邦见面给金币/双向建外交/通知),
-            // 客户端只负责弹窗 UI — 本地调 makeCivilizationsMeet 会本地加金币, 被广播回滚 (见面金币丢失 bug 根因)
-            // 仅未认识的文明才发 op+弹窗; 已认识的不再补弹 (重载/闪退后 shownMeets 清空 → 补弹会“所有人又认识一遍”)
-            // 组队: civ.viewableTiles 已含队友视野 → 队友见到的新文明我也自动遇见 (2026-08-23)
-            for (tile in civ.viewableTiles) {
-                val tileUnit = tile.getFirstUnit()
-                if (tileUnit != null && tileUnit.civ != civ && !tileUnit.civ.isBarbarian
-                    && !tileUnit.civ.isSpectator()
-                    && tileUnit.civ.civID !in shownMeets) {
-                    if (!civ.diplomacy.containsKey(tileUnit.civ.civID)) {
-                        sendOp("civ.meet", mapOf("civ" to tileUnit.civ.civID))
-                        try {
-                            civ.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
-                                com.unciv.logic.civilization.AlertType.FirstContact, tileUnit.civ.civID))
-                        } catch (e3: Exception) {}
-                    }
-                    shownMeets.add(tileUnit.civ.civID)
-                }
-                val tileCity = tile.getCity()
-                if (tileCity != null && tileCity.civ != civ && !tileCity.civ.isBarbarian
-                    && !tileCity.civ.isSpectator()
-                    && tileCity.civ.civID !in shownMeets) {
-                    if (!civ.diplomacy.containsKey(tileCity.civ.civID)) {
-                        sendOp("civ.meet", mapOf("civ" to tileCity.civ.civID))
-                        try {
-                            civ.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
-                                com.unciv.logic.civilization.AlertType.FirstContact, tileCity.civ.civID))
-                        } catch (e3: Exception) {}
-                    }
-                    shownMeets.add(tileCity.civ.civID)
-                }
-            }
+            // 主动相遇检测 (增量版): 只查 移动单位/新城市/视野扩展 三个变化源, 不再全扫可见格
+            checkMeetCivs(worldScreen, gameInfo, checkMeetTiles)
             worldScreen.shouldUpdate = true
         } catch (e: Exception) {
             // 视野刷新失败不影响游戏
