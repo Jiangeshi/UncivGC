@@ -2880,6 +2880,7 @@ object FrameSync {
                     adopted.clear()
                     adopted.addAll(wanted)
                     changed = true
+                    log("policies 同步: " + civ.civName + " " + adopted.size + " 条 (" + adopted.take(3) + ") 开始 rebuild")
                     // 重建 policyUniques 缓存: 只同步列表不重建 → 战斗/产量计算
                     // (civ.getMatchingUniques → policies.policyUniques) 用旧 uniques →
                     // 政策效果 (Honor 对蛮族 +33% 力量/沿海 +2 产能等) 下回合才生效
@@ -2898,6 +2899,7 @@ object FrameSync {
                         civ.updateStatsForNextTurn()
                     } catch (e: Exception) {
                     }
+                    log("policies 同步: " + civ.civName + " rebuild+城市重算+statsForNextTurn 完成")
                     // 政策变化也刷新打开的城市界面 (城市面板统计行实时更新)
                     if (civ.civID == viewingCivId) cityStateChanged = true
                 }
