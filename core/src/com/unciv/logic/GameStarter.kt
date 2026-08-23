@@ -590,14 +590,41 @@ class GameStarter private constructor(
     ): HashMap<Civilization, Tile> {
 
         val civsOrderedByAvailableLocations = getCivsOrderedByAvailableLocations(civs)
+        // UncivGC 组队 (2026-08-23): 同队出生在同一半图 — 按候选陆地 x 坐标均分队伍数段, 每队只用自己段
+        val teamAllowedTiles = computeTeamAllowedTiles(civs, landTilesInBigEnoughGroup.keys)
 
         for (minimumDistanceBetweenStartingLocations in tileMap.tileMatrix.size / 6 downTo 0) {
             val freeTiles = getFreeTiles(landTilesInBigEnoughGroup, minimumDistanceBetweenStartingLocations)
 
-            val startingLocations = getStartingLocationsForCivs(civsOrderedByAvailableLocations, freeTiles, startScores, minimumDistanceBetweenStartingLocations)
+            val startingLocations = getStartingLocationsForCivs(civsOrderedByAvailableLocations, freeTiles, startScores, minimumDistanceBetweenStartingLocations, teamAllowedTiles, allowFallbackGlobal = minimumDistanceBetweenStartingLocations == 0)
             if (startingLocations != null) return startingLocations
         }
         throw Exception("Didn't manage to get starting tiles even with distance of 1?")
+    }
+
+    /** UncivGC 组队 (2026-08-23): 每队的允许出生半区 (civ -> 候选格集合; 不在 map = 不限)。
+     *  fsTeams 按 playerId 分组; AI/无队真人轮流分配段 (各段均衡); 未组队/候选格空 → 不限 (原逻辑)。 */
+    private fun computeTeamAllowedTiles(civs: List<Civilization>, candidateTiles: Collection<Tile>): Map<Civilization, Set<Tile>> {
+        val fsTeams = gameSetupInfo.gameParameters.fsTeams
+        val teamCount = fsTeams.count { it.isNotEmpty() }
+        if (teamCount <= 1 || candidateTiles.isEmpty()) return emptyMap()
+        val civTeam = HashMap<Civilization, Int>()
+        var next = 0
+        for (civ in civs) {
+            val pid = civ.playerId
+            val idx = if (pid.isNotEmpty()) fsTeams.indexOfFirst { pid in it } else -1
+            civTeam[civ] = if (idx >= 0) idx else (next++ % teamCount)
+        }
+        // 按候选陆地格数量均分 (不是 x 宽度): 陆地分布不均时每队仍拿到等量陆地, 防某段全是海
+        val sortedTiles = candidateTiles.sortedBy { it.position.x }
+        val perTeam = (sortedTiles.size + teamCount - 1) / teamCount
+        val allowed = HashMap<Civilization, Set<Tile>>()
+        for ((civ, idx) in civTeam) {
+            val from = (idx * perTeam).coerceAtMost(sortedTiles.size)
+            val to = ((idx + 1) * perTeam).coerceAtMost(sortedTiles.size)
+            if (from < to) allowed[civ] = sortedTiles.subList(from, to).toSet()
+        }
+        return allowed
     }
 
     @Readonly
@@ -631,12 +658,14 @@ class GameStarter private constructor(
         civsOrderedByAvailableLocations: List<Civilization>,
         freeTiles: MutableList<Tile>,
         startScores: HashMap<Tile, Float>,
-        minimumDistanceBetweenStartingLocations: Int
+        minimumDistanceBetweenStartingLocations: Int,
+        teamAllowedTiles: Map<Civilization, Set<Tile>> = emptyMap(),
+        allowFallbackGlobal: Boolean = false
     ): HashMap<Civilization, Tile>? {
         val startingLocations = HashMap<Civilization, Tile>()
         for (civ in civsOrderedByAvailableLocations) {
 
-            val startingLocation = getCivStartingLocation(civ, freeTiles, startScores)
+            val startingLocation = getCivStartingLocation(civ, freeTiles, startScores, teamAllowedTiles[civ], allowFallbackGlobal)
             startingLocation ?: break
 
             startingLocations[civ] = startingLocation
@@ -654,6 +683,8 @@ class GameStarter private constructor(
         civ: Civilization,
         freeTiles: MutableList<Tile>,
         startScores: HashMap<Tile, Float>,
+        allowedTiles: Set<Tile>? = null,
+        allowFallbackGlobal: Boolean = false,
     ): Tile? {
         var startingLocation = tileMap.startingLocationsByNation[civ.civID]?.randomOrNull(rng)
         if (startingLocation == null) {
@@ -662,8 +693,21 @@ class GameStarter private constructor(
                 tileMap.startingLocationsByNation[Constants.spectator]?.remove(startingLocation)
             }
         }
+        // UncivGC 组队: 预设起点 (MapRegions 随机分的 region.startPosition) 不在本队半区 → 忽略 (2026-08-23)
+        if (startingLocation != null && allowedTiles != null && startingLocation !in allowedTiles)
+            startingLocation = null
         if (startingLocation == null && freeTiles.isNotEmpty())
-            startingLocation = getOneStartingLocation(civ, freeTiles, startScores)
+            // UncivGC 组队: 候选格限制在本队半区; 半区不够时返回 null 让外层减小间距重试 (保持同队同侧),
+            // 仅间距=0 允许全局兜底 (防极端地图生成失败)
+            if (allowedTiles != null) {
+                val candidates = freeTiles.filter { it in allowedTiles }.toMutableList()
+                startingLocation = when {
+                    candidates.isNotEmpty() -> getOneStartingLocation(civ, candidates, startScores)
+                    allowFallbackGlobal -> getOneStartingLocation(civ, freeTiles, startScores)
+                    else -> null
+                }
+            } else
+                startingLocation = getOneStartingLocation(civ, freeTiles, startScores)
         // If startingLocation is null we failed to get all the starting tiles with this minimum distance
         return startingLocation
     }
