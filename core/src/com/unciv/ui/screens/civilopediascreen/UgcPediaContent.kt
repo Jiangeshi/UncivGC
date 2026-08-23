@@ -167,9 +167,14 @@ object UgcPediaContent {
 
     private val ugcCredits = listOf(
         CivilopediaCategories.UgcPediaEntry("致谢", listOf(
-            line("致谢内容整理中…", header = 3),
+            line("致谢", header = 3),
             sep(),
-            line("感谢所有支持 UGC 的玩家与测试者！"),
+            line("感谢 LM2 模组群（780959855）所有群友、Unciv 中文社区群群友的支持！你们的支持，是 UGC 前进的动力。"),
+            gap(),
+            line("感谢维德、Excuse me？、机枪、明不可、浮泽云梦熙、海陆、白杨、百分之一百亿、遗封、冷雨之风、非人哉、猫猫、溯泯、西瓜、zyzzw 等在内测期间提供的宝贵建议与反馈！"),
+            gap(),
+            line("特别感谢：", header = 3, color = "#9cf"),
+            line("感谢浮泽云梦熙、冷雨之风、维德、满堂花醉、Excuse me？等提供的额外支持！"),
         )),
     )
 }
