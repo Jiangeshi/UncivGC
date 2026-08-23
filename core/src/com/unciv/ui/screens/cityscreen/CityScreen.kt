@@ -369,18 +369,26 @@ class CityScreen(
         for (tileGroup in cityTileGroups) {
             tileGroup.onClick { tileGroupOnClick(tileGroup) }
             tileGroup.layerMisc.onWorkedIconClick = {
-                // UncivGC 2026-08-23: 单击延迟 300ms 执行 (等双击判定 — 立即执行会重建地图,
-                // 第二次点击落点变化 → Gdx 双击判定失效); 双击时取消挂起的单击。
-                // 单击语义: 未工作→工作, 工作→取消工作 (锁定地块取消工作同时解锁, 原版 stopWorkingTile 行为)
-                pendingWorkedIconClick?.cancel()
-                pendingWorkedIconClick = com.unciv.utils.Concurrency.run("CityScreen.workedIconClick") {
-                    kotlinx.coroutines.delay(300)
-                    com.unciv.utils.Concurrency.runOnGLThread("CityScreen.workedIconClick.gl") {
-                        pendingWorkedIconClick = null
-                        // 屏幕已切走 (关闭/重建) → 丢弃挂起的单击
-                        if (com.unciv.UncivGame.Current.screen != this) return@runOnGLThread
-                        tileWorkedIconOnClick(tileGroup)
-                        tileGroupOnClick(tileGroup)
+                // UncivGC 2026-08-23 (用户确认交互):
+                // 已锁定地块: 单击 = **立即解锁** (人口保留继续工作; 锁定仅防过回合自动重分配, 不禁玩家操作)
+                // 未锁定地块: 单击 = 切换 (未工作→工作, 工作→取消工作), 延迟 300ms 等双击判定
+                if (tileGroup.tile.isLocked()) {
+                    pendingWorkedIconClick?.cancel()
+                    pendingWorkedIconClick = null
+                    cityView.tryUnlockTile(cityView.tileView(tileGroup.tile))
+                    tileGroupOnClick(tileGroup)
+                    update()
+                } else {
+                    pendingWorkedIconClick?.cancel()
+                    pendingWorkedIconClick = com.unciv.utils.Concurrency.run("CityScreen.workedIconClick") {
+                        kotlinx.coroutines.delay(300)
+                        com.unciv.utils.Concurrency.runOnGLThread("CityScreen.workedIconClick.gl") {
+                            pendingWorkedIconClick = null
+                            // 屏幕已切走 (关闭/重建) → 丢弃挂起的单击
+                            if (com.unciv.UncivGame.Current.screen != this) return@runOnGLThread
+                            tileWorkedIconOnClick(tileGroup)
+                            tileGroupOnClick(tileGroup)
+                        }
                     }
                 }
             }
