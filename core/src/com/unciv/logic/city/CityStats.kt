@@ -358,8 +358,14 @@ class CityStats(val city: City) {
             }
         for (tile in workedTiles) {
             if (tile.isBlockaded() && city.isWorked(tile)) {
-                city.stopWorkingTile(tile)
-                city.shouldReassignPopulation = true
+                // UncivGC 帧同步 (2026-08-23): 本地不执行 stopWorkingTile — 服务器未同步该修改,
+                // 下一条广播会回滚 (人口"锁死" bug 根因); 服务器在回合结算时权威处理 (CityTurnManager),
+                // 玩家也可在城市界面手动停止 (CityScreen BLOCKADED 点击修复)
+                if (!(city.civ.gameInfo.gameParameters.simultaneousTurns
+                        && city.civ.gameInfo.gameParameters.isOnlineMultiplayer)) {
+                    city.stopWorkingTile(tile)
+                    city.shouldReassignPopulation = true
+                }
                 continue
             }
             val tileStats = tile.stats.getTileStats(city, city.civ)

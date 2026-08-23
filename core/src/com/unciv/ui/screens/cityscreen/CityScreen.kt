@@ -404,8 +404,12 @@ class CityScreen(
         val tile = tileGroup.tile
 
         // Cycling as: Not-worked -> Worked  -> Not-worked
-        if (tileGroup.tileState == CityTileState.WORKABLE) {
-            if (!tile.providesYield() && cityView.getFreePopulation() > 0) {
+        // UncivGC 2026-08-23: 被蛮族压制 (BLOCKADED) 的地块也允许点击停止工作 — 否则人口锁死无法重新分配
+        if (tileGroup.tileState == CityTileState.WORKABLE || tileGroup.tileState == CityTileState.BLOCKADED) {
+            if (tileGroup.tileState == CityTileState.BLOCKADED) {
+                // 被压制: 只能停止工作 (人口变无业), 不能分配进来
+                if (tile.isWorked()) cityView.tryStopWorkingTile(cityView.tileView(tile))
+            } else if (!tile.providesYield() && cityView.getFreePopulation() > 0) {
                 cityView.tryWorkTile(cityView.tileView(tile))
                 game.settings.addCompletedTutorialTask("Reassign worked tiles")
             } else {

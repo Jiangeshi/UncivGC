@@ -15,12 +15,14 @@ object UgcPediaContent {
         else -> emptyList()
     }
 
-    private fun line(text: String, header: Int = 0, color: String = "") =
-        FormattedLine(text, header = header, color = color)
+    /** 正文行: 字号整体调大 (defaultFontSize + 3, 用户要求 2026-08-23) */
+    private fun line(text: String, color: String = "") =
+        FormattedLine(text, size = com.unciv.Constants.defaultFontSize + 3, color = color)
     private fun gap() = FormattedLine()
     private fun sep() = FormattedLine(separator = true)
-    /** 要点行: 圆点前缀 + 缩进 (模仿列表) */
-    private fun point(text: String) = FormattedLine("• $text", indent = 1)
+    /** 要点行: 圆点前缀 + 缩进 (模仿列表), 字号同正文调大 */
+    private fun point(text: String) =
+        FormattedLine("• $text", indent = 1, size = com.unciv.Constants.defaultFontSize + 3)
 
     private val ugcChanges = listOf(
         CivilopediaCategories.UgcPediaEntry("帧同步实时联机", listOf(
@@ -92,7 +94,7 @@ object UgcPediaContent {
             gap(),
             line("感谢维德、Excuse me？、机枪、明不可、浮泽云梦熙、海陆、白杨、百分之一百亿、遗封、冷雨之风、非人哉、猫猫、溯泯、西瓜、zyzzw 等在内测期间提供的宝贵建议与反馈！"),
             gap(),
-            line("特别感谢：", header = 3, color = "#9cf"),
+            line("特别感谢：", color = "#9cf"),
             line("感谢浮泽云梦熙、冷雨之风、维德、满堂花醉、Excuse me？等提供的额外支持！"),
         ), 1),
     )
