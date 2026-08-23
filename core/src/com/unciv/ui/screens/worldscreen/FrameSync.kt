@@ -105,6 +105,11 @@ object FrameSync {
     private val myTeamPlayerIds = HashSet<String>()
     /** 组队探索历史是否已一次性合并 (首次合并队友 exploredBy 到我的显示, 之后持续跟随实时视野) */
     private var teamExploredMerged = false
+    /** 视野增量重算 (2026-08-23 性能优化): 单位广播条目快照 (unitId -> 条目JSON) + 位置快照 —
+     *  位置没变且条目没变 → 视野不可能变 → 跳过重算 (组队后 3 文明 × 30+ 单位时每帧全量重算是主要开销) */
+    private val unitEntrySnapshot = HashMap<Int, String>()  // 当前帧广播条目 (applyState 写)
+    private val unitVisibilityPos = HashMap<Int, String>()  // 上次处理时的位置
+    private val unitProcessedEntry = HashMap<Int, String>()  // 上次处理时的条目
 
     /** 玩家昵称映射 (playerId -> nickname): 服务器 state 附加 nicknames 同步;
      *  供概览/政治学等界面显示 "文明名 (昵称)" */
@@ -306,6 +311,10 @@ object FrameSync {
                 // 事件 → WorldScreen 处理器再触发一次重载 (双刷根因)。直接下载+loadGame。
                 val gi = com.unciv.UncivGame.Current.onlineMultiplayer.multiplayerServer.downloadGame(gameId)
                 com.unciv.UncivGame.Current.loadGame(gi)
+                // 视野增量快照清空: 重载后单位是全新对象, 位置/条目可能与快照相同 → 不清会漏重算 → 视野全黑 (2026-08-23)
+                unitEntrySnapshot.clear()
+                unitVisibilityPos.clear()
+                unitProcessedEntry.clear()
                 if (turn >= 0) lastReloadedTurn = turn  // 成功才记录
             } catch (e: Exception) {
                 println("FrameSync reload failed: " + e)
@@ -1584,6 +1593,39 @@ object FrameSync {
         }
     }
 
+    /** 单文明单位视野增量刷新 (2026-08-23 性能优化):
+     *  位置/广播条目没变的单位跳过重算 (视野不可能变); 变化单位才调 updateVisibleTiles
+     *  (语义与全量一致: 含 TriggerUponDiscoveringTile unique 触发 + civ cache 全量重建)。
+     *  explorerCiv: 组队时队友单位重算后, 其新视野格永久探索给谁 (自己单位传 null = 内部已处理) */
+    private fun refreshCivUnitsVisibility(civ: Civilization, explorerCiv: Civilization? = null) {
+        val aliveIds = HashSet<Int>()
+        for (unit in civ.units.getCivUnits()) {
+            if (unit.isDestroyed || !unit.hasTile()) continue
+            val id = unit.id
+            aliveIds.add(id)
+            val pos = unit.getTile().position.x.toString() + "," + unit.getTile().position.y
+            val prevPos = unitVisibilityPos[id]
+            val prevEntry = unitProcessedEntry[id]
+            val curEntry = unitEntrySnapshot[id]
+            if (prevPos == pos && prevEntry == curEntry) continue  // 没动且条目没变 → 视野不变 → 跳过
+            unitVisibilityPos[id] = pos
+            unitProcessedEntry[id] = curEntry ?: ""
+            try { unit.updateVisibleTiles() } catch (e: Exception) {}
+            // 组队: 队友新视野 → 我也永久探索 (幂等, 只覆盖重算过的单位)
+            if (explorerCiv != null) {
+                try {
+                    for (tile in unit.viewableTiles) tile.setExplored(explorerCiv, true)
+                } catch (e: Exception) {}
+            }
+        }
+        // 快照防泄漏: 单位消失后清理 (阈值触发, 避免每帧分配)
+        if (unitVisibilityPos.size > aliveIds.size * 2 + 64 || unitProcessedEntry.size > aliveIds.size * 2 + 64) {
+            unitVisibilityPos.keys.retainAll(aliveIds)
+            unitProcessedEntry.keys.retainAll(aliveIds)
+            unitEntrySnapshot.keys.retainAll(aliveIds)
+        }
+    }
+
     /** 视野刷新: 我方全部单位调 updateVisibleTiles() — 游戏原生逻辑,
      *  按单位真实视野范围计算 viewableTiles 并永久探索新格子 (与单机完全一致)。
      *  敌方单位不做任何探索 — 只有进入我方视野才可见。
@@ -1598,33 +1640,21 @@ object FrameSync {
             // 帧同步客户端从不跑 updateOurTiles → 占领/新建城市后城市中心视野缺失 → 迷雾不揭/城内单位看不见
             // 先重建 ourTilesAndNeighboringTiles (城市拥有的格+邻居, 原版语义), 再刷单位视野 (全量重算 viewableTiles)
             try { civ.cache.updateOurTiles() } catch (e0: Exception) {}
-            for (unit in civ.units.getCivUnits()) {
-                if (unit.isDestroyed || !unit.hasTile()) continue
-                unit.updateVisibleTiles()
-            }
+            refreshCivUnitsVisibility(civ)
             // ---- 组队: 队友视野共享 ----
             val teammates = getMyTeammates(gameInfo)
             if (teammates.isNotEmpty()) {
                 for (tciv in teammates) {
                     try { tciv.cache.updateOurTiles() } catch (e1: Exception) {}
-                    for (unit in tciv.units.getCivUnits()) {
-                        if (unit.isDestroyed || !unit.hasTile()) continue
-                        try { unit.updateVisibleTiles() } catch (e2: Exception) {}
-                    }
+                    refreshCivUnitsVisibility(tciv, civ)
                 }
-                // 队友正在看的格 → 并入我的实时视野 (单位视野 + 城市视野)
+                // 队友正在看的格 → 并入我的实时视野 (单位视野 + 城市视野) + 永久探索 (单循环)
                 val merged = LinkedHashSet(civ.viewableTiles)
                 for (tciv in teammates) {
                     merged.addAll(tciv.viewableTiles)
                     try { merged.addAll(tciv.cache.ourTilesAndNeighboringTiles) } catch (e3: Exception) {}
                 }
                 civ.viewableTiles = merged
-                // 队友当前视野的格 → 我也永久探索 (持续跟随)
-                for (tciv in teammates) {
-                    for (tile in tciv.viewableTiles) {
-                        try { tile.setExplored(civ, true) } catch (e4: Exception) {}
-                    }
-                }
                 // 首次: 一次性合并队友全部探索历史 (join 时队友 exploredBy 来自存档; 之后本地持续维护)
                 if (!teamExploredMerged) {
                     try {
@@ -1760,6 +1790,8 @@ object FrameSync {
                 val obj = unitJson.jsonObject
                 val id = obj["id"]?.jsonPrimitive?.intOrNull ?: continue
                 stateIds.add(id)
+                // 视野增量重算快照: 条目字符串 (位置没变且条目没变 → 视野不变 → 跳过重算)
+                unitEntrySnapshot[id] = unitJson.toString()
                 val x = obj["x"]?.jsonPrimitive?.intOrNull ?: continue
                 val y = obj["y"]?.jsonPrimitive?.intOrNull ?: continue
                 val unit = findUnit(gameInfo, id)
