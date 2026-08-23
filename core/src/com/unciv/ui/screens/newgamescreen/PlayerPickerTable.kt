@@ -4,6 +4,7 @@ import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.scenes.scene2d.Actor
 import com.badlogic.gdx.scenes.scene2d.Touchable
+import com.badlogic.gdx.scenes.scene2d.ui.SelectBox
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.scenes.scene2d.ui.TextButton
 import com.badlogic.gdx.utils.Align
@@ -28,6 +29,7 @@ import com.unciv.ui.components.extensions.surroundWithCircle
 import com.unciv.ui.components.extensions.toCheckBox
 import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.components.extensions.toTextButton
+import com.unciv.ui.components.input.onChange
 import com.unciv.ui.components.input.KeyCharAndCode
 import com.unciv.ui.components.input.keyShortcuts
 import com.unciv.ui.components.input.onActivation
@@ -53,7 +55,7 @@ import com.unciv.ui.components.widgets.AutoScrollPane as ScrollPane
  * @param blockWidth sets a width for the Civ "blocks". If too small a third of the stage is used.
  */
 /** UncivGC 联机大厅: 成员在房间里的状态 (昵称/准备/房主), 由房间界面喂给玩家表 */
-class LobbyPlayerStatus(val nickname: String, val ready: Boolean, val isOwner: Boolean, val missingMods: List<String> = emptyList())
+class LobbyPlayerStatus(val nickname: String, val ready: Boolean, val isOwner: Boolean, val missingMods: List<String> = emptyList(), val team: Int = 0)
 
 class PlayerPickerTable(
     val previousScreen: IPreviousScreen,
@@ -84,6 +86,12 @@ class PlayerPickerTable(
 
     /** UncivGC 大厅: 当前用户是否房主 (踢出按钮显示条件), 由房间界面设置 */
     var lobbyAmOwner: (() -> Boolean)? = null
+
+    /** UncivGC 组队 (2026-08-23): 房间队伍数 (2/3 时显示队伍选择; 1=不组队), 由房间界面设置 */
+    var lobbyTeamCount: (() -> Int)? = null
+
+    /** UncivGC 组队: 换队回调 (选完队伍后触发, 用于同步服务器) */
+    var onTeamChanged: ((Player, Int) -> Unit)? = null
 
     private val friendList = FriendList()
 
@@ -364,6 +372,29 @@ class PlayerPickerTable(
             }
             statusLabel.wrap = true
             block.add(statusLabel).left().fillX().row()
+        }
+
+        // UncivGC 组队 (2026-08-23): 队伍选择 — 房间开了组队 (lobbyTeamCount 2/3) 时真人成员可自选
+        val teamCount = lobbyTeamCount?.invoke() ?: 1
+        if (!isAI && teamCount > 1) {
+            val teamRow = Table()
+            teamRow.defaults().padRight(6f)
+            teamRow.add("Team:".toLabel())
+            val teamItems = (0..teamCount).map { idx ->
+                if (idx == 0) "None" else "Team $idx"
+            }
+            val current = status?.team ?: 0
+            val select = SelectBox<String>(BaseScreen.skin)
+            select.setItems(*teamItems.toTypedArray())
+            select.selected = teamItems[current.coerceIn(0, teamItems.lastIndex)]
+            select.isDisabled = !canEdit  // 只能选自己的队伍
+            select.onChange {
+                val idx = teamItems.indexOf(select.selected)
+                if (idx >= 0 && idx != current) onTeamChanged?.invoke(player, idx)
+            }
+            teamRow.add(select).width(130f)
+            teamRow.add("".toLabel()).expandX()
+            block.add(teamRow).fillX().row()
         }
 
         return block

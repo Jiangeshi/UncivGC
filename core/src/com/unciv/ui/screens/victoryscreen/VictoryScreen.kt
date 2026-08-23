@@ -169,7 +169,9 @@ class VictoryScreen(
         val winningCiv = victoryData.winningCivObject
         val victory = gameInfo.ruleset.victories[victoryType]
             ?: Victory()  // This contains our default victory/defeat texts
-        if (winningCiv.civID == playerCiv.civID) {
+        if (winningCiv.civID == playerCiv.civID
+            || (playerCiv.playerId.isNotEmpty() && playerCiv.isFsTeammate(winningCiv))  // UncivGC 组队: 队友胜利 = 队伍胜利 (2026-08-23)
+        ) {
             displayWonOrLost("You have won a [$victoryType] Victory!", victory.victoryString)
             if (!music.chooseTrack(victory.name, MusicMood.Victory, EnumSet.of(MusicTrackChooserFlags.PrefixMustMatch, MusicTrackChooserFlags.SuffixMustMatch))) {
                 music.chooseTrack(playerCiv.civName, listOf(MusicMood.Victory, MusicMood.Theme), EnumSet.of(MusicTrackChooserFlags.SuffixMustMatch))

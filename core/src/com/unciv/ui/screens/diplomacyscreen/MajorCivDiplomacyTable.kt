@@ -60,9 +60,12 @@ class MajorCivDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
 
             if (!diplomacyManager.hasFlag(DiplomacyFlags.Denunciation)
                 && !diplomacyManager.hasFlag(DiplomacyFlags.DeclarationOfFriendship)
+                && !viewingCiv.isFsTeammate(otherCiv)  // UncivGC 组队: 不能谴责队友 (2026-08-23)
             ) diplomacyTable.add(getDenounceButton(otherCiv, diplomacyManager)).row()
 
-            if (diplomaticRelationshipsCanChange)
+            if (diplomaticRelationshipsCanChange
+                && !viewingCiv.isFsTeammate(otherCiv)  // UncivGC 组队: 不能宣战队友 (2026-08-23)
+            )
                 diplomacyTable.add(diplomacyScreen.getDeclareWarButton(diplomacyManager, otherCiv)).row()
 
         } else if (diplomaticRelationshipsCanChange) {

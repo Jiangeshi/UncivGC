@@ -557,6 +557,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                 if (list != null && list.size == 5) g.fsTurnTimes = list.toTypedArray()
             }
             g.fsSettleLockSeconds = gp.i("fsSettleLockSeconds", g.fsSettleLockSeconds)
+            g.fsTeamCount = gp.i("fsTeamCount", g.fsTeamCount)
             g.noStartBias = gp.b("noStartBias", g.noStartBias)
             g.noBarbarians = gp.b("noBarbarians", g.noBarbarians)
             g.ragingBarbarians = gp.b("ragingBarbarians", g.ragingBarbarians)
@@ -800,10 +801,28 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             }
         }
 
-        // ---- 成员状态喂给玩家表 (昵称/准备/房主) ----
+        // ---- 成员状态喂给玩家表 (昵称/准备/房主/队伍) ----
         playerPickerTable.lobbyGetStatus = { p ->
             currentRoom?.members?.firstOrNull { it.playerId == p.playerId }
-                ?.let { LobbyPlayerStatus(it.nickname, it.ready, it.isOwner, it.missingMods) }
+                ?.let { LobbyPlayerStatus(it.nickname, it.ready, it.isOwner, it.missingMods, it.team) }
+        }
+
+        // ---- UncivGC 组队: 队伍数 (房间设置) + 换队同步服务器 (2026-08-23) ----
+        playerPickerTable.lobbyTeamCount = {
+            val gp = currentRoom?.settings?.get("gp") as? JsonObject
+            if (gp == null) 1 else gp["fsTeamCount"]?.jsonPrimitive?.intOrNull ?: 1
+        }
+        playerPickerTable.onTeamChanged = { player, team ->
+            if (player.playerId == playerId) {
+                Concurrency.run("LobbySyncTeam") {
+                    try {
+                        val r = LobbyApi.setTeam(roomId, nickname, team, playerId)
+                        if (!r.ok) launchOnGLThread { ToastPopup(r.msg.tr(), this@LobbyRoomScreen) }
+                    } catch (e: Exception) {
+                        launchOnGLThread { ToastPopup("Team sync failed: [${e.message}]".tr(), this@LobbyRoomScreen) }
+                    }
+                }
+            }
         }
 
         // ---- 当前用户是否房主 (踢出按钮显示条件) ----
@@ -1130,6 +1149,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             put("simultaneousTurns", gp.simultaneousTurns)
             gp.fsTurnTimes?.let { put("fsTurnTimes", JsonArray(it.map { JsonPrimitive(it) })) }
             put("fsSettleLockSeconds", gp.fsSettleLockSeconds)
+            put("fsTeamCount", gp.fsTeamCount)
             put("noStartBias", gp.noStartBias)
             put("noBarbarians", gp.noBarbarians)
             put("ragingBarbarians", gp.ragingBarbarians)

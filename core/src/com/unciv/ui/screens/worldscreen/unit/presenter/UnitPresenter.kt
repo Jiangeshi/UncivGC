@@ -161,6 +161,13 @@ class UnitPresenter(private val unitTable: UnitTable, private val worldScreen: W
     @Readonly
     private fun buildNameLabelText(unit: MapUnit) : String {
         var nameLabelText = unit.displayName().tr(true)
+        // UncivGC 组队 (2026-08-23): 队友单位标注 "(Teammate)"
+        try {
+            if (unit.civ.playerId.isNotEmpty()
+                && com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo)
+                && unit.civ.isFsTeammate(worldScreen.viewingCiv))
+                nameLabelText += " (Teammate)".tr()
+        } catch (e: Exception) {}
         if (unit.health < 100) nameLabelText += " (${unit.health.tr()})"
         return nameLabelText
     }

@@ -187,6 +187,11 @@ class DiplomacyScreen(
             }
 
             val civNameLabel = civ.civName.toLabel(hideIcons = true)
+            // UncivGC 组队 (2026-08-23): 队友标注
+            try {
+                if (civ.playerId.isNotEmpty() && civ.isFsTeammate(viewingCiv))
+                    civNameLabel.setText(civNameLabel.text.toString() + " (Teammate)".tr())
+            } catch (e: Exception) {}
 
             // The wrapper serves only to highlight the selected civ better
             val civButton = Table().apply {

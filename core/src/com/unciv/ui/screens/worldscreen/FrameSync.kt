@@ -101,6 +101,11 @@ object FrameSync {
     private var playerId = ""
     private var nickname = ""
 
+    /** UncivGC 组队 (2026-08-23): 我的队伍成员 playerId 集合 (含自己; 服务器 state.teams 权威同步) */
+    private val myTeamPlayerIds = HashSet<String>()
+    /** 组队探索历史是否已一次性合并 (首次合并队友 exploredBy 到我的显示, 之后持续跟随实时视野) */
+    private var teamExploredMerged = false
+
     /** 玩家昵称映射 (playerId -> nickname): 服务器 state 附加 nicknames 同步;
      *  供概览/政治学等界面显示 "文明名 (昵称)" */
     val playerNicknames = HashMap<String, String>()
@@ -1504,6 +1509,22 @@ object FrameSync {
         val isFull = state["full"]?.jsonPrimitive?.contentOrNull == "true"
         val removedUnits = state["removedUnits"]?.jsonArray ?: emptyList()
         val removedCities = state["removedCities"]?.jsonArray ?: emptyList()
+        // UncivGC 组队: 队伍分组 (playerId 列表, 按队号索引) — 服务器 state 顶层 teams 段 (2026-08-23)
+        try {
+            val teams = state["teams"]?.jsonArray
+            if (teams != null) {
+                val newTeam = HashSet<String>()
+                for (teamArr in teams) {
+                    val arr = teamArr.jsonArray ?: continue
+                    for (pid in arr) pid.jsonPrimitive.contentOrNull?.let { newTeam.add(it) }
+                }
+                if (newTeam != myTeamPlayerIds) {
+                    myTeamPlayerIds.clear()
+                    myTeamPlayerIds.addAll(newTeam)
+                    teamExploredMerged = false  // 队伍变化 → 重新一次性合并探索历史
+                }
+            }
+        } catch (e: Exception) {}
         // 防御: 增量状态但回合已变 → 丢弃并请求全量 (回合变化应全量, 此为网络乱序/服务器防御漏网)
         if (!isFull && newTurn != null && newTurn > lastTurn) {
             try {
@@ -1553,11 +1574,22 @@ object FrameSync {
         }
     }
 
+    /** UncivGC 组队 (2026-08-23): 我的队友 civ 列表 (不含自己; 观战/无队伍 → 空)
+     *  AI 无 playerId 不在 teams 里, 永不成为队友 */
+    private fun getMyTeammates(gameInfo: GameInfo): List<Civilization> {
+        if (myTeamPlayerIds.isEmpty() || isSpectating) return emptyList()
+        return gameInfo.civilizations.filter {
+            it.playerId in myTeamPlayerIds && it.playerId != playerId
+                && !it.isDefeated() && !it.isSpectator()
+        }
+    }
+
     /** 视野刷新: 我方全部单位调 updateVisibleTiles() — 游戏原生逻辑,
      *  按单位真实视野范围计算 viewableTiles 并永久探索新格子 (与单机完全一致)。
      *  敌方单位不做任何探索 — 只有进入我方视野才可见。
      *  主动相遇检测: 我方视野内出现未认识的文明 → 双向相遇 (双方客户端各自触发, 弹窗对称 —
-     *  不依赖"自己视野变化"才检查, 对方走进我方已见区域也能触发)。 */
+     *  不依赖"自己视野变化"才检查, 对方走进我方已见区域也能触发)。
+     *  组队 (2026-08-23): 队友单位/城市视野并入自己的 viewableTiles + 永久探索, 实现视野共享。 */
     private fun refreshMyCivVisibility(worldScreen: WorldScreen, gameInfo: GameInfo) {
         val civ = worldScreen.viewingCiv
         if (civ.isSpectator()) return
@@ -1570,10 +1602,46 @@ object FrameSync {
                 if (unit.isDestroyed || !unit.hasTile()) continue
                 unit.updateVisibleTiles()
             }
+            // ---- 组队: 队友视野共享 ----
+            val teammates = getMyTeammates(gameInfo)
+            if (teammates.isNotEmpty()) {
+                for (tciv in teammates) {
+                    try { tciv.cache.updateOurTiles() } catch (e1: Exception) {}
+                    for (unit in tciv.units.getCivUnits()) {
+                        if (unit.isDestroyed || !unit.hasTile()) continue
+                        try { unit.updateVisibleTiles() } catch (e2: Exception) {}
+                    }
+                }
+                // 队友正在看的格 → 并入我的实时视野 (单位视野 + 城市视野)
+                val merged = LinkedHashSet(civ.viewableTiles)
+                for (tciv in teammates) {
+                    merged.addAll(tciv.viewableTiles)
+                    try { merged.addAll(tciv.cache.ourTilesAndNeighboringTiles) } catch (e3: Exception) {}
+                }
+                civ.viewableTiles = merged
+                // 队友当前视野的格 → 我也永久探索 (持续跟随)
+                for (tciv in teammates) {
+                    for (tile in tciv.viewableTiles) {
+                        try { tile.setExplored(civ, true) } catch (e4: Exception) {}
+                    }
+                }
+                // 首次: 一次性合并队友全部探索历史 (join 时队友 exploredBy 来自存档; 之后本地持续维护)
+                if (!teamExploredMerged) {
+                    try {
+                        for (tile in gameInfo.tileMap.values) {
+                            for (tciv in teammates) {
+                                if (tile.isExplored(tciv)) tile.setExplored(civ, true)
+                            }
+                        }
+                    } catch (e5: Exception) {}
+                    teamExploredMerged = true
+                }
+            }
             // 主动相遇检测: 每个文明只弹一次 (shownMeets 防重, 跨重载/重建有效)
             // 帧同步: 相遇的权威执行在服务器 (civ.meet op → makeCivilizationsMeet: 城邦见面给金币/双向建外交/通知),
             // 客户端只负责弹窗 UI — 本地调 makeCivilizationsMeet 会本地加金币, 被广播回滚 (见面金币丢失 bug 根因)
             // 仅未认识的文明才发 op+弹窗; 已认识的不再补弹 (重载/闪退后 shownMeets 清空 → 补弹会“所有人又认识一遍”)
+            // 组队: civ.viewableTiles 已含队友视野 → 队友见到的新文明我也自动遇见 (2026-08-23)
             for (tile in civ.viewableTiles) {
                 val tileUnit = tile.getFirstUnit()
                 if (tileUnit != null && tileUnit.civ != civ && !tileUnit.civ.isBarbarian

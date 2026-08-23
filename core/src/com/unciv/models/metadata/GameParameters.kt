@@ -38,6 +38,10 @@ class GameParameters : IsPartOfGameInfoSerialization { // Default values are the
     var fsTurnTimes: Array<Float>? = null
     /** UncivGC 帧同步: 回合结算后强制停留/锁定秒数 (客户端结算锁定+提示条时长; 0=不锁定) — 2026-08-22 用户要求可设置, 默认 3 */
     var fsSettleLockSeconds: Int = 3
+    /** UncivGC 组队 (2026-08-23): 队伍数 (1=不组队; 2/3=组队) — 大厅设置, 开局后固定 */
+    var fsTeamCount: Int = 1
+    /** UncivGC 组队: 队伍分组, 按队伍索引 (队1/队2/队3), 元素是 playerId — 生成器写入存档, 服务器广播权威 */
+    var fsTeams: Array<Array<String>> = arrayOf()
     var noStartBias = false
     var shufflePlayerOrder = false
 
@@ -100,6 +104,8 @@ class GameParameters : IsPartOfGameInfoSerialization { // Default values are the
         parameters.espionageEnabled = espionageEnabled
         parameters.simultaneousTurns = simultaneousTurns
         parameters.fsSettleLockSeconds = fsSettleLockSeconds
+        parameters.fsTeamCount = fsTeamCount
+        parameters.fsTeams = fsTeams.map { it.clone() }.toTypedArray()
         parameters.noStartBias = noStartBias
         parameters.shufflePlayerOrder = shufflePlayerOrder
         parameters.victoryTypes = ArrayList(victoryTypes)

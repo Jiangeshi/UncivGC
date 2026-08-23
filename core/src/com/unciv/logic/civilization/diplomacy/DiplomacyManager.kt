@@ -589,6 +589,7 @@ class DiplomacyManager() : IsPartOfGameInfoSerialization {
         // City-states can enter ally's territory (the opposite is true anyway even without open borders)
         val newHasOpenBorders = civInfo.allyCiv == otherCiv
                 || trades.flatMap { it.theirOffers }.any { it.name == Constants.openBorders && it.duration > 0 }
+                || civInfo.isFsTeammate(otherCiv) // UncivGC 组队: 队友默认开边 (2026-08-23)
 
         val bordersWereClosed = hasOpenBorders && !newHasOpenBorders
         hasOpenBorders = newHasOpenBorders

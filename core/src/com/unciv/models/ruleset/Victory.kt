@@ -145,8 +145,20 @@ class Milestone(val uniqueDescription: String, private val parentVictory: Victor
             MilestoneType.AddedSSPartsInCapital -> {
                 getIncompleteSpaceshipParts(civInfo).isEmpty()
             }
-            MilestoneType.DestroyAllPlayers ->
-                civInfo.gameInfo.getAliveMajorCivs() == listOf(civInfo)
+            MilestoneType.DestroyAllPlayers -> {
+                val alive = civInfo.gameInfo.getAliveMajorCivs()
+                if (alive.isEmpty()) return false
+                // UncivGC 组队 (2026-08-23): 征服胜利按队伍算 — 所有非队友文明全灭即胜 (队友存活也算)
+                if (civInfo.playerId.isNotEmpty()) {
+                    val teams = civInfo.gameInfo.gameParameters.fsTeams
+                    if (teams.isNotEmpty()) {
+                        val myTeam = teams.firstOrNull { civInfo.playerId in it }
+                        if (myTeam != null)
+                            return alive.all { it.playerId in myTeam }
+                    }
+                }
+                alive == listOf(civInfo)
+            }
             MilestoneType.CaptureAllCapitals ->
                 originalMajorCapitalsOwned(civInfo) == civsWithPotentialCapitalsToOwn(civInfo.gameInfo).size
             MilestoneType.CompletePolicyBranches ->

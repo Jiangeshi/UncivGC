@@ -48,6 +48,8 @@ data class LobbyMember(
     val isOwner: Boolean = false,
     val joinedAt: Double = 0.0,
     val missingMods: List<String> = emptyList(),
+    // UncivGC 组队 (2026-08-23): 队伍号 0=无 1/2/3
+    val team: Int = 0,
 )
 
 @Serializable
@@ -92,6 +94,8 @@ data class JoinRequest(val nickname: String, val playerId: String, val civ: Stri
 data class ReadyRequest(val nickname: String, val playerId: String, val ready: Boolean)
 @Serializable
 data class CivRequest(val nickname: String, val playerId: String, val civ: String)
+@Serializable
+data class TeamRequest(val nickname: String, val playerId: String, val team: Int)
 @Serializable
 data class LeaveRequest(val nickname: String, val playerId: String)
 @Serializable
@@ -178,6 +182,13 @@ object LobbyApi {
         parse(client.post("$SERVER_URL/api/rooms/$roomId/civ") {
             contentType(ContentType.Application.Json)
             setBody(CivRequest(nickname, playerId ?: "", civ))
+        })
+
+    /** UncivGC 组队 (2026-08-23): 自选队伍 (0=无, 1/2/3) */
+    suspend fun setTeam(roomId: String, nickname: String, team: Int, playerId: String? = null): ApiResult =
+        parse(client.post("$SERVER_URL/api/rooms/$roomId/team") {
+            contentType(ContentType.Application.Json)
+            setBody(TeamRequest(nickname, playerId ?: "", team))
         })
 
     suspend fun kick(roomId: String, nickname: String, targetPlayerId: String, playerId: String? = null): ApiResult =

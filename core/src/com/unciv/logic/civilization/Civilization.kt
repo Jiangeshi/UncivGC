@@ -99,6 +99,16 @@ class Civilization : IsPartOfGameInfoSerialization {
     @Transient
     var viewableTiles = setOf<Tile>()
 
+    /** UncivGC 组队 (2026-08-23): 是否与另一文明同队 — 队友默认开边/禁攻击/共享视野/共享胜利
+     *  fsTeams 为空 (未组队) 或任一方无 playerId (AI) → false */
+    @yairm210.purity.annotations.Readonly
+    fun isFsTeammate(other: Civilization): Boolean {
+        if (playerId.isEmpty() || other.playerId.isEmpty()) return false
+        val teams = gameInfo.gameParameters.fsTeams
+        if (teams.isEmpty()) return false
+        return teams.any { playerId in it && other.playerId in it }
+    }
+
     @Transient
     var viewableInvisibleUnitsTiles = setOf<Tile>()
 
