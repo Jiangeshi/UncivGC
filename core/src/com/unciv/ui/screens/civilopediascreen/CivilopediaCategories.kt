@@ -116,13 +116,13 @@ enum class CivilopediaCategories (
         getImage = null,
         KeyboardBinding.None,
         "OtherIcons/ExclamationMark",
-        { ruleset, _ -> getUgcPediaEntries("UgcPedia.json") }
+        { ruleset, _ -> UgcPediaContent.entries("UgcPedia") }
     ),
     UgcCredits ("致谢",
         getImage = null,
         KeyboardBinding.None,
  "OtherIcons/ExclamationMark",
-        { ruleset, _ -> getUgcPediaEntries("UgcCredits.json") }
+        { ruleset, _ -> UgcPediaContent.entries("UgcCredits") }
     ),
     Victory ("Victory Types",
         CivilopediaImageGetters.victoryType,
@@ -177,23 +177,9 @@ enum class CivilopediaCategories (
             tutorials.values +
                 // Add entry for Global Uniques only if they have anything interesting
                 listOfNotNull(globalUniques.takeIf { it.hasUniques() })
-
-        /** UncivGC (2026-08-23): 百科自定义条目 — 模仿教程写法 (civilopediaText json 结构),
-         *  从 android/assets/jsons/<file> 加载 (UgcPedia.json = UGC 改动内容, UgcCredits.json = 致谢)。 */
-        private fun getUgcPediaEntries(fileName: String): List<ICivilopediaText> {
-            try {
-                val file = com.badlogic.gdx.Gdx.files.internal("jsons/$fileName")
-                if (!file.exists()) return emptyList()
-                val entries = com.unciv.json.json()
-                    .fromJsonFile(Array<UgcPediaEntry>::class.java, file)
-                return entries.map { it as ICivilopediaText }
-            } catch (e: Exception) {
-                return emptyList()
-            }
-        }
     }
 
-    /** UncivGC 百科自定义条目 (UGC 改动内容/致谢): 与教程同款 civilopediaText json 结构,
+    /** UncivGC 百科自定义条目 (UGC 改动内容/致谢): 与教程同款 civilopediaText 结构,
      *  makeLink 指向本类别 (条目展示/搜索链接正确) */
     class UgcPediaEntry(
         override var name: String = "",
