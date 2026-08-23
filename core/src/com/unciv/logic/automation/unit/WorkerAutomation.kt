@@ -339,7 +339,10 @@ class WorkerAutomation(
 
             if (tile.tileImprovement != null && tile.isPillaged() && tile.owningCity != null) {
                 // Value repairing higher when it is quicker and is in progress
-                var repairBonusPriority = tile.getImprovementToRepair()!!.getTurnsToBuild(unit.civ,unit) - UnitActionsFromUniques.getRepairTurns(unit)
+                // 2026-08-23 防闪退: 改良被移除但劫掠残留 → getImprovementToRepair() 为 null 跳过 (原版 !! NPE)
+                val repairTarget = tile.getImprovementToRepair()
+                if (repairTarget != null) {
+                    var repairBonusPriority = repairTarget.getTurnsToBuild(unit.civ,unit) - UnitActionsFromUniques.getRepairTurns(unit)
                 if (tile.improvementInProgress == Constants.repair) repairBonusPriority += UnitActionsFromUniques.getRepairTurns(unit) - tile.turnsToImprovement
 
                 val repairPriority = repairBonusPriority + Automation.rankStatsValue(tile.stats.getStatDiffForImprovement(tile.tileImprovement!!, unit.civ, tile.owningCity), unit.civ)
@@ -347,6 +350,7 @@ class WorkerAutomation(
                     rank.improvementPriority = repairPriority
                     rank.bestImprovement = null
                     rank.repairImprovment = true
+                }
                 }
             }
         }

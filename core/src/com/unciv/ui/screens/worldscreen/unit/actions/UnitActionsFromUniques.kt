@@ -557,7 +557,7 @@ object UnitActionsFromUniques {
         if (tile.improvementInProgress == Constants.repair) return tile.turnsToImprovement
         val repairTurns = tile.ruleset.tileImprovements[Constants.repair]!!.getTurnsToBuild(unit.civ, unit)
 
-        val pillagedImprovement = tile.getImprovementToRepair()!!
+        val pillagedImprovement = tile.getImprovementToRepair() ?: return 0  // 2026-08-23: 改良没了但劫掠残留 → 返回0防NPE
         val turnsToBuild = pillagedImprovement.getTurnsToBuild(unit.civ, unit)
         // cap repair to number of turns to build original improvement
         return repairTurns.coerceAtMost(turnsToBuild)
@@ -575,7 +575,8 @@ object UnitActionsFromUniques {
         if (tile.isCityCenter()) return null
         if (!tile.isPillaged()) return null
         val uniques = unit.getMatchingUniques(UniqueType.BuildImprovements)
-        val improvement = tile.tileImprovement!!
+        // 2026-08-23 修复闪退: 改良被移除但劫掠残留 → getImprovementToRepair() 为 null, 不显示修复
+        val improvement = tile.getImprovementToRepair() ?: return null
         val civ = unit.civ
             if (!uniques.any { unique ->
             // Engage the MultiFilter on the entire filter, prior to checking the individual filters
@@ -588,14 +589,14 @@ object UnitActionsFromUniques {
             && !tile.isCityCenter() && tile.improvementInProgress != Constants.repair
             && !tile.isEnemyTerritory(unit.civ)
                 // Are there any other improvement building problems that should block repair?
-            && ImprovementFunctions.getImprovementBuildingProblems(unit.currentTile.getImprovementToRepair()!!, GameContext(civInfo = unit.civ, unit = unit, tile = tile))
+            && ImprovementFunctions.getImprovementBuildingProblems(improvement, GameContext(civInfo = unit.civ, unit = unit, tile = tile))
                 .none { it == ImprovementBuildingProblem.OutsideBorders }
 
         val turnsToBuild = getRepairTurns(unit)
         val useFrequency = getUseFrequency(unit, uniques.first(), 90f)
 
         return UnitAction(UnitActionType.Repair, useFrequency,
-            title = "${UnitActionType.Repair} [${unit.currentTile.getImprovementToRepair()!!.name}] - [${turnsToBuild}${Fonts.turn}]",
+            title = "${UnitActionType.Repair} [${improvement.name}] - [${turnsToBuild}${Fonts.turn}]",
             action = {
                 tile.queueImprovement(Constants.repair, turnsToBuild)
                 unit.action = null

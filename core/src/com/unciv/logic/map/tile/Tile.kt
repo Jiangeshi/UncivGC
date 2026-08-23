@@ -365,10 +365,12 @@ class Tile : IsPartOfGameInfoSerialization {
     }
     @Readonly
     fun getImprovementToRepair(): TileImprovement? {
+        // 2026-08-23 修复闪退: 改良被移除但 improvement 字符串残留时 tileImprovement 为 null,
+        // 原版 !! 直接 NPE → 工人修复改良闪退 (用户反馈: 改良被去掉+地块劫掠+修复找不到目标)
         if (improvement != null && improvementIsPillaged)
-            return tileImprovement!!
+            return tileImprovement  // 不再 !! — null 时上层自行判断
         if (roadStatus != RoadStatus.None && roadIsPillaged)
-            return getRoadTileImprovement()!!
+            return getRoadTileImprovement()
         return null
     }
     @Readonly fun canPillageTile(): Boolean = canPillageTileImprovement() || canPillageRoad()
