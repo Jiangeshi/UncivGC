@@ -264,6 +264,13 @@ object FrameSync {
         } catch (e: Exception) {
         }
         updateStatusLabel()
+        // 重载/开局立即恢复视野 (不等首条 state — 否则 reload 后新 gameInfo 的 viewableTiles 为空,
+        // 整屏黑几百 ms 直到广播回来, 2026-08-23 用户反馈 "过回合视野黑一下")
+        // doMeetCheck=false: 连接未建立, 相遇 sendOp 会静默失败但 shownMeets 已标记 → 该文明永不 meet (外交缺失)
+        try {
+            refreshMyCivVisibility(worldScreen, gameInfo, doMeetCheck = false)
+        } catch (e: Exception) {
+        }
         connectLoop()
     }
 
@@ -321,6 +328,9 @@ object FrameSync {
                 unitProcessedEntry.clear()
                 meetUnitPos.clear()
                 meetCitySnapshot.clear()
+                // 探索历史合并标记重置: 队友本回合新探索的地块在存档里, 重载后必须重新全量合并,
+                // 否则 A 探索过的地块 B 永远看不到 (2026-08-23 用户实测 "共享的是当前视野不是探索历史")
+                teamExploredMerged = false
                 if (turn >= 0) lastReloadedTurn = turn  // 成功才记录
             } catch (e: Exception) {
                 println("FrameSync reload failed: " + e)
@@ -1724,7 +1734,7 @@ object FrameSync {
      *  主动相遇检测: 我方视野内出现未认识的文明 → 双向相遇 (双方客户端各自触发, 弹窗对称 —
      *  不依赖"自己视野变化"才检查, 对方走进我方已见区域也能触发)。
      *  组队 (2026-08-23): 队友单位/城市视野并入自己的 viewableTiles + 永久探索, 实现视野共享。 */
-    private fun refreshMyCivVisibility(worldScreen: WorldScreen, gameInfo: GameInfo) {
+    private fun refreshMyCivVisibility(worldScreen: WorldScreen, gameInfo: GameInfo, doMeetCheck: Boolean = true) {
         val civ = worldScreen.viewingCiv
         if (civ.isSpectator()) return
         try {
@@ -1761,7 +1771,7 @@ object FrameSync {
                 }
             }
             // 主动相遇检测 (增量版): 只查 移动单位/新城市/视野扩展 三个变化源, 不再全扫可见格
-            checkMeetCivs(worldScreen, gameInfo, checkMeetTiles)
+            if (doMeetCheck) checkMeetCivs(worldScreen, gameInfo, checkMeetTiles)
             worldScreen.shouldUpdate = true
         } catch (e: Exception) {
             // 视野刷新失败不影响游戏
