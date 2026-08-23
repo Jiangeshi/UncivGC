@@ -63,6 +63,9 @@ class CityScreen(
 
     private val selectedCiv: Civilization = cityView.getViewingCiv()
 
+    /** UncivGC 2026-08-23: 工作图标单击延迟任务 (等双击判定; 双击时取消) */
+    private var pendingWorkedIconClick: kotlinx.coroutines.Job? = null
+
     internal val isSpying = selectedCiv.gameInfo.isEspionageEnabled() && !cityView.isOwnedByViewer() && !selectedCiv.isSpectator()
 
     /**
@@ -366,10 +369,26 @@ class CityScreen(
         for (tileGroup in cityTileGroups) {
             tileGroup.onClick { tileGroupOnClick(tileGroup) }
             tileGroup.layerMisc.onWorkedIconClick = {
-                tileWorkedIconOnClick(tileGroup)
-                tileGroupOnClick(tileGroup)
+                // UncivGC 2026-08-23: 工作图标单击延迟 300ms 执行 — 立即执行会重建地图,
+                // 第二次点击落点变化 → Gdx 双击判定失效 (双击锁定不生效 bug 根因);
+                // 双击时取消挂起的单击
+                pendingWorkedIconClick?.cancel()
+                pendingWorkedIconClick = com.unciv.utils.Concurrency.run("CityScreen.workedIconClick") {
+                    kotlinx.coroutines.delay(300)
+                    com.unciv.utils.Concurrency.runOnGLThread("CityScreen.workedIconClick.gl") {
+                        pendingWorkedIconClick = null
+                        // 屏幕已切走 (关闭/重建) → 丢弃挂起的单击
+                        if (com.unciv.UncivGame.Current.screen != this) return@runOnGLThread
+                        tileWorkedIconOnClick(tileGroup)
+                        tileGroupOnClick(tileGroup)
+                    }
+                }
             }
-            tileGroup.layerMisc.onWorkedIconDoubleClick = { tileWorkedIconDoubleClick(tileGroup) }
+            tileGroup.layerMisc.onWorkedIconDoubleClick = {
+                pendingWorkedIconClick?.cancel()
+                pendingWorkedIconClick = null
+                tileWorkedIconDoubleClick(tileGroup)
+            }
             tileGroups.add(tileGroup)
         }
 
