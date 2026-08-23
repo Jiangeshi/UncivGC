@@ -125,6 +125,13 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
     // Set to false whenever the results still need te be processed
     var diplomaticVictoryVotesProcessed = false
 
+    //region UncivGC 商路系统 (2026-08-24, 设计稿: 文档/商路系统-设计稿.md)
+    /** 屏蔽中的城市对 (无方向 key "cityIdA|cityIdB" 排序拼接) — 仅外商可屏蔽, 单方取消双方断 */
+    var tradeRouteBlocked = HashSet<String>()
+    /** 已请求恢复的城市对 → 请求方 civId 集合; 双方都请求 → 移除屏蔽并恢复连接 */
+    var tradeRouteRestoreRequests = HashMap<String, MutableSet<String>>()
+    //endregion
+
     /** The turn the replay history started recording.
      *
      *  *   `-1` means the game was serialized with an older version without replay
@@ -171,6 +178,19 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
     @Transient
     lateinit var currentPlayerCiv: Civilization // this is called thousands of times, no reason to search for it with a find{} every time
 
+    @Transient
+    private var tradeRouteNetwork: com.unciv.logic.trade.TradeRouteNetwork? = null
+
+    /** 商路连接网络 (惰性计算, 帧同步/回合结算时 invalidate) */
+    fun getTradeRouteNetwork(): com.unciv.logic.trade.TradeRouteNetwork {
+        if (tradeRouteNetwork == null) tradeRouteNetwork = com.unciv.logic.trade.TradeRouteNetwork(this)
+        return tradeRouteNetwork!!
+    }
+
+    fun invalidateTradeRoutes() {
+        tradeRouteNetwork?.invalidate()
+    }
+
     /** This is used in multiplayer games, where I may have a saved game state on my phone
      * that is inconsistent with the saved game on the cloud */
     @Transient
@@ -210,6 +230,10 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
         toReturn.gameParameters = gameParameters
         toReturn.gameId = gameId
         toReturn.diplomaticVictoryVotesCast.putAll(diplomaticVictoryVotesCast)
+        toReturn.tradeRouteBlocked.addAll(tradeRouteBlocked)
+        toReturn.tradeRouteRestoreRequests.putAll(
+            tradeRouteRestoreRequests.mapValues { it.value.toMutableSet() }
+        )
         toReturn.oneMoreTurnMode = oneMoreTurnMode
         toReturn.customSaveLocation = customSaveLocation
         toReturn.victoryData = victoryData?.copy()

@@ -1559,6 +1559,32 @@ object FrameSync {
                 }
             }
         } catch (e: Exception) {}
+        // UncivGC 商路 (2026-08-24, 设计稿 §5.2): 屏蔽状态 + 恢复请求同步 → 本地连接网络失效重算
+        // (blocked/restore 数据量极小, 服务器每帧全量携带)
+        try {
+            val tr = state["tradeRoutes"]?.jsonObject
+            if (tr != null) {
+                val newBlocked = HashSet<String>()
+                tr["blocked"]?.jsonArray?.forEach { it.jsonPrimitive.contentOrNull?.let { b -> newBlocked.add(b) } }
+                val newRestore = HashMap<String, MutableSet<String>>()
+                tr["restore"]?.jsonArray?.forEach { arr ->
+                    val a = arr.jsonArray ?: return@forEach
+                    if (a.size < 2) return@forEach
+                    val pair = a[0].jsonPrimitive.contentOrNull ?: return@forEach
+                    val civId = a[1].jsonPrimitive.contentOrNull ?: return@forEach
+                    newRestore.getOrPut(pair) { HashSet() }.add(civId)
+                }
+                val gi = worldScreen.gameInfo
+                if (newBlocked != gi.tradeRouteBlocked || newRestore != gi.tradeRouteRestoreRequests) {
+                    gi.tradeRouteBlocked.clear()
+                    gi.tradeRouteBlocked.addAll(newBlocked)
+                    gi.tradeRouteRestoreRequests.clear()
+                    gi.tradeRouteRestoreRequests.putAll(newRestore)
+                    gi.invalidateTradeRoutes()
+                    worldScreen.shouldUpdate = true
+                }
+            }
+        } catch (e: Exception) {}
         // 防御: 增量状态但回合已变 → 丢弃并请求全量 (回合变化应全量, 此为网络乱序/服务器防御漏网)
         if (!isFull && newTurn != null && newTurn > lastTurn) {
             try {

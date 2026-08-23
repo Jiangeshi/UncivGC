@@ -44,6 +44,14 @@ class CityStatsTable(private val cityScreen: CityScreen) : Table() {
         }
     }
 
+    // UncivGC 2026-08-24: 商路详情按钮 (统计按钮旁; 设计稿 §四)
+    private val tradeRoutesButton = "商路".toTextButton().apply {
+        labelCell.pad(10f)
+        onClick {
+            TradeRoutesPopup(cityScreen).open()
+        }
+    }
+
     init {
         pad(2f)
         background = BaseScreen.skinStrings.getUiBackground(
@@ -89,7 +97,10 @@ class CityStatsTable(private val cityScreen: CityScreen) : Table() {
 
         lowerTable.clear()
 
-        lowerTable.add(detailedStatsButton).row()
+        val buttonRow = Table()
+        buttonRow.add(detailedStatsButton)
+        buttonRow.add(tradeRoutesButton).padLeft(5f)
+        lowerTable.add(buttonRow).row()
         addText()
 
         // begin lowerTable

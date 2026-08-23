@@ -249,6 +249,8 @@ class TurnManager(val civInfo: Civilization) {
 
 
     fun endTurn(progressBar: NextTurnProgress? = null):Unit = timeThis("TurnManager.endTurn") {
+        // UncivGC 2026-08-24: 跨回合商路连接缓存失效 (道路/人口/开边/屏蔽都可能变化)
+        civInfo.gameInfo.invalidateTradeRoutes()
         if (UncivGame.Current.settings.citiesAutoBombardAtEndOfTurn)
             NextTurnAutomation.automateCityBombardment(civInfo) // Bombard with all cities that haven't, maybe you missed one
 
