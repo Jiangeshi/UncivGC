@@ -63,8 +63,12 @@ class CityScreen(
 
     private val selectedCiv: Civilization = cityView.getViewingCiv()
 
-    /** UncivGC 2026-08-23: 工作图标单击延迟任务 (等双击判定; 双击时取消) */
-    private var pendingWorkedIconClick: kotlinx.coroutines.Job? = null
+    /** UncivGC 2026-08-23: 自定义双击检测 — 单击立即执行 (无延迟), 400ms 内同地块第二次点击 = 双击 (撤销单击效果 + 锁定)。
+     *  不用 Gdx onDoubleClick: 单击立即执行会重建地图, 第二次点击落点变化 → Gdx 双击判定失效 (原版 bug)。 */
+    private var lastWorkedTapTile: Tile? = null
+    private var lastWorkedTapTime = 0L
+    private var lastWorkedTapWasWorked = false
+    private var lastWorkedTapWasLocked = false
 
     internal val isSpying = selectedCiv.gameInfo.isEspionageEnabled() && !cityView.isOwnedByViewer() && !selectedCiv.isSpectator()
 
@@ -369,34 +373,34 @@ class CityScreen(
         for (tileGroup in cityTileGroups) {
             tileGroup.onClick { tileGroupOnClick(tileGroup) }
             tileGroup.layerMisc.onWorkedIconClick = {
-                // UncivGC 2026-08-23 (用户确认交互):
-                // 已锁定地块: 单击 = **立即解锁** (人口保留继续工作; 锁定仅防过回合自动重分配, 不禁玩家操作)
-                // 未锁定地块: 单击 = 切换 (未工作→工作, 工作→取消工作), 延迟 300ms 等双击判定
-                if (tileGroup.tile.isLocked()) {
-                    pendingWorkedIconClick?.cancel()
-                    pendingWorkedIconClick = null
-                    cityView.tryUnlockTile(cityView.tileView(tileGroup.tile))
-                    tileGroupOnClick(tileGroup)
-                    update()
-                } else {
-                    pendingWorkedIconClick?.cancel()
-                    pendingWorkedIconClick = com.unciv.utils.Concurrency.run("CityScreen.workedIconClick") {
-                        kotlinx.coroutines.delay(300)
-                        com.unciv.utils.Concurrency.runOnGLThread("CityScreen.workedIconClick.gl") {
-                            pendingWorkedIconClick = null
-                            // 屏幕已切走 (关闭/重建) → 丢弃挂起的单击
-                            if (com.unciv.UncivGame.Current.screen != this) return@runOnGLThread
-                            tileWorkedIconOnClick(tileGroup)
-                            tileGroupOnClick(tileGroup)
+                // UncivGC 2026-08-23 (用户确认交互, 单击无延迟):
+                // 单击: 已锁定→立即解锁 (人口保留); 未锁定→切换 (未工作→工作, 工作→取消工作)
+                // 双击 (自定义检测: 400ms 内同地块第二次点击): 撤销单击效果 → 锁定
+                val tile = tileGroup.tile
+                val now = System.currentTimeMillis()
+                if (lastWorkedTapTile == tile && now - lastWorkedTapTime < 400) {
+                    val wasWorked = lastWorkedTapWasWorked
+                    val wasLocked = lastWorkedTapWasLocked
+                    lastWorkedTapTile = null
+                    // 撤销第一次单击 (仅非帧同步 — 本地已执行; 帧同步单击只发 op 本地无变化, 服务器顺序处理即可)
+                    if (!com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(cityView.viewingCiv().civ.gameInfo)) {
+                        val tv = cityView.tileView(tile)
+                        when {
+                            wasLocked -> cityView.tryLockTile(tv)     // 单击解锁了 → 撤销=重新锁定 (人口仍工作)
+                            wasWorked -> cityView.tryWorkTile(tv)     // 单击取消了工作 → 撤销=重新工作
+                            else -> cityView.tryStopWorkingTile(tv)   // 单击工作了 → 撤销=取消工作
                         }
                     }
+                    tileWorkedIconDoubleClick(tileGroup)  // 未工作先工作再锁定
+                } else {
+                    lastWorkedTapTile = tile
+                    lastWorkedTapTime = now
+                    lastWorkedTapWasWorked = tile.isWorked()
+                    lastWorkedTapWasLocked = tile.isLocked()
+                    handleWorkedIconSingleClick(tileGroup)
                 }
             }
-            tileGroup.layerMisc.onWorkedIconDoubleClick = {
-                pendingWorkedIconClick?.cancel()
-                pendingWorkedIconClick = null
-                tileWorkedIconDoubleClick(tileGroup)
-            }
+            // 双击由自定义检测处理 (Gdx onDoubleClick 因地图重建失效, 且会与自定义检测双触发)
             tileGroups.add(tileGroup)
         }
 
@@ -424,6 +428,19 @@ class CityScreen(
 
     // We contain a map...
     override fun getShortcutDispatcherVetoer() = KeyShortcutDispatcherVeto.createTileGroupMapDispatcherVetoer()
+
+    /** UncivGC 2026-08-23: 工作图标单击立即执行 — 已锁定→解锁 (人口保留), 未锁定→切换工作 */
+    private fun handleWorkedIconSingleClick(tileGroup: CityTileGroup) {
+        val tile = tileGroup.tile
+        if (tile.isLocked()) {
+            cityView.tryUnlockTile(cityView.tileView(tile))
+            tileGroupOnClick(tileGroup)
+            update()
+        } else {
+            tileWorkedIconOnClick(tileGroup)
+            tileGroupOnClick(tileGroup)
+        }
+    }
 
     private fun tileWorkedIconOnClick(tileGroup: CityTileGroup) {
 
