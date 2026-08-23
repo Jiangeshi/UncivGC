@@ -369,18 +369,26 @@ class CityScreen(
         for (tileGroup in cityTileGroups) {
             tileGroup.onClick { tileGroupOnClick(tileGroup) }
             tileGroup.layerMisc.onWorkedIconClick = {
-                // UncivGC 2026-08-23: 工作图标单击延迟 300ms 执行 — 立即执行会重建地图,
-                // 第二次点击落点变化 → Gdx 双击判定失效 (双击锁定不生效 bug 根因);
-                // 双击时取消挂起的单击
-                pendingWorkedIconClick?.cancel()
-                pendingWorkedIconClick = com.unciv.utils.Concurrency.run("CityScreen.workedIconClick") {
-                    kotlinx.coroutines.delay(300)
-                    com.unciv.utils.Concurrency.runOnGLThread("CityScreen.workedIconClick.gl") {
-                        pendingWorkedIconClick = null
-                        // 屏幕已切走 (关闭/重建) → 丢弃挂起的单击
-                        if (com.unciv.UncivGame.Current.screen != this) return@runOnGLThread
-                        tileWorkedIconOnClick(tileGroup)
-                        tileGroupOnClick(tileGroup)
+                // UncivGC 2026-08-23:
+                // 锁定地块: 单击**立即解锁** (锁定只是过回合不自动重分配, 不是禁止玩家操作 — 用户要求)
+                // 未锁定地块: 单击延迟 300ms 执行 (等双击判定, 否则立即执行会重建地图 → 双击判定失效)
+                if (tileGroup.tile.isLocked()) {
+                    pendingWorkedIconClick?.cancel()
+                    pendingWorkedIconClick = null
+                    cityView.tryUnlockTile(cityView.tileView(tileGroup.tile))
+                    tileGroupOnClick(tileGroup)
+                    update()
+                } else {
+                    pendingWorkedIconClick?.cancel()
+                    pendingWorkedIconClick = com.unciv.utils.Concurrency.run("CityScreen.workedIconClick") {
+                        kotlinx.coroutines.delay(300)
+                        com.unciv.utils.Concurrency.runOnGLThread("CityScreen.workedIconClick.gl") {
+                            pendingWorkedIconClick = null
+                            // 屏幕已切走 (关闭/重建) → 丢弃挂起的单击
+                            if (com.unciv.UncivGame.Current.screen != this) return@runOnGLThread
+                            tileWorkedIconOnClick(tileGroup)
+                            tileGroupOnClick(tileGroup)
+                        }
                     }
                 }
             }
@@ -485,6 +493,7 @@ class CityScreen(
         // Double-click should lead to locked tiles - both for unworked AND worked tiles
         // UncivGC 帧同步 (2026-08-23): 本地 isWorked 不更新 (拦截), 直接 tryLockTile —
         // 服务器 doLockTile 内部处理"未工作先工作再锁定"; 本地先发 workTile op 再判断 isWorked 会漏掉锁定
+        // 解锁由单击负责 (锁定地块单击立即解锁, 用户要求 2026-08-23)
         if (!tile.isWorked()
             && !com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(cityView.viewingCiv().civ.gameInfo))
             tileWorkedIconOnClick(tileGroup) // If not worked, try to work it first
