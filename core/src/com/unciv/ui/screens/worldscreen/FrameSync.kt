@@ -161,6 +161,8 @@ object FrameSync {
     @Volatile private var lastReloadedTurn = -1
     /** 本次状态广播中城市状态是否有变化 (hp/人口/地块) → 打开的城市界面需要刷新 */
     private var cityStateChanged = false
+    // UncivGC 商路 (2026-08-24): 上次同步的城市结构指纹 (civName:id) — 变化才失效连接缓存
+    private var lastSyncedCityKeys: Set<String>? = null
     /** 同局内已弹过相遇通知的文明 (双刷/重建不重复弹) */
     private val shownMeets = HashSet<String>()
     private var shownMeetsGameId = ""
@@ -3249,6 +3251,8 @@ object FrameSync {
                             try { existing.cityConstructions.rebuildBuiltBuildingsFromSync() } catch (ignored: Exception) {}
                             // 建筑变化 → 重算城市产出 (新建专业建筑/奇观效果立即生效, 不等下回合; 修复"建造完成后下回合才显示")
                             try { existing.cityStats.update() } catch (ignored: Exception) {}
+                            // UncivGC 商路: 建筑变化 (港口完工/卖出) → 连接缓存失效 (海商立即生效)
+                            try { gameInfo.invalidateTradeRoutes() } catch (ignored: Exception) {}
                             // 建筑被谁建造 → 影响"if [X] is constructed by anybody" 条件 (特殊伟人项目等互斥选项) → 刷新打开的事件弹窗
                             refreshOpenEventPopups(worldScreen)
                         }
@@ -3512,6 +3516,16 @@ object FrameSync {
                 } catch (e: Exception) {
                 }
             }
+        }
+        // UncivGC 商路 (2026-08-24): 城市结构变化 (新城/归属迁移/移除) → 连接缓存失效
+        // 用 (civName:id) 指纹, 人口/产出变化不触发 (避免每帧重算 BFS); 服务器当回合已按新连接入账
+        try {
+            val newKeys = gameInfo.getCities().map { it.civ.civName + ":" + it.id }.toSet()
+            if (lastSyncedCityKeys != newKeys) {
+                lastSyncedCityKeys = newKeys
+                gameInfo.invalidateTradeRoutes()
+            }
+        } catch (e: Exception) {
         }
     }
 
