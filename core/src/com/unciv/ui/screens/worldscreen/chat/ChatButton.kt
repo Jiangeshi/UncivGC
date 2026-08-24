@@ -26,11 +26,37 @@ class ChatButton(val worldScreen: WorldScreen) : IconTextButton(
     private val chat = ChatStore.getChatByGameId(worldScreen.gameInfo.gameId)
 
     companion object {
+        /** 帧同步已读进度 (弹窗读过的消息 seq; 按钮轮询按此计未读) — 2026-08-25 */
+        @Volatile var fsReadSeq = 0
+
         /** 帧同步新版聊天未读总数 → 更新所有 ChatButton 角标 (2026-08-25) */
         fun updateFsUnread(count: Int) {
             fsUnreadCount = count
             com.unciv.UncivGame.Current.let { game ->
                 (game.screen as? com.unciv.ui.screens.worldscreen.WorldScreen)?.chatButton?.updateBadge()
+            }
+        }
+    }
+
+    init {
+        // 帧同步: 全局聊天未读轮询 (弹窗关闭时也更新按钮 "Chat (n)") — 2026-08-25
+        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo)) {
+            val roomId = com.unciv.ui.screens.lobbyscreens.LobbyRoomScreen.activeRoomId
+            val myId = com.unciv.ui.screens.lobbyscreens.LobbyRoomScreen.currentPlayerId()
+            if (roomId != null) {
+                com.unciv.utils.Concurrency.run("FsChatButtonPoll") {
+                    while (true) {
+                        try {
+                            val room = com.unciv.logic.lobby.LobbyApi.getRoom(roomId, myId)
+                            val unread = room.chat.count { it.seq > fsReadSeq &&
+                                (it.to == "world" || it.to.isEmpty() || it.to == "team" ||
+                                 (it.to.startsWith("player:") && it.to == "player:$myId")) }
+                            updateFsUnread(unread)
+                        } catch (e: Exception) {
+                        }
+                        try { Thread.sleep(3000) } catch (e: InterruptedException) { break }
+                    }
+                }
             }
         }
     }

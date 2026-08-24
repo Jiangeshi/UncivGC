@@ -743,6 +743,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             chatPopupScroll = null
         }
         chatUnread = 0
+        channelUnread[currentChatChannel] = 0  // 打开弹窗 = 当前频道已读 (2026-08-25)
         updateChatButtonText()
         refreshChannels()
         refreshChatPopupMessages()
@@ -776,7 +777,9 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             }
             if (!visible) continue
             val isMe = m.playerId == playerId
-            val label = "[${m.nickname}]: ${m.text}".toLabel(fontSize = 18)
+            val civName = currentRoom?.members?.firstOrNull { it.playerId == m.playerId }?.civ
+            val namePart = if (civName.isNullOrEmpty()) m.nickname else "${m.nickname}（$civName）"
+            val label = "[$namePart]: ${m.text}".toLabel(fontSize = 18)
             label.color = if (isMe) Color.GREEN else Color.WHITE
             label.setAlignment(com.badlogic.gdx.utils.Align.left)
             messagesTable.add(label).left().expandX().pad(2f).row()

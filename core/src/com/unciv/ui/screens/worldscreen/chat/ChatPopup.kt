@@ -126,6 +126,8 @@ class ChatPopup(
     private val fsMessages = ArrayList<com.unciv.logic.lobby.LobbyChatMessage>()
     private var fsLastSeq = 0
     private var fsPolling = false
+    /** playerId -> civName (消息显示文明用) — 2026-08-25 */
+    private val fsMemberCivs = HashMap<String, String>()
 
     private val chatTable = Table(skin)
     private val scrollPane = ScrollPane(chatTable, skin)
@@ -199,11 +201,11 @@ class ChatPopup(
         val myNick = com.unciv.ui.screens.lobbyscreens.LobbyRoomScreen.currentNickname()
 
         val header = Table(skin)
-        header.add("Chat".toLabel(fontSize = 30, alignment = Align.left)).expandX().left()
+        header.add("Chat".toLabel(fontSize = 30, alignment = Align.left)).left().expandX()
         header.add(
             ImageButton(ImageGetter.getImage("OtherIcons/Close").drawable).onClick { close() }
         ).size(30f, 30f).right().padLeft(8f)
-        add(header).top().pad(5f).expandX().row()
+        add(header).growX().top().pad(5f).row()
 
         val mainRow = Table()
         val channelTable = Table()
@@ -242,7 +244,9 @@ class ChatPopup(
                     else -> false
                 }
                 if (!visible) continue
-                val label = "[${m.nickname}]: ${m.text}".toLabel(fontSize = 18)
+                val civName = fsMemberCivs[m.playerId]
+                val namePart = if (civName.isNullOrEmpty()) m.nickname else "${m.nickname}（$civName）"
+                val label = "[$namePart]: ${m.text}".toLabel(fontSize = 18)
                 label.color = if (m.playerId == myId) Color.GREEN else Color.WHITE
                 label.setAlignment(Align.left)
                 msgTable.add(label).growX().left().pad(2f).row()
@@ -311,13 +315,22 @@ class ChatPopup(
                         for (m in room.members) {
                             if (m.playerId == myId || m.playerId.isEmpty()) continue
                             fsChannels[m.nickname] = "player:" + m.playerId
+                            m.civ?.let { fsMemberCivs[m.playerId] = it }
                         }
+                        // 弹窗打开 = 已读: 当前所有消息都视为已读 (按钮未读清零)
+                        val maxSeq = room.chat.maxOfOrNull { it.seq } ?: 0
+                        fsLastSeq = maxSeq
+                        com.unciv.ui.screens.worldscreen.chat.ChatButton.fsReadSeq = maxSeq
+                        com.unciv.ui.screens.worldscreen.chat.ChatButton.updateFsUnread(0)
                         channelsBuilt = true
                         com.unciv.utils.Concurrency.runOnGLThread { refreshChannels() }
                     }
                     val newMsgs = room.chat.filter { it.seq > fsLastSeq }
                     if (newMsgs.isNotEmpty()) {
                         fsLastSeq = newMsgs.last().seq
+                        // 弹窗开着: 消息即已读 (按钮未读清零) — 2026-08-25
+                        com.unciv.ui.screens.worldscreen.chat.ChatButton.fsReadSeq = fsLastSeq
+                        com.unciv.ui.screens.worldscreen.chat.ChatButton.updateFsUnread(0)
                         fsMessages.addAll(newMsgs)
                         for (m in newMsgs) {
                             val chanKey = when {
