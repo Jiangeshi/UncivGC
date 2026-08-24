@@ -83,7 +83,7 @@ class UnitPresenter(private val unitTable: UnitTable, private val worldScreen: W
                 descriptionTable.add(Fonts.strength + unit.getDisplayStrength().tr()).padRight(10f)
 
             if (unit.baseUnit.rangedStrength != 0)
-                descriptionTable.add(Fonts.rangedStrength + unit.getDisplayStrength().tr())
+                descriptionTable.add(Fonts.rangedStrength + unit.getDisplayStrength(useRanged = true).tr())
                     .padRight(10f)
 
             if (unit.baseUnit.isRanged())

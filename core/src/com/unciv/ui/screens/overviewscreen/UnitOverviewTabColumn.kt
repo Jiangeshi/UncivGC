@@ -74,8 +74,8 @@ enum class UnitOverviewTabColumn(
     },
     RangedStrength(Fonts.rangedStrength.toString(), "Ranged strength", true) {
         override val defaultSort get() = SortableGrid.SortDirection.Descending
-        // 同上: 远程编队显示加成后战斗力
-        override fun getEntryValue(item: MapUnit) = item.getDisplayStrength()
+        // 同上: 远程编队显示加成后战斗力 (2026-08-24: useRanged=true 用 rangedStrength, 之前远程单位 strength 列也按 ranged 显示)
+        override fun getEntryValue(item: MapUnit) = item.getDisplayStrength(useRanged = true)
     },
     Movement(Fonts.movement.toString(), "Movement", true) {
         override val defaultSort get() = SortableGrid.SortDirection.Descending

@@ -282,10 +282,13 @@ class MapUnit : IsPartOfGameInfoSerialization {
 
     //region Formation (军团/集团军)
 
-    /** 含编队加成的战斗力显示值 (与 MapUnitCombatant 加成算法一致: 军团 +25% / 集团军 +33%, 四舍五入) */
+    /** 含编队加成的战斗力显示值 (与 MapUnitCombatant 加成算法一致: 军团 +25% / 集团军 +33%, 四舍五入)
+     *  @param useRanged 远程单位显示远程战斗力 (rangedStrength); 否则显示战斗力 (strength) —
+     *  2026-08-24 修复: 之前远程单位 strength 也按 rangedStrength 显示, 与实际战斗值不一致 */
     @Readonly
-    fun getDisplayStrength(): Int {
-        val base = if (baseUnit.rangedStrength != 0) baseUnit.rangedStrength else baseUnit.strength
+    fun getDisplayStrength(useRanged: Boolean = false): Int {
+        val base = if (useRanged && baseUnit.rangedStrength != 0) baseUnit.rangedStrength
+                   else baseUnit.strength
         if (base <= 0) return base
         val bonus = when (formation.tier) {
             1 -> (base * 0.33f).roundToInt()
