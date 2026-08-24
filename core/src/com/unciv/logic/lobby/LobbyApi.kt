@@ -77,6 +77,7 @@ data class LobbyChatMessage(
     val playerId: String = "",
     val nickname: String = "",
     val text: String = "",
+    val to: String = "world",  // UncivGC 2026-08-25 私聊: world/team/player:<playerId>
     val ts: Long = 0,
 )
 
@@ -107,7 +108,7 @@ data class RestartRequest(val nickname: String, val playerId: String, val random
 @Serializable
 data class ModsRequest(val nickname: String, val playerId: String, val missingMods: List<String> = emptyList())
 @Serializable
-data class ChatRequest(val nickname: String, val playerId: String, val text: String)
+data class ChatRequest(val nickname: String, val playerId: String, val text: String, val to: String = "world")
 @Serializable
 data class SettingsRequest(val nickname: String, val playerId: String, val settings: Map<String, JsonElement>)
 
@@ -150,12 +151,13 @@ object LobbyApi {
             setBody(CreateRoomRequest(name, nickname, playerId, civ ?: ""))
         })
 
-    suspend fun getRoom(roomId: String): LobbyRoom =
-        parse(client.get("$SERVER_URL/api/rooms/$roomId"))
+    suspend fun getRoom(roomId: String, playerId: String? = null): LobbyRoom =
+        parse(client.get("$SERVER_URL/api/rooms/$roomId" + (if (playerId.isNullOrEmpty()) "" else "?playerId=${java.net.URLEncoder.encode(playerId, "UTF-8")}")))
 
-    /** 长轮询: 房间变化立即返回; 25 秒无变化返回 null */
-    suspend fun waitRoom(roomId: String, since: Int): LobbyRoom? {
-        val response = client.get("$SERVER_URL/api/rooms/$roomId/wait?since=$since")
+    /** 长轮询: 房间变化立即返回; 25 秒无变化返回 null (playerId 用于私聊消息过滤) */
+    suspend fun waitRoom(roomId: String, since: Int, playerId: String? = null): LobbyRoom? {
+        val pid = if (playerId.isNullOrEmpty()) "" else "&playerId=${java.net.URLEncoder.encode(playerId, "UTF-8")}"
+        val response = client.get("$SERVER_URL/api/rooms/$roomId/wait?since=$since$pid")
         if (response.status.value == 204) return null
         return parse(response)
     }
@@ -307,10 +309,10 @@ object LobbyApi {
         })
 
     /** UncivGC 房间聊天: 发送消息, 返回最新 seq */
-    suspend fun sendChat(roomId: String, nickname: String, playerId: String, text: String): ApiResult =
+    suspend fun sendChat(roomId: String, nickname: String, playerId: String, text: String, to: String = "world"): ApiResult =
         parse(client.post("$SERVER_URL/api/rooms/$roomId/chat") {
             contentType(ContentType.Application.Json)
-            setBody(ChatRequest(nickname, playerId, text))
+            setBody(ChatRequest(nickname, playerId, text, to))
         })
 
     /** 应用更新检查: 服务器 version.json; 失败返回 null (静默跳过) */

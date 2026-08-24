@@ -400,7 +400,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                 var myGameId = currentGameId
                 try {
                     while (true) {
-                        val room = LobbyApi.waitRoom(roomId, since) ?: continue
+                        val room = LobbyApi.waitRoom(roomId, since, currentPlayerId()) ?: continue
                         since = room.version
                         // 房间解散或我被移除 (仅成员) → 回大厅并恢复服务器 (主动退出时由菜单处理, 不重复导航)
                         if (isMember && room.members.none { it.playerId == currentPlayerId() }) {
@@ -647,6 +647,10 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
     private val chatMessages = ArrayList<com.unciv.logic.lobby.LobbyChatMessage>()
     private var lastChatSeq = 0
     private var chatUnread = 0
+    /** 当前聊天频道: "world" / "team" / "player:<playerId>" (私聊 — 2026-08-25) */
+    private var currentChatChannel = "world"
+    /** 聊天频道列表 (世界/队伍/成员昵称 -> 频道 key), 打开弹窗时刷新 */
+    private val chatChannels = LinkedHashMap<String, String>()
     private var chatPopup: Popup? = null
     private var chatPopupMessagesTable: Table? = null
     private var chatPopupScroll: com.badlogic.gdx.scenes.scene2d.ui.ScrollPane? = null
@@ -655,11 +659,46 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         if (chatPopup != null) { chatPopup!!.close(); chatPopup = null }
         val popup = Popup(this)
         popup.addGoodSizedLabel("Room chat".tr()).row()
+
+        // 左侧频道列表 (世界/队伍/成员私聊) + 右侧消息区 (2026-08-25)
+        val mainRow = Table()
+        val channelTable = Table()
+        channelTable.defaults().pad(3f)
+        chatChannels.clear()
+        chatChannels["世界"] = "world"
+        // 队伍频道: 只有自己开了组队 (team>0) 才显示
+        val myTeam = roomMembers().firstOrNull { it.playerId == playerId }?.team ?: 0
+        if (myTeam > 0) chatChannels["队伍"] = "team"
+        for (m in roomMembers()) {
+            if (m.playerId == playerId || m.playerId.isEmpty()) continue
+            chatChannels[m.nickname] = "player:" + m.playerId
+        }
+        val channelScroll = com.badlogic.gdx.scenes.scene2d.ui.ScrollPane(channelTable)
+        channelScroll.setOverscroll(false, false)
+        channelScroll.fadeScrollBars = false
+        mainRow.add(channelScroll).width(130f).height(280f).padRight(6f)
+
         val messagesTable = Table()
         val scroll = com.badlogic.gdx.scenes.scene2d.ui.ScrollPane(messagesTable)
         scroll.setOverscroll(false, false)
         scroll.fadeScrollBars = false
-        popup.add(scroll).width(560f).height(280f).padBottom(6f).row()
+        mainRow.add(scroll).width(460f).height(280f).padBottom(0f)
+        popup.add(mainRow).padBottom(6f).row()
+
+        fun refreshChannels() {
+            channelTable.clearChildren()
+            for ((label, key) in chatChannels) {
+                val btn = (if (key == currentChatChannel) "[$label]".tr() else label.tr()).toTextButton()
+                btn.onClick {
+                    currentChatChannel = key
+                    refreshChannels()
+                    refreshChatPopupMessages()
+                }
+                channelTable.add(btn).growX().row()
+            }
+            channelTable.pack()
+        }
+
         val inputRow = Table()
         val inputField = com.unciv.ui.components.widgets.UncivTextField("")
         val sendButton = "Send".toTextButton()
@@ -667,10 +706,10 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             val text = inputField.text.trim()
             if (text.isEmpty()) return
             inputField.text = ""
+            val target = currentChatChannel
             Concurrency.run("LobbyChatSend") {
                 try {
-                    LobbyApi.sendChat(roomId, nickname, playerId, text)
-                    // 服务器 version bump → waitRoom 长轮询会立即返回新消息, 自己也能看到
+                    LobbyApi.sendChat(roomId, nickname, playerId, text, target)
                 } catch (e: Exception) {
                     launchOnGLThread {
                         ToastPopup("Failed to send message".tr() + ": " + (e.message ?: ""), this@LobbyRoomScreen)
@@ -681,7 +720,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         sendButton.onActivation { doSend() }
         sendButton.keyShortcuts.add(KeyCharAndCode.RETURN)
         inputField.onActivation { doSend() }
-        inputRow.add(inputField).width(460f).padRight(8f)
+        inputRow.add(inputField).width(560f).padRight(8f)
         inputRow.add(sendButton)
         popup.add(inputRow).row()
         popup.addButton("Close".tr()) { popup.close() }
@@ -695,20 +734,37 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         }
         chatUnread = 0
         updateChatButtonText()
+        refreshChannels()
         refreshChatPopupMessages()
         popup.open()
     }
 
+    /** 房间成员列表 (聊天频道用) */
+    private fun roomMembers(): List<com.unciv.logic.lobby.LobbyMember> {
+        return currentRoom?.members ?: emptyList()
+    }
+
     private fun updateChatButtonText() {
-        chatButton.setText(
-            if (chatUnread > 0) "Chat".tr() + " ($chatUnread)" else "Chat".tr()
-        )
+        chatButton.setText(if (chatUnread > 0) "Chat ($chatUnread)".tr() else "Chat".tr())
     }
 
     private fun refreshChatPopupMessages() {
         val messagesTable = chatPopupMessagesTable ?: return
         messagesTable.clearChildren()
+        val chan = currentChatChannel
         for (m in chatMessages) {
+            // 频道过滤: world / team / 私聊 (双方消息)
+            val visible = when {
+                chan == "world" -> m.to == "world" || m.to.isEmpty()
+                chan == "team" -> m.to == "team"
+                chan.startsWith("player:") -> {
+                    val target = chan.removePrefix("player:")
+                    (m.to == "player:$target" && m.playerId == playerId) ||   // 我发给对方
+                    (m.to == "player:$playerId" && m.playerId == target)      // 对方发给我
+                }
+                else -> false
+            }
+            if (!visible) continue
             val isMe = m.playerId == playerId
             val label = "[${m.nickname}]: ${m.text}".toLabel(fontSize = 18)
             label.color = if (isMe) Color.GREEN else Color.WHITE
@@ -885,7 +941,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             while (!closed) {
                 try {
                     // 长轮询: 房间一变就立即返回, 25 秒无变化返回 null
-                    val room = LobbyApi.waitRoom(roomId, since) ?: continue
+                    val room = LobbyApi.waitRoom(roomId, since, currentPlayerId()) ?: continue
                     since = room.version
                     // 设置同步: 服务器设置变了 → 局部刷新设置表格 (规则集/模组变了才整屏重建, 消闪烁)
                     if (room.settings.isEmpty()) {

@@ -66,7 +66,8 @@ class CivInfoStatsForNextTurn(val civInfo: Civilization) {
             for (unique in uniquesThatApply) {
                 unitMaintenance *= unique.params[0].toPercent()
             }
-            costsToPay.add(unitMaintenance)
+            // 编队 (军团/集团军/舰队/无敌舰队) 按内部单位数计维护费 (tier+1: 2/3份) — 2026-08-25 用户要求
+            costsToPay.add(unitMaintenance * (unit.formation.tier + 1))
         }
 
         // Sort by descending maintenance, then drop most expensive X units to make them free
@@ -166,7 +167,7 @@ class CivInfoStatsForNextTurn(val civInfo: Civilization) {
         }
         return totalSupply.toInt()
     }
-    @Readonly fun getUnitSupplyDeficit(): Int = max(0,civInfo.units.getCivUnitsSize() - getUnitSupply())
+    @Readonly fun getUnitSupplyDeficit(): Int = max(0, civInfo.units.getCivUnits().sumOf { it.formation.tier + 1 } - getUnitSupply())
 
     /** Per each supply missing, a player gets -10% production. Capped at -70%. */
     @Readonly fun getUnitSupplyProductionPenalty(): Float = -min(getUnitSupplyDeficit() * 10f, 70f)
