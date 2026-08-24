@@ -647,14 +647,6 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
     private val chatMessages = ArrayList<com.unciv.logic.lobby.LobbyChatMessage>()
     private var lastChatSeq = 0
     private var chatUnread = 0
-    /** 当前聊天频道: "world" / "team" / "player:<playerId>" (私聊 — 2026-08-25) */
-    private var currentChatChannel = "world"
-    /** 聊天频道列表 (世界/队伍/成员昵称 -> 频道 key), 打开弹窗时刷新 */
-    private val chatChannels = LinkedHashMap<String, String>()
-    /** 各频道未读消息数 (key=频道key, 当前频道不累计) — 2026-08-25 用户要求 */
-    private val channelUnread = HashMap<String, Int>()
-    /** 每频道已读 seq: 切换频道时记录, 切回不重计未读 — 2026-08-25 */
-    private val channelReadSeq = HashMap<String, Int>()
     private var chatPopup: Popup? = null
     private var chatPopupMessagesTable: Table? = null
     private var chatPopupScroll: com.badlogic.gdx.scenes.scene2d.ui.ScrollPane? = null
@@ -664,54 +656,12 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         val popup = Popup(this)
         popup.addGoodSizedLabel("Room chat".tr()).row()
 
-        // 左侧频道列表 (世界/队伍/成员私聊) + 右侧消息区 (2026-08-25)
-        val mainRow = Table()
-        val channelTable = Table()
-        channelTable.defaults().pad(3f)
-        chatChannels.clear()
-        chatChannels["世界"] = "world"
-        // 队伍频道: 只有自己开了组队 (team>0) 才显示
-        val myTeam = roomMembers().firstOrNull { it.playerId == playerId }?.team ?: 0
-        if (myTeam > 0) chatChannels["队伍"] = "team"
-        for (m in roomMembers()) {
-            if (m.playerId == playerId || m.playerId.isEmpty()) continue
-            chatChannels[m.nickname] = "player:" + m.playerId
-        }
-        val channelScroll = com.badlogic.gdx.scenes.scene2d.ui.ScrollPane(channelTable)
-        channelScroll.setOverscroll(false, false)
-        channelScroll.fadeScrollBars = false
-        mainRow.add(channelScroll).width(130f).height(280f).padRight(6f)
-
+        // 房间聊天不需要频道 — 单频道世界消息 (2026-08-25 用户要求, 撤销频道列表)
         val messagesTable = Table()
         val scroll = com.badlogic.gdx.scenes.scene2d.ui.ScrollPane(messagesTable)
         scroll.setOverscroll(false, false)
         scroll.fadeScrollBars = false
-        mainRow.add(scroll).width(460f).height(280f).padBottom(0f)
-        popup.add(mainRow).padBottom(6f).row()
-
-        fun refreshChannels() {
-            channelTable.clearChildren()
-            for ((label, key) in chatChannels) {
-                val unread = channelUnread[key] ?: 0
-                val labelText = if (unread > 0) "$label ($unread)".tr() else label.tr()
-                // 矩形列表行: 用 Button (点击可靠 — Table.onClick 在部分环境不触发, 2026-08-25)
-                // 必须带 skin 构造: Button() 无 style → pack() 时 getPrefWidth NPE (用户 2026-08-25 崩溃报告)
-                val row = com.badlogic.gdx.scenes.scene2d.ui.Button(BaseScreen.skin)
-                row.background = com.unciv.ui.screens.basescreen.BaseScreen.skinStrings.getUiBackground(
-                    "General/Border",
-                    tintColor = if (key == currentChatChannel) Color.valueOf("3a7d44") else Color.valueOf("4a4a5a"))
-                row.add(labelText.toLabel().apply { color = Color.WHITE }).growX().pad(6f, 10f, 6f, 10f)
-                row.onClick {
-                    currentChatChannel = key
-                    channelUnread[key] = 0
-                    channelReadSeq[key] = lastChatSeq  // 切到该频道 = 已读到当前 (2026-08-25)
-                    refreshChannels()
-                    refreshChatPopupMessages()
-                }
-                channelTable.add(row).growX().pad(2f).row()
-            }
-            channelTable.pack()
-        }
+        popup.add(scroll).width(460f).height(280f).padBottom(6f).row()
 
         val inputRow = Table()
         val inputField = com.unciv.ui.components.widgets.UncivTextField("")
@@ -720,10 +670,9 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             val text = inputField.text.trim()
             if (text.isEmpty()) return
             inputField.text = ""
-            val target = currentChatChannel
             Concurrency.run("LobbyChatSend") {
                 try {
-                    LobbyApi.sendChat(roomId, nickname, playerId, text, target)
+                    LobbyApi.sendChat(roomId, nickname, playerId, text)
                 } catch (e: Exception) {
                     launchOnGLThread {
                         ToastPopup("Failed to send message".tr() + ": " + (e.message ?: ""), this@LobbyRoomScreen)
@@ -747,16 +696,9 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             chatPopupScroll = null
         }
         chatUnread = 0
-        channelUnread[currentChatChannel] = 0  // 打开弹窗 = 当前频道已读 (2026-08-25)
         updateChatButtonText()
-        refreshChannels()
         refreshChatPopupMessages()
         popup.open()
-    }
-
-    /** 房间成员列表 (聊天频道用) */
-    private fun roomMembers(): List<com.unciv.logic.lobby.LobbyMember> {
-        return currentRoom?.members ?: emptyList()
     }
 
     private fun updateChatButtonText() {
@@ -766,20 +708,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
     private fun refreshChatPopupMessages() {
         val messagesTable = chatPopupMessagesTable ?: return
         messagesTable.clearChildren()
-        val chan = currentChatChannel
         for (m in chatMessages) {
-            // 频道过滤: world / team / 私聊 (双方消息)
-            val visible = when {
-                chan == "world" -> m.to == "world" || m.to.isEmpty()
-                chan == "team" -> m.to == "team"
-                chan.startsWith("player:") -> {
-                    val target = chan.removePrefix("player:")
-                    (m.to == "player:$target" && m.playerId == playerId) ||   // 我发给对方
-                    (m.to == "player:$playerId" && m.playerId == target)      // 对方发给我
-                }
-                else -> false
-            }
-            if (!visible) continue
             val isMe = m.playerId == playerId
             val civName = currentRoom?.members?.firstOrNull { it.playerId == m.playerId }?.civ
             val namePart = if (civName.isNullOrEmpty()) m.nickname else "${m.nickname}（${civName.tr()}）"
@@ -803,23 +732,6 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         val ownNew = newMessages.count { it.playerId == playerId }
         chatUnread += newMessages.size - ownNew
         updateChatButtonText()
-        // 按频道累计未读 (当前频道不计; 私聊只算发给我的) — 2026-08-25
-        for (m in newMessages) {
-            val chanKey = when {
-                m.to == "world" || m.to.isEmpty() -> "world"
-                m.to == "team" -> "team"
-                m.to.startsWith("player:") -> m.to
-                else -> null
-            }
-            if (chanKey == null) continue
-            if (chanKey == currentChatChannel) continue
-            // 私聊: 只算发给我的 (我发的消息在对方频道, 不算我的未读)
-            if (chanKey.startsWith("player:") && m.playerId != playerId && m.to != "player:$playerId") continue
-            // 该频道已读进度: 读过的消息不重计 (2026-08-25)
-            val readSeq = channelReadSeq[chanKey] ?: 0
-            if (m.seq <= readSeq) continue
-            channelUnread[chanKey] = (channelUnread[chanKey] ?: 0) + 1
-        }
         if (chatPopup != null) refreshChatPopupMessages()
     }
 
