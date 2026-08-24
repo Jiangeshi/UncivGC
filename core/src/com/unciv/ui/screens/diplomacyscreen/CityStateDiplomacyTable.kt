@@ -213,9 +213,15 @@ class CityStateDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
         val revokeProtectionButton = "Revoke Protection".toTextButton()
         revokeProtectionButton.onClick {
             ConfirmPopup(diplomacyScreen, "Revoke protection for [${otherCiv.civName}]?", "Revoke Protection") {
-                otherCiv.cityStateFunctions.removeProtectorCiv(viewingCiv)
-                diplomacyScreen.updateLeftSideTable(otherCiv)
-                diplomacyScreen.updateRightSide(otherCiv)
+                // UncivGC 帧同步: 服务器权威 — 本地不执行 (防重载回滚; 2026-08-24)
+                val intercepted = com.unciv.ui.screens.worldscreen.FrameSync.tryInterceptOp(
+                    com.unciv.ui.screens.worldscreen.FrameSync.currentWorldScreenOrNull(), "cityState.protect",
+                    mapOf("otherCivId" to otherCiv.civName, "pledge" to false))
+                if (!intercepted) {
+                    otherCiv.cityStateFunctions.removeProtectorCiv(viewingCiv)
+                    diplomacyScreen.updateLeftSideTable(otherCiv)
+                    diplomacyScreen.updateRightSide(otherCiv)
+                }
             }.open()
         }
         if (diplomacyScreen.isNotPlayersTurn() || !otherCiv.cityStateFunctions.otherCivCanWithdrawProtection(viewingCiv))
@@ -232,9 +238,15 @@ class CityStateDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
                 "Pledge to protect",
                 true
             ) {
-                otherCiv.cityStateFunctions.addProtectorCiv(viewingCiv)
-                diplomacyScreen.updateLeftSideTable(otherCiv)
-                diplomacyScreen.updateRightSide(otherCiv)
+                // UncivGC 帧同步: 服务器权威 — 本地不执行 (防重载回滚; 2026-08-24 用户反馈无法承诺保护)
+                val intercepted = com.unciv.ui.screens.worldscreen.FrameSync.tryInterceptOp(
+                    com.unciv.ui.screens.worldscreen.FrameSync.currentWorldScreenOrNull(), "cityState.protect",
+                    mapOf("otherCivId" to otherCiv.civName, "pledge" to true))
+                if (!intercepted) {
+                    otherCiv.cityStateFunctions.addProtectorCiv(viewingCiv)
+                    diplomacyScreen.updateLeftSideTable(otherCiv)
+                    diplomacyScreen.updateRightSide(otherCiv)
+                }
             }.open()
         }
         if (diplomacyScreen.isNotPlayersTurn() || !otherCiv.cityStateFunctions.otherCivCanPledgeProtection(viewingCiv))

@@ -2605,6 +2605,22 @@ object FrameSync {
             try {
                 // 已见面文明同步 (纯拦截下客户端不调 meet → 本地 diplomacy 缺游戏内新遇见的文明 →
                 // 下方 getDiplomacyManager 全 null → 战争/友谊/谴责全不同步; 2026-08-22 用户反馈"友谊同意后外交界面不更新")
+                // UncivGC 2026-08-24: 外交状态同步 (承诺保护/宣战等 diplomaticStatus) — 服务器权威广播
+                obj["diplomacy"]?.jsonArray?.let { dipArr ->
+                    for (dElem in dipArr) {
+                        val dObj = dElem.jsonObject
+                        val dCivId = dObj["civ"]?.jsonPrimitive?.contentOrNull ?: continue
+                        val dStatus = dObj["status"]?.jsonPrimitive?.contentOrNull ?: continue
+                        val dCiv = gameInfo.civilizations.firstOrNull { it.civID == dCivId } ?: continue
+                        val dm = civ.getDiplomacyManager(dCiv) ?: continue
+                        val newStatus = com.unciv.logic.civilization.diplomacy.DiplomaticStatus.entries
+                            .firstOrNull { it.name == dStatus } ?: continue
+                        if (dm.diplomaticStatus != newStatus) {
+                            dm.diplomaticStatus = newStatus
+                            changed = true
+                        }
+                    }
+                }
                 obj["met"]?.jsonArray?.let { metArr ->
                     for (mElem in metArr) {
                         val metId = mElem.jsonPrimitive.contentOrNull ?: continue
