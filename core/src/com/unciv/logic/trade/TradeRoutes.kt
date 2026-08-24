@@ -2,6 +2,7 @@ package com.unciv.logic.trade
 
 import com.unciv.logic.city.City
 import com.unciv.models.ruleset.tile.ResourceType
+import com.unciv.models.ruleset.tile.TileResource
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.stats.Stats
 import kotlin.math.min
@@ -21,24 +22,31 @@ object TradeRoutes {
     fun baseFor(city: City, route: TradeRouteNetwork.Route): Float {
         val otherPop = route.otherCity.population.population
         val ownPop = city.population.population
-        var gold = (otherPop * 0.4f + ownPop * 0.3f) * distFactor(route.distance)
+        // 目标城市(对方)系数 0.5 (2026-08-24 用户要求 0.4→0.5)
+        var gold = (otherPop * 0.5f + ownPop * 0.3f) * distFactor(route.distance)
         gold += resourceBonus(city, route.otherCity)
         return gold
     }
 
     /** 我方城市有、对方城市没有的资源差奖励 (奢侈+200/战略+100/奖金+100, 每种资源) */
     /** 我方城市有、对方城市没有的资源差奖励 (奢侈+1/战略+0.5/奖金+0.5, 每种资源).
-     *  只算地图/改良资源 (origin=Tiles/Improvements) — 排除建筑/文明级 uniques 的全局资源
-     *  (不在地图生成的资源不能贸易, 2026-08-24 用户确认) */
+     *  只算归属本城的地块资源 (tile.getCity()==city — 重叠地块只算归属城市, 2026-08-24 用户要求)
+     *  且已改良 (或城市中心自动供应); 排除建筑/文明级 uniques 全局资源 */
     fun resourceBonus(city: City, otherCity: City): Float {
         var bonus = 0f
         val ruleset = city.civ.gameInfo.ruleset
-        val myResources = com.unciv.logic.city.CityResources.getResourcesGeneratedByCity(city)
-            .filter { it.amount > 0 && (it.origin == "Tiles" || it.origin == "Improvements") }
-            .map { it.resource }.toSet()
-        val otherResources = com.unciv.logic.city.CityResources.getResourcesGeneratedByCity(otherCity)
-            .filter { it.amount > 0 && (it.origin == "Tiles" || it.origin == "Improvements") }
-            .map { it.resource }.toSet()
+        fun mapResources(c: City): Set<TileResource> {
+            val set = HashSet<TileResource>()
+            for (tile in c.getTiles()) {
+                if (tile.getCity() != c) continue
+                val res = tile.tileResource ?: continue
+                if (tile.getUnpillagedImprovement() == null && tile != c.getCenterTileOrNull()) continue
+                set.add(res)
+            }
+            return set
+        }
+        val myResources = mapResources(city)
+        val otherResources = mapResources(otherCity)
         for (resource in myResources) {
             if (resource in otherResources) continue
             bonus += when (resource.resourceType) {
