@@ -245,6 +245,7 @@ class ChatPopup(
                 }
                 if (!visible) continue
                 val civName = fsMemberCivs[m.playerId]
+                    ?: worldScreen.gameInfo.civilizations.firstOrNull { it.playerId == m.playerId }?.civName
                 val namePart = if (civName.isNullOrEmpty()) m.nickname else "${m.nickname}（$civName）"
                 val label = "[$namePart]: ${m.text}".toLabel(fontSize = 18)
                 label.color = if (m.playerId == myId) Color.GREEN else Color.WHITE
@@ -317,9 +318,8 @@ class ChatPopup(
                             fsChannels[m.nickname] = "player:" + m.playerId
                             m.civ?.let { fsMemberCivs[m.playerId] = it }
                         }
-                        // 弹窗打开 = 已读: 当前所有消息都视为已读 (按钮未读清零)
+                        // 弹窗打开 = 已读: 按钮未读清零 (但 fsLastSeq 保持 0, 历史消息也要显示 — 2026-08-25)
                         val maxSeq = room.chat.maxOfOrNull { it.seq } ?: 0
-                        fsLastSeq = maxSeq
                         com.unciv.ui.screens.worldscreen.chat.ChatButton.fsReadSeq = maxSeq
                         com.unciv.ui.screens.worldscreen.chat.ChatButton.updateFsUnread(0)
                         channelsBuilt = true
