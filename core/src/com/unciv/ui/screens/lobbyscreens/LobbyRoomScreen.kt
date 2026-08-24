@@ -651,6 +651,8 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
     private var currentChatChannel = "world"
     /** 聊天频道列表 (世界/队伍/成员昵称 -> 频道 key), 打开弹窗时刷新 */
     private val chatChannels = LinkedHashMap<String, String>()
+    /** 各频道未读消息数 (key=频道key, 当前频道不累计) — 2026-08-25 用户要求 */
+    private val channelUnread = HashMap<String, Int>()
     private var chatPopup: Popup? = null
     private var chatPopupMessagesTable: Table? = null
     private var chatPopupScroll: com.badlogic.gdx.scenes.scene2d.ui.ScrollPane? = null
@@ -688,13 +690,22 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         fun refreshChannels() {
             channelTable.clearChildren()
             for ((label, key) in chatChannels) {
-                val btn = (if (key == currentChatChannel) "[$label]".tr() else label.tr()).toTextButton()
+                val unread = channelUnread[key] ?: 0
+                val labelText = if (unread > 0) "$label ($unread)".tr() else label.tr()
+                val btn = labelText.toTextButton()
+                if (key == currentChatChannel) {
+                    // 选中高亮: 绿色背景 + 加粗感 (用户要求明确选中项 — 2026-08-25)
+                    btn.color = Color.GREEN
+                } else {
+                    btn.color = Color.WHITE
+                }
                 btn.onClick {
                     currentChatChannel = key
+                    channelUnread[key] = 0
                     refreshChannels()
                     refreshChatPopupMessages()
                 }
-                channelTable.add(btn).growX().row()
+                channelTable.add(btn).growX().pad(2f).row()
             }
             channelTable.pack()
         }
@@ -786,6 +797,20 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         val ownNew = newMessages.count { it.playerId == playerId }
         chatUnread += newMessages.size - ownNew
         updateChatButtonText()
+        // 按频道累计未读 (当前频道不计; 私聊只算发给我的) — 2026-08-25
+        for (m in newMessages) {
+            val chanKey = when {
+                m.to == "world" || m.to.isEmpty() -> "world"
+                m.to == "team" -> "team"
+                m.to.startsWith("player:") -> m.to
+                else -> null
+            }
+            if (chanKey == null) continue
+            if (chanKey == currentChatChannel) continue
+            // 私聊: 只算发给我的 (我发的消息在对方频道, 不算我的未读)
+            if (chanKey.startsWith("player:") && m.playerId != playerId && m.to != "player:$playerId") continue
+            channelUnread[chanKey] = (channelUnread[chanKey] ?: 0) + 1
+        }
         if (chatPopup != null) refreshChatPopupMessages()
     }
 

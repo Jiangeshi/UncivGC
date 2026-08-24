@@ -26,6 +26,8 @@ import com.unciv.ui.components.widgets.UncivTextField
 import com.unciv.ui.images.ImageGetter
 import com.unciv.ui.popups.Popup
 import com.unciv.ui.screens.basescreen.BaseScreen
+import com.unciv.ui.components.extensions.toTextButton
+import com.unciv.utils.Concurrency
 import com.unciv.ui.screens.worldscreen.WorldScreen
 
 
@@ -122,6 +124,15 @@ class ChatPopup(
     private val messageField = UncivTextField(hint = "Type something...")
 
     init {
+        // UncivGC 帧同步: 使用新版私聊弹窗 (lobby 房间聊天, 频道列表/高亮/未读) — 2026-08-25 用户要求
+        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo)) {
+            buildFsChat()
+        } else {
+            buildOriginalChat()
+        }
+    }
+
+    private fun buildOriginalChat() {
         ChatStore.chatPopup = this
         chatTable.defaults().growX().pad(5f).left()
 
@@ -172,6 +183,162 @@ class ChatPopup(
                 return true
             }
         })
+    }
+
+    // ==================== UncivGC 帧同步新版聊天 (私聊) ====================
+    private var fsChannel = "world"
+    private val fsChannels = LinkedHashMap<String, String>()
+    private val fsUnread = HashMap<String, Int>()
+    private val fsMessages = ArrayList<com.unciv.logic.lobby.LobbyChatMessage>()
+    private var fsLastSeq = 0
+    private var fsPolling = false
+
+    private fun buildFsChat() {
+        val roomId = com.unciv.ui.screens.lobbyscreens.LobbyRoomScreen.activeRoomId ?: return
+        val myId = com.unciv.ui.screens.lobbyscreens.LobbyRoomScreen.currentPlayerId()
+        val myNick = com.unciv.ui.screens.lobbyscreens.LobbyRoomScreen.currentNickname()
+
+        val header = Table(skin)
+        header.add("Chat".toLabel(fontSize = 30, alignment = Align.center)).expandX()
+        add(header).left().pad(5f).expandX().row()
+
+        val mainRow = Table()
+        val channelTable = Table()
+        channelTable.defaults().pad(3f)
+        val channelScroll = ScrollPane(channelTable, skin)
+        channelScroll.setFadeScrollBars(false)
+        mainRow.add(channelScroll).width(140f).height(0.42f * worldScreen.stage.height).padRight(6f)
+
+        val msgTable = Table()
+        msgTable.defaults().growX().pad(3f).left()
+        val msgScroll = ScrollPane(msgTable, skin)
+        msgScroll.setFadeScrollBars(false)
+        msgScroll.setScrollingDisabled(true, false)
+        mainRow.add(msgScroll).width(0.36f * worldScreen.stage.width).height(0.42f * worldScreen.stage.height)
+        add(mainRow).padBottom(6f).row()
+
+        val inputRow = Table()
+        val inputField = UncivTextField(hint = "Type something...")
+        val sendButton = Button(skin)
+        sendButton.add(ImageGetter.getImage("OtherIcons/Send"))
+        inputRow.add(inputField).expandX().fillX()
+        inputRow.add(sendButton).size(inputField.height * 1.2f, inputField.height).padLeft(4f)
+        add(inputRow).growX().row()
+
+        fun refreshMessages() {
+            msgTable.clearChildren()
+            for (m in fsMessages) {
+                val visible = when {
+                    fsChannel == "world" -> m.to == "world" || m.to.isEmpty()
+                    fsChannel == "team" -> m.to == "team"
+                    fsChannel.startsWith("player:") -> {
+                        val target = fsChannel.removePrefix("player:")
+                        (m.to == "player:$target" && m.playerId == myId) ||
+                        (m.to == "player:$myId" && m.playerId == target)
+                    }
+                    else -> false
+                }
+                if (!visible) continue
+                val label = "[${m.nickname}]: ${m.text}".toLabel(fontSize = 18)
+                label.color = if (m.playerId == myId) Color.GREEN else Color.WHITE
+                label.setAlignment(Align.left)
+                msgTable.add(label).growX().left().pad(2f).row()
+            }
+            msgTable.pack()
+            msgScroll.layout()
+            msgScroll.scrollY = msgScroll.maxY
+        }
+
+        fun refreshChannels() {
+            channelTable.clearChildren()
+            for ((label, key) in fsChannels) {
+                val unread = fsUnread[key] ?: 0
+                val text = if (unread > 0) "$label ($unread)" else label
+                val btn = text.toTextButton()
+                btn.color = if (key == fsChannel) Color.GREEN else Color.WHITE
+                btn.onClick {
+                    fsChannel = key
+                    fsUnread[key] = 0
+                    refreshChannels()
+                    refreshMessages()
+                }
+                channelTable.add(btn).growX().pad(2f).row()
+            }
+            channelTable.pack()
+        }
+
+        fun sendText() {
+            val text = inputField.text.trim()
+            if (text.isEmpty()) return
+            inputField.setText("")
+            Concurrency.run("FsChatSend") {
+                try {
+                    com.unciv.logic.lobby.LobbyApi.sendChat(roomId, myNick, myId, text, fsChannel)
+                } catch (e: Exception) {
+                }
+            }
+        }
+        sendButton.onClick { sendText() }
+        inputField.addListener(object : InputListener() {
+            override fun keyDown(event: InputEvent?, keycode: Int): Boolean {
+                if (keycode == Input.Keys.ENTER || keycode == Input.Keys.NUMPAD_ENTER) sendText()
+                return true
+            }
+        })
+
+        refreshChannels()
+        refreshMessages()
+
+        // 轮询房间聊天 (waitRoom 长轮询): 首次拉取频道成员, 之后持续收消息
+        fsPolling = true
+        var since = 0
+        var channelsBuilt = false
+        Concurrency.run("FsChatPoll") {
+            while (fsPolling) {
+                try {
+                    if (!channelsBuilt) {
+                        val room = com.unciv.logic.lobby.LobbyApi.getRoom(roomId, myId)
+                        since = room.version
+                        fsChannels.clear()
+                        fsChannels["世界"] = "world"
+                        val myTeam = room.members.firstOrNull { it.playerId == myId }?.team ?: 0
+                        if (myTeam > 0) fsChannels["队伍"] = "team"
+                        for (m in room.members) {
+                            if (m.playerId == myId || m.playerId.isEmpty()) continue
+                            fsChannels[m.nickname] = "player:" + m.playerId
+                        }
+                        channelsBuilt = true
+                        com.unciv.utils.Concurrency.runOnGLThread { refreshChannels() }
+                    }
+                    val room = com.unciv.logic.lobby.LobbyApi.waitRoom(roomId, since, myId) ?: continue
+                    since = room.version
+                    val newMsgs = room.chat.filter { it.seq > fsLastSeq }
+                    if (newMsgs.isEmpty()) continue
+                    fsLastSeq = newMsgs.last().seq
+                    fsMessages.addAll(newMsgs)
+                    for (m in newMsgs) {
+                        val chanKey = when {
+                            m.to == "world" || m.to.isEmpty() -> "world"
+                            m.to == "team" -> "team"
+                            m.to.startsWith("player:") -> m.to
+                            else -> null
+                        }
+                        if (chanKey == null) continue
+                        if (chanKey == fsChannel) continue
+                        if (chanKey.startsWith("player:") && m.playerId != myId && m.to != "player:$myId") continue
+                        fsUnread[chanKey] = (fsUnread[chanKey] ?: 0) + 1
+                    }
+                    val totalUnread = fsUnread.values.sum()
+                    com.unciv.ui.screens.worldscreen.chat.ChatButton.updateFsUnread(totalUnread)
+                    com.unciv.utils.Concurrency.runOnGLThread {
+                        refreshChannels()
+                        refreshMessages()
+                    }
+                } catch (e: Exception) {
+                }
+            }
+        }
+        closeListeners.add { fsPolling = false }
     }
 
     fun sendMessage() {

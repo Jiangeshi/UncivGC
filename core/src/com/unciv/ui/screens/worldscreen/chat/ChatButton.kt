@@ -17,10 +17,23 @@ import com.unciv.ui.screens.worldscreen.WorldScreen
 
 private val smallButtonStyle = SmallButtonStyle()
 
+/** 帧同步聊天未读总数 (新版聊天按钮角标) — 2026-08-25 */
+private var fsUnreadCount = 0
+
 class ChatButton(val worldScreen: WorldScreen) : IconTextButton(
     "Chat", ImageGetter.getImage("OtherIcons/Chat"), 23
 ) {
     private val chat = ChatStore.getChatByGameId(worldScreen.gameInfo.gameId)
+
+    companion object {
+        /** 帧同步新版聊天未读总数 → 更新所有 ChatButton 角标 (2026-08-25) */
+        fun updateFsUnread(count: Int) {
+            fsUnreadCount = count
+            com.unciv.UncivGame.Current.let { game ->
+                (game.screen as? com.unciv.ui.screens.worldscreen.WorldScreen)?.chatButton?.updateBadge()
+            }
+        }
+    }
 
     private val badge = "".toTextButton(smallButtonStyle).apply {
         disable()
@@ -40,14 +53,17 @@ class ChatButton(val worldScreen: WorldScreen) : IconTextButton(
         }
     )
 
-    private fun updateBadge() {
+        private fun updateBadge() {
+        val count = if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo))
+            fsUnreadCount else chat.unreadCount
+        badge.setText(if (count > 0) count.toString() else "")
         badge.height = height / 3
         badge.setPosition(
             width - badge.width / 1.5f,
             height - badge.height / 1.5f
         )
 
-        badge.isVisible = chat.unreadCount > 0 || ChatStore.hasGlobalMessage
+        badge.isVisible = count > 0 || (!com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo) && ChatStore.hasGlobalMessage)
 
         if (badge.isVisible) {
             var text = chat.unreadCount.toString()

@@ -182,7 +182,8 @@ class WorldScreen(
         stage.addActor(statusButtons)
         stage.addActor(techPolicyAndDiplomacy)
         // UncivGC: 帧同步模式聊天按钮移到顶栏 (与 状态/暂停/概览 并列) — 2026-08-22; 原版模式照旧挂 stage
-        if (!FrameSync.isFsMode(gameInfo)) stage.addActor(chatButton)
+        // 帧同步也显示聊天按钮 (新版私聊弹窗, 2026-08-25 用户要求)
+        stage.addActor(chatButton)
 
         stage.addActor(zoomController)
         zoomController.isVisible = UncivGame.Current.settings.showZoomButtons
