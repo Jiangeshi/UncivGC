@@ -91,8 +91,16 @@ object DiplomacyTurnManager {
             val decrement = getCityStateInfluenceDegrade()
             setInfluence(max(restingPoint, influence - decrement))
         } else if (influence < restingPoint) {
-            val increment = getCityStateInfluenceRecovery()
-            setInfluence(min(restingPoint, influence + increment))
+            // 商路静止点加成部分立即到位 (用户可立即看到 +5); 其余部分按原版恢复速度 — 2026-08-24
+            // 不能直接用 getCityStateInfluenceRecovery: 它内部用原静止点判定 (不含商路加成),
+            // 影响力在 [原静止点, 新静止点] 之间时返回 0 → 永不回升 (用户反馈"稳定点没提升")
+            val bonus = getCityStateTradeRouteInfluenceBonus()
+            if (bonus > 0f && influence < bonus) {
+                setInfluence(min(restingPoint, bonus))
+            } else {
+                val increment = getCityStateInfluenceRecovery()
+                setInfluence(min(restingPoint, influence + increment))
+            }
         }
 
         if (!civInfo.isDefeated()) { // don't display city state relationship notifications when the city state is currently defeated
