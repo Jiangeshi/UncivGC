@@ -73,6 +73,11 @@ class TileMap(initialCapacity: Int = 10) : IsPartOfGameInfoSerialization {
     @Transient
     lateinit var gameInfo: GameInfo
 
+    /** UncivGC 商路 (2026-08-24): 地图生成期 gameInfo 未初始化时安全失效连接缓存 (lateinit backing field 只能在类内访问) */
+    fun invalidateTradeRoutesIfReady() {
+        if (::gameInfo.isInitialized) gameInfo.invalidateTradeRoutes()
+    }
+
     /** Keep a copy of the [Ruleset] object passed to setTransients, for now only to allow subsequent setTransients without. Copied on [clone]. */
     @Transient
     var ruleset: Ruleset? = null
