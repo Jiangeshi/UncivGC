@@ -199,11 +199,11 @@ class ChatPopup(
         val myNick = com.unciv.ui.screens.lobbyscreens.LobbyRoomScreen.currentNickname()
 
         val header = Table(skin)
-        header.add("Chat".toLabel(fontSize = 30, alignment = Align.center)).expandX()
+        header.add("Chat".toLabel(fontSize = 30, alignment = Align.left)).expandX().left()
         header.add(
             ImageButton(ImageGetter.getImage("OtherIcons/Close").drawable).onClick { close() }
-        ).size(30f, 30f).right()
-        add(header).left().pad(5f).expandX().row()
+        ).size(30f, 30f).right().padLeft(8f)
+        add(header).top().pad(5f).expandX().row()
 
         val mainRow = Table()
         val channelTable = Table()
@@ -296,16 +296,14 @@ class ChatPopup(
         refreshChannels()
         refreshMessages()
 
-        // 轮询房间聊天 (waitRoom 长轮询): 首次拉取频道成员, 之后持续收消息
+        // 轮询房间聊天 (getRoom 每 2 秒短轮询 — waitRoom 长轮询在弹窗环境可能不返回, 用户反馈收不到)
         fsPolling = true
-        var since = 0
         var channelsBuilt = false
         Concurrency.run("FsChatPoll") {
             while (fsPolling) {
                 try {
+                    val room = com.unciv.logic.lobby.LobbyApi.getRoom(roomId, myId)
                     if (!channelsBuilt) {
-                        val room = com.unciv.logic.lobby.LobbyApi.getRoom(roomId, myId)
-                        since = room.version
                         fsChannels.clear()
                         fsChannels["世界"] = "world"
                         val myTeam = room.members.firstOrNull { it.playerId == myId }?.team ?: 0
@@ -317,32 +315,32 @@ class ChatPopup(
                         channelsBuilt = true
                         com.unciv.utils.Concurrency.runOnGLThread { refreshChannels() }
                     }
-                    val room = com.unciv.logic.lobby.LobbyApi.waitRoom(roomId, since, myId) ?: continue
-                    since = room.version
                     val newMsgs = room.chat.filter { it.seq > fsLastSeq }
-                    if (newMsgs.isEmpty()) continue
-                    fsLastSeq = newMsgs.last().seq
-                    fsMessages.addAll(newMsgs)
-                    for (m in newMsgs) {
-                        val chanKey = when {
-                            m.to == "world" || m.to.isEmpty() -> "world"
-                            m.to == "team" -> "team"
-                            m.to.startsWith("player:") -> m.to
-                            else -> null
+                    if (newMsgs.isNotEmpty()) {
+                        fsLastSeq = newMsgs.last().seq
+                        fsMessages.addAll(newMsgs)
+                        for (m in newMsgs) {
+                            val chanKey = when {
+                                m.to == "world" || m.to.isEmpty() -> "world"
+                                m.to == "team" -> "team"
+                                m.to.startsWith("player:") -> m.to
+                                else -> null
+                            }
+                            if (chanKey == null) continue
+                            if (chanKey == fsChannel) continue
+                            if (chanKey.startsWith("player:") && m.playerId != myId && m.to != "player:$myId") continue
+                            fsUnread[chanKey] = (fsUnread[chanKey] ?: 0) + 1
                         }
-                        if (chanKey == null) continue
-                        if (chanKey == fsChannel) continue
-                        if (chanKey.startsWith("player:") && m.playerId != myId && m.to != "player:$myId") continue
-                        fsUnread[chanKey] = (fsUnread[chanKey] ?: 0) + 1
-                    }
-                    val totalUnread = fsUnread.values.sum()
-                    com.unciv.ui.screens.worldscreen.chat.ChatButton.updateFsUnread(totalUnread)
-                    com.unciv.utils.Concurrency.runOnGLThread {
-                        refreshChannels()
-                        refreshMessages()
+                        val totalUnread = fsUnread.values.sum()
+                        com.unciv.ui.screens.worldscreen.chat.ChatButton.updateFsUnread(totalUnread)
+                        com.unciv.utils.Concurrency.runOnGLThread {
+                            refreshChannels()
+                            refreshMessages()
+                        }
                     }
                 } catch (e: Exception) {
                 }
+                try { Thread.sleep(2000) } catch (e: InterruptedException) { break }
             }
         }
         closeListeners.add { fsPolling = false }
