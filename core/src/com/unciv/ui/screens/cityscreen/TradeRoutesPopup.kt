@@ -30,15 +30,11 @@ import java.text.DecimalFormat
 class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, Scrollability.None) {
     private val city: City = cityScreen.cityView.city
     private val decimal = DecimalFormat("0.#")
+    // 列宽 (表头与内容行 minWidth 同值) — 必须声明在 init 之前: Kotlin 属性按声明顺序初始化 (2026-08-24 NPE)
+    private val columnWidths = listOf(50f, 120f, 80f, 80f, 130f, 160f, 190f)
     // 滚动内容用独立 Table — 不能用 Popup.innerTable: AutoScrollPane(innerTable) 后再 add(scrollPane)
     // 会循环包含 (innerTable→scrollPane→innerTable) → setStage StackOverflow (2026-08-24 用户点击商路按钮崩溃)
     private val contentTable = Table()
-
-    private val colorHeaderBg: Color = Color.valueOf("4a4a5a").darken(0.2f)
-    private val colorGroupBg: Color = Color.valueOf("3a3a4a").darken(0.2f)
-    // 列宽 (表头 width 与内容行 minWidth 同值对齐) — 必须声明在 init 之前: Kotlin 属性按声明顺序初始化,
-    // init 块先执行会访问到未初始化的 columnWidths → NPE (2026-08-24 用户点击商路按钮崩溃)
-    private val columnWidths = listOf(50f, 120f, 80f, 80f, 130f, 160f, 190f)
 
     init {
         val header = ("商路详情".tr() + " · " + city.name.tr()).toLabel()
@@ -78,12 +74,11 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
             val rank = TradeRoutes.rankOf(city, route)
             totalGold += TradeRoutes.actualStats(city, route, rank).gold
         }
-        // 分组标题: 带背景 + 总计收益 (即使无商路也显示表头 — 2026-08-24 用户要求参考统计格式)
-        val groupHeader = Table()
-        groupHeader.background = BaseScreen.skinStrings.getUiBackground("General/Border", tintColor = colorGroupBg)
-        groupHeader.add("$title（总计收益：${decimal.format(totalGold)} 金币/回合）".toLabel())
-            .pad(8f, 12f).growX()
-        contentTable.add(groupHeader).colspan(7).growX().padTop(10f).row()
+        // 分组标题: 居中文本 + 分隔线 (参考统计 "Base values" 行排版, 无背景 — 2026-08-24 用户要求)
+        val groupLabel = "$title（总计收益：${decimal.format(totalGold)} 金币/回合）".toLabel()
+        groupLabel.setAlignment(Align.center)
+        contentTable.add(groupLabel).colspan(7).growX().padTop(10f).padBottom(2f).row()
+        contentTable.addSeparator(colSpan = 7)
 
         addHeaderRow()
 
@@ -112,17 +107,16 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
         contentTable.addSeparator(colSpan = 7).padTop(4f)
     }
 
-    /** 表头行 (统计同款: 带背景 + 居中对齐) — 无商路也显示
-     *  列宽与内容行统一 (width/minWidth 同值), 否则表头独立 Table 与内容行不对齐 (2026-08-24 用户反馈) */
+    /** 表头行: 直接排在 contentTable 里 (与内容行同一列体系 → 天然对齐; 参考统计排版, 无背景) — 2026-08-24
+     *  之前用独立 Table + colspan 导致两套列宽 → 内容列被撑大时表头错位 */
     private fun addHeaderRow() {
-        val headerRow = Table()
-        headerRow.background = BaseScreen.skinStrings.getUiBackground("General/Border", tintColor = colorHeaderBg)
-        val heads = listOf("#", "联通城市", "方式", "距离", "贸易收益", "额外收益", "操作")
+        val heads = listOf("序号", "联通城市", "方式", "距离", "贸易收益", "额外收益", "操作")
         for ((i, head) in heads.withIndex()) {
             val label = head.toLabel().apply { setAlignment(Align.center) }
-            headerRow.add(label).width(columnWidths[i]).pad(8f, 6f)
+            contentTable.add(label).minWidth(columnWidths[i]).pad(6f, 10f)
         }
-        contentTable.add(headerRow).colspan(7).growX().row()
+        contentTable.row()
+        contentTable.addSeparator(colSpan = 7)
     }
 
     private fun formatExtra(stats: Stats): String {
