@@ -34,7 +34,7 @@ object UgcPediaContent {
             point("断线重连自动恢复，掉线玩家不阻塞推进"),
         ), 1),
         CivilopediaCategories.UgcPediaEntry("组队系统（团队模式）", listOf(
-            point("开房可配置 1-3 队，每队 1-3 人，玩家自选队伍"),
+            point("开房可配置 1-4 队，每队 1-4 人，玩家自选队伍"),
             point("同队共享视野：队友看到的地图实时可见，队友探索过的地块永久可见"),
             point("队友自动认识、默认开放边境；禁止攻击/宣战/谴责/劫掠队友"),
             point("同队禁止交易城市（防刷城）；赠礼、贸易正常"),
@@ -58,7 +58,8 @@ object UgcPediaContent {
         ), 5),
         CivilopediaCategories.UgcPediaEntry("编队系统（军团/集团军）", listOf(
             point("两个相同陆军单位可合并为军团，再加一个可升级为集团军"),
-            point("战斗力加成（×1.33 / ×1.50）、血量合并、可拆分"),
+            point("战斗力加成（×1.33 / ×1.50）、合并血量取各单位当前血量均值、可拆分"),
+            point("编队血量上限：军团/舰队 115、集团军/无敌舰队 130"),
         ), 6),
         CivilopediaCategories.UgcPediaEntry("撤回功能", listOf(
             point("本回合内可连续多级回退（单机/联机均可用）"),
@@ -82,6 +83,14 @@ object UgcPediaContent {
             point("游戏内联机大厅：建房/搜索/加入/聊天/准备/观战"),
             point("跳海、重新开始等（重新生成地图）快捷操作"),
         ), 11),
+        CivilopediaCategories.UgcPediaEntry("商路系统", listOf(
+            point("城市与城市直接建立商路连接（无需商路单位），双方各自获得全额收益"),
+            point("收益 = (对方人口×0.5 + 本城人口×0.3) × 距离系数 + 资源差奖励（我方独有奢侈/战略/奖金资源）"),
+            point("距离越远收益越高（封顶 1.5 倍）；多条商路按名次衰减（陆/海分开排名）"),
+            point("陆路/海路（海路 ×0.9）；可连接本国城市、其他国家、城邦"),
+            point("连接城邦：该城邦对你的影响力基准点 +5/条（不吃衰减，多条叠加）"),
+            point("商路详情面板：查看每条商路的收益构成（人口/资源差/衰减）"),
+        ), 13),
         CivilopediaCategories.UgcPediaEntry("应用内更新", listOf(
             point("游戏内检测新版本，进度条下载，自动弹系统安装"),
             point("「安装未知应用」权限引导"),
