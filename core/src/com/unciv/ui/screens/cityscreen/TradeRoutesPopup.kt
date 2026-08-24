@@ -31,7 +31,7 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
     private val city: City = cityScreen.cityView.city
     private val decimal = DecimalFormat("0.#")
     // 列宽 (表头与内容行 minWidth 同值) — 必须声明在 init 之前: Kotlin 属性按声明顺序初始化 (2026-08-24 NPE)
-    private val columnWidths = listOf(50f, 120f, 80f, 80f, 130f, 160f, 190f)
+    private val columnWidths = listOf(80f, 120f, 80f, 80f, 130f, 160f, 190f)
     // 滚动内容用独立 Table — 不能用 Popup.innerTable: AutoScrollPane(innerTable) 后再 add(scrollPane)
     // 会循环包含 (innerTable→scrollPane→innerTable) → setStage StackOverflow (2026-08-24 用户点击商路按钮崩溃)
     private val contentTable = Table()
@@ -95,7 +95,8 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
             val rank = TradeRoutes.rankOf(city, route)
             val stats = TradeRoutes.actualStats(city, route, rank)
             val other = route.otherCity
-            contentTable.add((index + 1).toString().toLabel()).minWidth(columnWidths[0]).pad(6f, 10f)
+            contentTable.add((index + 1).toString().toLabel().apply { setAlignment(Align.center) })
+                .minWidth(columnWidths[0]).pad(6f, 10f)
             contentTable.add(other.name.tr().toLabel()).minWidth(columnWidths[1]).pad(6f, 10f)
             contentTable.add((if (route.isSea) "海路" else "陆路").toLabel()).minWidth(columnWidths[2]).pad(6f, 10f)
             contentTable.add(route.distance.toString().toLabel()).minWidth(columnWidths[3]).pad(6f, 10f)
