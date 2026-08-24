@@ -695,7 +695,8 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                 val unread = channelUnread[key] ?: 0
                 val labelText = if (unread > 0) "$label ($unread)".tr() else label.tr()
                 // 矩形列表行: 用 Button (点击可靠 — Table.onClick 在部分环境不触发, 2026-08-25)
-                val row = com.badlogic.gdx.scenes.scene2d.ui.Button()
+                // 必须带 skin 构造: Button() 无 style → pack() 时 getPrefWidth NPE (用户 2026-08-25 崩溃报告)
+                val row = com.badlogic.gdx.scenes.scene2d.ui.Button(BaseScreen.skin)
                 row.background = com.unciv.ui.screens.basescreen.BaseScreen.skinStrings.getUiBackground(
                     "General/Border",
                     tintColor = if (key == currentChatChannel) Color.valueOf("3a7d44") else Color.valueOf("4a4a5a"))
