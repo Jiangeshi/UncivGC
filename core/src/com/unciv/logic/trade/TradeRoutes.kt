@@ -22,8 +22,8 @@ object TradeRoutes {
     fun baseFor(city: City, route: TradeRouteNetwork.Route): Float {
         val otherPop = route.otherCity.population.population
         val ownPop = city.population.population
-        // 目标城市(对方)系数 0.5 (2026-08-24 用户要求 0.4→0.5)
-        var gold = (otherPop * 0.5f + ownPop * 0.3f) * distFactor(route.distance)
+        // 人口系数 0.3/0.3 (2026-08-25 用户调整)
+        var gold = (otherPop * 0.3f + ownPop * 0.3f) * distFactor(route.distance)
         gold += resourceBonus(city, route.otherCity)
         return gold
     }
@@ -49,9 +49,9 @@ object TradeRoutes {
         for (resource in myResources) {
             if (resource in otherResources) continue
             bonus += when (resource.resourceType) {
-                ResourceType.Luxury -> 1f
-                ResourceType.Strategic -> 0.5f
-                ResourceType.Bonus -> 0.5f
+                ResourceType.Luxury -> 0.5f
+                ResourceType.Strategic -> 0.25f
+                ResourceType.Bonus -> 0.25f
             }
         }
         return bonus
@@ -71,8 +71,8 @@ object TradeRoutes {
      *  资源差不吃排名衰减, 吃海商系数 (2026-08-24 用户确认) */
     fun actualStats(city: City, route: TradeRouteNetwork.Route, rank: Int): Stats {
         val stats = Stats()
-        val seaFactor = if (route.isSea) 0.9f else 1f
-        val popGold = ((route.otherCity.population.population * 0.5f + city.population.population * 0.3f)
+        val seaFactor = if (route.isSea) 0.7f else 1f  // 海商系数 0.7 (2026-08-25 用户调整)
+        val popGold = ((route.otherCity.population.population * 0.3f + city.population.population * 0.3f)
                 * distFactor(route.distance))
         stats.gold = (popGold / rank + resourceBonus(city, route.otherCity)) * seaFactor
         for (unique in city.getMatchingUniques(UniqueType.StatsFromTradeRoute))

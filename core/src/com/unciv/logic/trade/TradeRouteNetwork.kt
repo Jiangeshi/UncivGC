@@ -104,10 +104,11 @@ class TradeRouteNetwork(val gameInfo: GameInfo) {
         connectionsCache = result
     }
 
+    // 距离上限: 道路10/铁路15/海洋15 (国外 +5) — 2026-08-25 用户调整
     private fun limitFor(info: RouteInfo, isForeign: Boolean): Int = when {
-        info.isSea -> if (isForeign) 30 else 25
-        info.hasRailroad -> if (isForeign) 25 else 20
-        else -> if (isForeign) 17 else 12
+        info.isSea -> if (isForeign) 20 else 15
+        info.hasRailroad -> if (isForeign) 20 else 15
+        else -> if (isForeign) 15 else 10
     }
 
     /** 陆路 BFS: 沿道路/铁路/森林丛林格, 深度 ≤ 25 (最大陆路上限), 记录 (距离, 是否含铁路) */
