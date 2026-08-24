@@ -97,27 +97,29 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
             val rank = TradeRoutes.rankOf(city, route)
             val stats = TradeRoutes.actualStats(city, route, rank)
             val other = route.otherCity
-            contentTable.add((index + 1).toString().toLabel()).pad(6f, 10f)
-            contentTable.add(other.name.tr().toLabel()).pad(6f, 10f)
-            contentTable.add((if (route.isSea) "海路" else "陆路").toLabel()).pad(6f, 10f)
-            contentTable.add(route.distance.toString().toLabel()).pad(6f, 10f)
-            contentTable.add("${decimal.format(stats.gold)} 金币".toLabel()).pad(6f, 10f)
-            contentTable.add(formatExtra(stats).toLabel()).pad(6f, 10f)
-            contentTable.add(buildActionButtons(route, other, canBlock)).pad(4f, 6f)
+            contentTable.add((index + 1).toString().toLabel()).minWidth(columnWidths[0]).pad(6f, 10f)
+            contentTable.add(other.name.tr().toLabel()).minWidth(columnWidths[1]).pad(6f, 10f)
+            contentTable.add((if (route.isSea) "海路" else "陆路").toLabel()).minWidth(columnWidths[2]).pad(6f, 10f)
+            contentTable.add(route.distance.toString().toLabel()).minWidth(columnWidths[3]).pad(6f, 10f)
+            contentTable.add("${decimal.format(stats.gold)} 金币".toLabel()).minWidth(columnWidths[4]).pad(6f, 10f)
+            contentTable.add(formatExtra(stats).toLabel()).minWidth(columnWidths[5]).pad(6f, 10f)
+            contentTable.add(buildActionButtons(route, other, canBlock)).minWidth(columnWidths[6]).pad(4f, 6f)
             contentTable.row()
         }
         contentTable.addSeparator(colSpan = 7).padTop(4f)
     }
 
-    /** 表头行 (统计同款: 带背景 + 居中对齐) — 无商路也显示 */
+    /** 表头行 (统计同款: 带背景 + 居中对齐) — 无商路也显示
+     *  列宽与内容行统一 (width/minWidth 同值), 否则表头独立 Table 与内容行不对齐 (2026-08-24 用户反馈) */
+    private val columnWidths = listOf(50f, 120f, 80f, 80f, 130f, 160f, 190f)
+
     private fun addHeaderRow() {
         val headerRow = Table()
         headerRow.background = BaseScreen.skinStrings.getUiBackground("General/Border", tintColor = colorHeaderBg)
         val heads = listOf("#", "联通城市", "方式", "距离", "贸易收益", "额外收益", "操作")
-        val widths = listOf(40f, 120f, 70f, 70f, 120f, 150f, 180f)
         for ((i, head) in heads.withIndex()) {
             val label = head.toLabel().apply { setAlignment(Align.center) }
-            headerRow.add(label).width(widths[i]).pad(8f, 6f)
+            headerRow.add(label).width(columnWidths[i]).pad(8f, 6f)
         }
         contentTable.add(headerRow).colspan(7).growX().row()
     }

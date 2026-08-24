@@ -184,6 +184,8 @@ class LobbyScreen : PickerScreen() {
             val name = textField.text.trim()
             if (name.isNotEmpty()) {
                 UncivGame.Current.settings.lobbyNickname = name
+                // 立即持久化 — 否则只在退出时保存, 崩溃/强杀后昵称丢失 → 大厅显示默认 "Player" (2026-08-24 用户反馈)
+                UncivGame.Current.settings.save()
                 updateNicknameLabel()
             }
             popup.close()
