@@ -12,6 +12,7 @@ import com.unciv.logic.civilization.transients.CapitalConnectionsFinder.CapitalC
 import com.unciv.logic.map.HexCoord
 import com.unciv.logic.map.MapShape
 import com.unciv.logic.map.tile.Tile
+import com.unciv.models.translations.tr
 import com.unciv.models.ruleset.Building
 import com.unciv.models.ruleset.tile.ResourceSupplyList
 import com.unciv.models.ruleset.tile.ResourceType
@@ -306,15 +307,24 @@ class CivInfoTransientCache(val civInfo: Civilization) {
         val newConnectedCities = citiesConnectedToCapitalToMediums.keys
 
         for (city in newConnectedCities)
-            if (city !in oldConnectedCities && city.civ == civInfo && city != civInfo.getCapital())
-                civInfo.addNotification("[${city.name}] has been connected to your capital!",
+            if (city !in oldConnectedCities && city.civ == civInfo && city != civInfo.getCapital()) {
+                // UncivGC 商路 (2026-08-24): 通知改为城市-城市 (原版是首都连接; 用户要求
+                // "你的城市x与城市x建立连接")
+                val otherName = try {
+                    civInfo.gameInfo.getTradeRouteNetwork().getRoutes(city)
+                        .firstOrNull()?.otherCity?.name?.tr() ?: civInfo.getCapital()?.name?.tr()
+                } catch (e: Exception) {
+                    civInfo.getCapital()?.name?.tr()
+                }
+                civInfo.addNotification("Your city [${city.name}] is now connected to [$otherName]!",
                     city.location, NotificationCategory.Cities, NotificationIcon.Gold
                 )
+            }
 
         // This may still contain cities that have just been destroyed by razing - thus the population test
         for (city in oldConnectedCities)
             if (city !in newConnectedCities && city.civ == civInfo && city.population.population > 0)
-                civInfo.addNotification("[${city.name}] has been disconnected from your capital!",
+                civInfo.addNotification("Your city [${city.name}] is no longer connected to your capital!",
                     city.location, NotificationCategory.Cities, NotificationIcon.Gold
                 )
 

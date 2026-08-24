@@ -37,9 +37,9 @@ object TradeRoutes {
             val resource = ruleset.tileResources[resourceName] ?: continue
             if (otherCiv.getResourceAmount(resource) > 0) continue
             bonus += when (resource.resourceType) {
-                ResourceType.Luxury -> 1f
-                ResourceType.Strategic -> 0.5f
-                ResourceType.Bonus -> 0.5f
+                ResourceType.Luxury -> 200f
+                ResourceType.Strategic -> 100f
+                ResourceType.Bonus -> 100f
             }
         }
         return bonus
