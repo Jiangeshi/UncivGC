@@ -53,6 +53,8 @@ class TradeRouteNetwork(val gameInfo: GameInfo) {
             .toList()
         if (System.getProperty("fs.trade.debug") != null)
             System.err.println("[TradeRoute] cities=" + allCities.map { it.name + "(" + it.civ.civName + ")" })
+        val debugLog = java.io.File(System.getProperty("user.home"), "fs_debug.log")
+        debugLog.appendFsDebug("[TradeRoute] compute start, allCities=${allCities.map { it.name + "(" + it.civ.civName + ")" }}\n")
         if (allCities.size < 2) {
             connectionsCache = result
             return
@@ -76,10 +78,25 @@ class TradeRouteNetwork(val gameInfo: GameInfo) {
             for ((other, info) in reach) {
                 if (other == city) continue
                 val isForeign = other.civ != city.civ
-                if (info.distance > limitFor(info, isForeign)) continue
-                if (pairKey(city, other) in blocked) continue
-                val back = forward[other]?.get(city) ?: continue
-                if (back.distance > limitFor(back, isForeign)) continue
+                val limit = limitFor(info, isForeign)
+                if (info.distance > limit) {
+                    debugLog.appendFsDebug("[TradeRoute] SKIP ${city.name}→${other.name} dist=${info.distance}>limit=$limit sea=${info.isSea} rail=${info.hasRailroad}\n")
+                    continue
+                }
+                if (pairKey(city, other) in blocked) {
+                    debugLog.appendFsDebug("[TradeRoute] SKIP ${city.name}→${other.name} BLOCKED\n")
+                    continue
+                }
+                val back = forward[other]?.get(city)
+                if (back == null) {
+                    debugLog.appendFsDebug("[TradeRoute] SKIP ${city.name}→${other.name} NO_BACK_PATH (other can't reach city)\n")
+                    continue
+                }
+                if (back.distance > limitFor(back, isForeign)) {
+                    debugLog.appendFsDebug("[TradeRoute] SKIP ${city.name}→${other.name} BACK_DIST=${back.distance}>limit=${limitFor(back, isForeign)}\n")
+                    continue
+                }
+                debugLog.appendFsDebug("[TradeRoute] OK ${city.name}→${other.name} dist=${info.distance} sea=${info.isSea}\n")
                 list.add(Route(other, info.distance, info.isSea, info.hasRailroad))
             }
             if (debug) System.err.println("[TradeRoute] " + city.name + " routes: " + list.map { it.otherCity.name + "(" + it.distance + ")" })
@@ -127,7 +144,8 @@ class TradeRouteNetwork(val gameInfo: GameInfo) {
                 expanded++
             }
         }
-        if (debug) System.err.println("[TradeRoute] landBfs " + city.name + " expanded=" + expanded + " visited=" + visited.size)
+        val debugLog = java.io.File(System.getProperty("user.home"), "fs_debug.log")
+        debugLog.appendFsDebug("[TradeRoute] landBfs ${city.name} expanded=$expanded visited=${visited.size} reachable=${reachable.keys.map { it.name }}\n")
     }
 
     /** 海路 BFS: 需本城有港口且未被封锁, 沿水域到其他有港口城市, 深度 ≤ 30 (海洋上限) */
@@ -162,13 +180,16 @@ class TradeRouteNetwork(val gameInfo: GameInfo) {
                 queue.add(neighbor to dist + 1)
             }
         }
+        val debugLog = java.io.File(System.getProperty("user.home"), "fs_debug.log")
+        debugLog.appendFsDebug("[TradeRoute] seaBfs ${city.name} visited=${visited.size} reachable=${reachable.keys.map { it.name }}\n")
     }
 
     private fun canEnterBordersOf(civ: Civilization, otherCiv: Civilization): Boolean {
         if (otherCiv == civ) return true
         if (otherCiv.isBarbarian || civ.isBarbarian) return false
         val diplomacyManager = civ.getDiplomacyManager(otherCiv) ?: return false
-        if (otherCiv.isCityState && diplomacyManager.diplomaticStatus != DiplomaticStatus.War) return true
+        if (diplomacyManager.diplomaticStatus == DiplomaticStatus.War) return false
+        if (civ.isCityState || otherCiv.isCityState) return true  // 城邦不签开边, 默认通行
         return diplomacyManager.hasOpenBorders
     }
 
@@ -182,5 +203,13 @@ class TradeRouteNetwork(val gameInfo: GameInfo) {
             val b = cityB.id
             return if (a <= b) "$a|$b" else "$b|$a"
         }
+    }
+}
+
+/** 调试日志写入 (桌面用户目录 fs_debug.log); Android 根目录只读 (EROFS) 时静默忽略 — 2026-08-24 手机建城崩溃 */
+private fun java.io.File.appendFsDebug(msg: String) {
+    try {
+        appendText(msg)
+    } catch (ignored: Exception) {
     }
 }
