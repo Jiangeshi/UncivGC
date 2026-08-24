@@ -1,7 +1,6 @@
 package com.unciv.logic.trade
 
 import com.unciv.logic.city.City
-import com.unciv.logic.civilization.Civilization
 import com.unciv.models.ruleset.tile.ResourceType
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.stats.Stats
@@ -23,23 +22,24 @@ object TradeRoutes {
         val otherPop = route.otherCity.population.population
         val ownPop = city.population.population
         var gold = (otherPop * 0.4f + ownPop * 0.3f) * distFactor(route.distance)
-        gold += resourceBonus(city, route.otherCity.civ)
+        gold += resourceBonus(city, route.otherCity)
         return gold
     }
 
-    /** 我方有、对方没有的资源差奖励 (奢侈+1/战略+0.5/奖金+0.5, 每种资源) */
-    fun resourceBonus(city: City, otherCiv: Civilization): Float {
+    /** 我方城市有、对方城市没有的资源差奖励 (奢侈+200/战略+100/奖金+100, 每种资源) */
+    fun resourceBonus(city: City, otherCity: City): Float {
         var bonus = 0f
-        val civ = city.civ
-        val ruleset = civ.gameInfo.ruleset
-        for ((resourceName, amount) in civ.getCivResourcesByName()) {
-            if (amount <= 0) continue
-            val resource = ruleset.tileResources[resourceName] ?: continue
-            if (otherCiv.getResourceAmount(resource) > 0) continue
+        val ruleset = city.civ.gameInfo.ruleset
+        val myResources = city.getResourcesGeneratedByCity()
+            .filter { it.amount > 0 }.map { it.resource }.toSet()
+        val otherResources = otherCity.getResourcesGeneratedByCity()
+            .filter { it.amount > 0 }.map { it.resource }.toSet()
+        for (resource in myResources) {
+            if (resource in otherResources) continue
             bonus += when (resource.resourceType) {
-                ResourceType.Luxury -> 200f
-                ResourceType.Strategic -> 100f
-                ResourceType.Bonus -> 100f
+                ResourceType.Luxury -> 1f
+                ResourceType.Strategic -> 0.5f
+                ResourceType.Bonus -> 0.5f
             }
         }
         return bonus
