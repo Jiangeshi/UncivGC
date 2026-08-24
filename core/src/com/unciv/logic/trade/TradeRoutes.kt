@@ -28,7 +28,6 @@ object TradeRoutes {
         return gold
     }
 
-    /** 我方城市有、对方城市没有的资源差奖励 (奢侈+200/战略+100/奖金+100, 每种资源) */
     /** 我方城市有、对方城市没有的资源差奖励 (奢侈+1/战略+0.5/奖金+0.5, 每种资源).
      *  只算归属本城的地块资源 (tile.getCity()==city — 重叠地块只算归属城市, 2026-08-24 用户要求)
      *  且已改良 (或城市中心自动供应); 排除建筑/文明级 uniques 全局资源 */
@@ -67,11 +66,15 @@ object TradeRoutes {
         return if (idx < 0) 1 else idx + 1
     }
 
-    /** 单条商路实际收益 (衰减后): 基础 ×1/rank (海商再 ×0.9) + unique 每路加成 ×1/(rank+1) */
+    /** 单条商路实际收益:
+     *  [ (对方人口×0.5 + 本城人口×0.3) × 距离系数 ÷ rank + 资源差 ] × 海商系数(海路0.9)
+     *  资源差不吃排名衰减, 吃海商系数 (2026-08-24 用户确认) */
     fun actualStats(city: City, route: TradeRouteNetwork.Route, rank: Int): Stats {
         val stats = Stats()
         val seaFactor = if (route.isSea) 0.9f else 1f
-        stats.gold = baseFor(city, route) / rank * seaFactor
+        val popGold = ((route.otherCity.population.population * 0.5f + city.population.population * 0.3f)
+                * distFactor(route.distance))
+        stats.gold = (popGold / rank + resourceBonus(city, route.otherCity)) * seaFactor
         for (unique in city.getMatchingUniques(UniqueType.StatsFromTradeRoute))
             stats.add(unique.stats * (1f / (rank + 1)))
         return stats
