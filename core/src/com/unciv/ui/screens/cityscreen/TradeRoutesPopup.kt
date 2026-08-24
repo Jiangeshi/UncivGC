@@ -31,7 +31,7 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
     private val city: City = cityScreen.cityView.city
     private val decimal = DecimalFormat("0.#")
     // 列宽 (表头与内容行 minWidth 同值) — 必须声明在 init 之前: Kotlin 属性按声明顺序初始化 (2026-08-24 NPE)
-    private val columnWidths = listOf(80f, 120f, 80f, 80f, 130f, 160f, 190f)
+    private val columnWidths = listOf(80f, 120f, 80f, 80f, 130f, 100f, 130f, 190f)
     // 滚动内容用独立 Table — 不能用 Popup.innerTable: AutoScrollPane(innerTable) 后再 add(scrollPane)
     // 会循环包含 (innerTable→scrollPane→innerTable) → setStage StackOverflow (2026-08-24 用户点击商路按钮崩溃)
     private val contentTable = Table()
@@ -57,10 +57,12 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
         contentTable.clear()
         val gameInfo = city.civ.gameInfo
         val network = gameInfo.getTradeRouteNetwork()
-        val routes = network.getRoutes(city)
-        val domestic = routes.filter { it.otherCity.civ == city.civ }
+        val allRoutes = network.getRoutes(city)
+        val blocked = gameInfo.tradeRouteBlocked
+
+        val domestic = allRoutes.filter { it.otherCity.civ == city.civ }
             .sortedByDescending { TradeRoutes.baseFor(city, it) }
-        val foreign = routes.filter { it.otherCity.civ != city.civ }
+        val foreign = allRoutes.filter { it.otherCity.civ != city.civ }
             .sortedByDescending { TradeRoutes.baseFor(city, it) }
 
         addGroup("国内商路", domestic, canBlock = false, showEmptyHeader = true)
@@ -77,8 +79,8 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
         // 分组标题: 居中文本 + 分隔线 (参考统计 "Base values" 行排版, 无背景 — 2026-08-24 用户要求)
         val groupLabel = "$title（总计收益：${decimal.format(totalGold)} 金币/回合）".toLabel()
         groupLabel.setAlignment(Align.center)
-        contentTable.add(groupLabel).colspan(7).growX().padTop(10f).padBottom(2f).row()
-        contentTable.addSeparator(colSpan = 7)
+        contentTable.add(groupLabel).colspan(8).growX().padTop(10f).padBottom(2f).row()
+        contentTable.addSeparator(colSpan = 8)
 
         addHeaderRow()
 
@@ -86,38 +88,66 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
             if (showEmptyHeader) {
                 val empty = "暂无商路连接".toLabel()
                 empty.setAlignment(Align.center)
-                contentTable.add(empty).colspan(7).pad(10f).growX().row()
+                contentTable.add(empty).colspan(8).pad(10f).growX().row()
             }
             return
         }
 
-        for ((index, route) in routes.withIndex()) {
+        val blocked = city.civ.gameInfo.tradeRouteBlocked
+        val (normalRoutes, blockedRoutes) = routes.partition { TradeRouteNetwork.pairKey(city, it.otherCity) !in blocked }
+
+        for ((index, route) in normalRoutes.withIndex()) {
             val rank = TradeRoutes.rankOf(city, route)
             val stats = TradeRoutes.actualStats(city, route, rank)
             val other = route.otherCity
-            contentTable.add((index + 1).toString().toLabel().apply { setAlignment(Align.center) })
-                .minWidth(columnWidths[0]).pad(6f, 10f)
-            contentTable.add(other.name.tr().toLabel()).minWidth(columnWidths[1]).pad(6f, 10f)
-            contentTable.add((if (route.isSea) "海路" else "陆路").toLabel()).minWidth(columnWidths[2]).pad(6f, 10f)
-            contentTable.add(route.distance.toString().toLabel()).minWidth(columnWidths[3]).pad(6f, 10f)
-            contentTable.add("${decimal.format(stats.gold)} 金币".toLabel()).minWidth(columnWidths[4]).pad(6f, 10f)
-            contentTable.add(formatExtra(stats).toLabel()).minWidth(columnWidths[5]).pad(6f, 10f)
-            contentTable.add(buildActionButtons(route, other, canBlock)).minWidth(columnWidths[6]).pad(4f, 6f)
-            contentTable.row()
+            val resBonus = TradeRoutes.resourceBonus(city, other)
+            val seaFactor = if (route.isSea) 0.9f else 1f
+            val resBonusDecayed = resBonus * seaFactor
+            val baseGold = stats.gold - resBonusDecayed
+            addRouteRow(index + 1, route, other, baseGold, resBonusDecayed, stats, canBlock, false)
         }
-        contentTable.addSeparator(colSpan = 7).padTop(4f)
+        for ((index, route) in blockedRoutes.withIndex()) {
+            val rank = TradeRoutes.rankOf(city, route)
+            val stats = TradeRoutes.actualStats(city, route, rank)
+            val other = route.otherCity
+            val resBonus = TradeRoutes.resourceBonus(city, other)
+            val seaFactor = if (route.isSea) 0.9f else 1f
+            val resBonusDecayed = resBonus * seaFactor
+            val baseGold = stats.gold - resBonusDecayed
+            addRouteRow(normalRoutes.size + index + 1, route, other, baseGold, resBonusDecayed, stats, canBlock, true)
+        }
+        contentTable.addSeparator(colSpan = 8).padTop(4f)
     }
 
     /** 表头行: 直接排在 contentTable 里 (与内容行同一列体系 → 天然对齐; 参考统计排版, 无背景) — 2026-08-24
      *  之前用独立 Table + colspan 导致两套列宽 → 内容列被撑大时表头错位 */
+    private fun addRouteRow(index: Int, route: TradeRouteNetwork.Route, other: City,
+                             baseGold: Float, resBonusDecayed: Float, stats: Stats,
+                             canBlock: Boolean, isBlocked: Boolean) {
+        val grey = Color.GRAY
+        fun makeLabel(text: String) = text.toLabel().apply {
+            setAlignment(Align.center)
+            if (isBlocked) color = grey
+        }
+        contentTable.add(makeLabel(index.toString())).minWidth(columnWidths[0]).pad(6f, 10f)
+        contentTable.add(makeLabel(other.name.tr())).minWidth(columnWidths[1]).pad(6f, 10f)
+        contentTable.add(makeLabel(if (route.isSea) "海路" else "陆路")).minWidth(columnWidths[2]).pad(6f, 10f)
+        contentTable.add(makeLabel(route.distance.toString())).minWidth(columnWidths[3]).pad(6f, 10f)
+        contentTable.add(makeLabel("${decimal.format(baseGold)} 金币")).minWidth(columnWidths[4]).pad(6f, 10f)
+        contentTable.add(makeLabel(if (resBonusDecayed > 0f) "${decimal.format(resBonusDecayed)} 金币" else "—")).minWidth(columnWidths[5]).pad(6f, 10f)
+        contentTable.add(makeLabel(formatExtra(stats))).minWidth(columnWidths[6]).pad(6f, 10f)
+        contentTable.add(buildActionButtons(route, other, canBlock, isBlocked)).minWidth(columnWidths[7]).pad(4f, 6f).center()
+        contentTable.row()
+    }
+
     private fun addHeaderRow() {
-        val heads = listOf("序号", "联通城市", "方式", "距离", "贸易收益", "额外收益", "操作")
+        val heads = listOf("序号", "联通城市", "方式", "距离", "贸易收益", "资源收益", "额外收益", "操作")
         for ((i, head) in heads.withIndex()) {
             val label = head.toLabel().apply { setAlignment(Align.center) }
             contentTable.add(label).minWidth(columnWidths[i]).pad(6f, 10f)
         }
         contentTable.row()
-        contentTable.addSeparator(colSpan = 7)
+        contentTable.addSeparator(colSpan = 8)
     }
 
     private fun formatExtra(stats: Stats): String {
@@ -130,58 +160,37 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
         return if (parts.isEmpty()) "—" else parts.joinToString("、")
     }
 
-    private fun buildActionButtons(route: TradeRouteNetwork.Route, other: City, canBlock: Boolean): Table {
+    private fun buildActionButtons(route: TradeRouteNetwork.Route, other: City, canBlock: Boolean, isBlocked: Boolean): Table {
         val buttons = Table()
         val gameInfo = city.civ.gameInfo
         val pair = TradeRouteNetwork.pairKey(city, other)
-        val blocked = pair in gameInfo.tradeRouteBlocked
         val myCivId = city.civ.civID
         val myRequested = gameInfo.tradeRouteRestoreRequests[pair]?.contains(myCivId) == true
         val otherRequested = gameInfo.tradeRouteRestoreRequests[pair]?.contains(other.civ.civID) == true
 
-        if (canBlock) {
-            if (blocked && myRequested) {
-                buttons.add(if (otherRequested) "对方已请求".toLabel() else "等待对方…".toLabel())
-                    .pad(2f)
+        if (canBlock && isBlocked) {
+            if (myRequested) {
+                buttons.add(if (otherRequested) "对方已请求".toLabel() else "等待对方…".toLabel()).pad(2f)
             } else {
-                val label = when {
-                    !blocked -> "取消"
-                    else -> if (otherRequested) "确认恢复" else "恢复"
-                }
-                buttons.add(label.toTextButton().apply {
+                buttons.add("恢复".toTextButton().apply {
                     onClick {
-                        // 乐观更新本地状态 (服务器广播回来会再次对齐)
-                        if (!blocked) {
-                            gameInfo.tradeRouteBlocked.add(pair)
+                        gameInfo.tradeRouteRestoreRequests.getOrPut(pair) { HashSet() }.add(myCivId)
+                        if (other.civ.isCityState || otherRequested) {
+                            gameInfo.tradeRouteBlocked.remove(pair)
                             gameInfo.tradeRouteRestoreRequests.remove(pair)
-                        } else {
-                            gameInfo.tradeRouteRestoreRequests.getOrPut(pair) { HashSet() }.add(myCivId)
-                            // 城邦无玩家操作: 单方请求即恢复 (与服务器逻辑一致)
-                            if (other.civ.isCityState || otherRequested) {
-                                gameInfo.tradeRouteBlocked.remove(pair)
-                                gameInfo.tradeRouteRestoreRequests.remove(pair)
-                            }
                         }
                         gameInfo.invalidateTradeRoutes()
-                        // 仅帧同步发 op (单机直接本地生效, 不发网络消息)
-                        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo))
-                            FrameSync.sendOp("city.toggleTradeRouteBlocked", mapOf(
-                                "cityId" to city.id,
-                                "otherCityId" to other.id
-                            ))
+                        if (FrameSync.isFsMode(gameInfo))
+                            FrameSync.sendOp("city.toggleTradeRouteBlocked", mapOf("cityId" to city.id, "otherCityId" to other.id))
                         update()
                     }
                 }).pad(2f)
             }
         }
-        if (other.civ != city.civ) {
-            buttons.add("交易".toTextButton().apply {
-                onClick {
-                    close()
-                    cityScreen.game.pushScreen(DiplomacyScreen(city.civ, other.civ))
-                }
-            }).pad(2f)
-        }
+        buttons.add("交易".toTextButton().apply {
+            isDisabled = true  // 装饰按钮，暂不启用
+            color = Color.GRAY
+        }).pad(2f)
         return buttons
     }
 }
