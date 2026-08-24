@@ -36,6 +36,9 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
 
     private val colorHeaderBg: Color = Color.valueOf("4a4a5a").darken(0.2f)
     private val colorGroupBg: Color = Color.valueOf("3a3a4a").darken(0.2f)
+    // 列宽 (表头 width 与内容行 minWidth 同值对齐) — 必须声明在 init 之前: Kotlin 属性按声明顺序初始化,
+    // init 块先执行会访问到未初始化的 columnWidths → NPE (2026-08-24 用户点击商路按钮崩溃)
+    private val columnWidths = listOf(50f, 120f, 80f, 80f, 130f, 160f, 190f)
 
     init {
         val header = ("商路详情".tr() + " · " + city.name.tr()).toLabel()
@@ -111,8 +114,6 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
 
     /** 表头行 (统计同款: 带背景 + 居中对齐) — 无商路也显示
      *  列宽与内容行统一 (width/minWidth 同值), 否则表头独立 Table 与内容行不对齐 (2026-08-24 用户反馈) */
-    private val columnWidths = listOf(50f, 120f, 80f, 80f, 130f, 160f, 190f)
-
     private fun addHeaderRow() {
         val headerRow = Table()
         headerRow.background = BaseScreen.skinStrings.getUiBackground("General/Border", tintColor = colorHeaderBg)
