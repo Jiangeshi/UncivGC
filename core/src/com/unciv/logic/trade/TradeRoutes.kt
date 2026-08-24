@@ -75,8 +75,9 @@ object TradeRoutes {
         val popGold = ((route.otherCity.population.population * 0.3f + city.population.population * 0.3f)
                 * distFactor(route.distance))
         stats.gold = (popGold / rank + resourceBonus(city, route.otherCity)) * seaFactor
+        // 加成类也吃海商系数 (2026-08-25 用户要求)
         for (unique in city.getMatchingUniques(UniqueType.StatsFromTradeRoute))
-            stats.add(unique.stats * (1f / (rank + 1)))
+            stats.add(unique.stats * (1f / (rank + 1)) * seaFactor)
         return stats
     }
 }
