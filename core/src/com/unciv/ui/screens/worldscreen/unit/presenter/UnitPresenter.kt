@@ -168,7 +168,7 @@ class UnitPresenter(private val unitTable: UnitTable, private val worldScreen: W
                 && unit.civ.isFsTeammate(worldScreen.viewingCiv))
                 nameLabelText += " (Teammate)".tr()
         } catch (e: Exception) {}
-        if (unit.health < 100) nameLabelText += " (${unit.health.tr()})"
+        if (unit.health < unit.maxHealth) nameLabelText += " (${unit.health.tr()})"
         return nameLabelText
     }
 

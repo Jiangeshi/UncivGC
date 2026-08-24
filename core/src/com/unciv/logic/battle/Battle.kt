@@ -77,7 +77,7 @@ object Battle {
             // Now lets retroactively see if we can pillage any improvement on the path improvement to heal
             // while still being able to attack
             for (tileToPillage in tilesMovedThrough) {
-                if (attacker.unit.currentMovement <= 1f || attacker.unit.health > 90) break // We are done pillaging
+                if (attacker.unit.currentMovement <= 1f || attacker.unit.health > attacker.unit.maxHealth * 0.9f) break // We are done pillaging
 
                 if (UnitActionsPillage.canPillage(attacker.unit, tileToPillage)
                     && tileToPillage.canPillageTileImprovement()) {

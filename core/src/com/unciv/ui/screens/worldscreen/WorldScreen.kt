@@ -573,7 +573,7 @@ class WorldScreen(
         }
         displayTutorial(TutorialTrigger.AfterConquering) { viewingCiv.cities.any { it.hasJustBeenConquered } }
 
-        displayTutorial(TutorialTrigger.InjuredUnits) { gameInfo.getCurrentPlayerCivilization().units.getCivUnits().any { it.health < 100 } }
+        displayTutorial(TutorialTrigger.InjuredUnits) { gameInfo.getCurrentPlayerCivilization().units.getCivUnits().any { it.health < it.maxHealth } }
 
         displayTutorial(TutorialTrigger.Workers) {
             gameInfo.getCurrentPlayerCivilization().units.getCivUnits().any {

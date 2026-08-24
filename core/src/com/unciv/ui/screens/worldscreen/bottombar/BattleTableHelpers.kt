@@ -273,7 +273,7 @@ object BattleTableHelpers {
             )))
         }
         
-        val healthDecreaseWidth = (currentHealth - minRemainingHealth) * totalWidth / 100 // Used for animation only
+        val healthDecreaseWidth = (currentHealth - minRemainingHealth) * totalWidth / maxHealth // Used for animation only
         if (forDefender) {
             addHealthToBar(missingHealth, maxHealth - currentHealth)
             addHealthToBar(damagedHealth, currentHealth - maxRemainingHealth)

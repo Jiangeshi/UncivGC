@@ -340,11 +340,11 @@ class MapUnit : IsPartOfGameInfoSerialization {
         )
         formationSnapshots.add(snapshot)
 
-        // HP 合并: 改为各单位当前血量均值 (2026-08-24 用户要求; 之前是相加上限 100)
+        // HP 合并: 各单位当前血量均值 (2026-08-24 用户要求; 之前是相加上限 100)
         // Single+Single → 2 单位均值; Corps/Fleet + Single → 3 单位均值
         // health 是编队均值 → 恢复 n-1 单位总血 (health×(n-1)) + target 再平均 = 各单位当前血量均值
         val totalUnits = if (formation == UnitFormation.Single) 2 else 3
-        health = ((health * (totalUnits - 1) + target.health) / totalUnits).coerceAtMost(100)
+        val newHealth = ((health * (totalUnits - 1) + target.health) / totalUnits).coerceAtMost(125)
 
         // 升级形态: 水军 → 舰队/无敌舰队, 陆军 → 军团/集团军 (2026-08-22)
         formation = when (formation) {
@@ -354,12 +354,22 @@ class MapUnit : IsPartOfGameInfoSerialization {
             else -> formation // 不会走到这里 (tier>=2 已过滤)
         }
 
+        health = newHealth.coerceAtMost(maxHealth)  // 上限按新形态 (125/150), 均值本身不超
+
         // 消耗全部移动力
         currentMovement = 0f
 
         // 丢弃被合并单位的状态 (休眠/驻守/自动化)
         // 由调用者负责从地图移除 target
     }
+
+    /** 血量上限: 单体 100, 军团/舰队 125, 集团军/无敌舰队 150 (2026-08-24 用户要求) */
+    val maxHealth: Int
+        get() = when (formation) {
+            UnitFormation.Corps, UnitFormation.Fleet -> 125
+            UnitFormation.Army, UnitFormation.Armada -> 150
+            else -> 100
+        }
 
     /** 是否可以拆分编队 */
     @Readonly
@@ -1060,13 +1070,13 @@ class MapUnit : IsPartOfGameInfoSerialization {
         health += amount *
                 if (hasUnique(UniqueType.HealingEffectsDoubled, checkCivInfoUniques = true)) 2
                 else 1
-        if (health > 100) health = 100
+        if (health > maxHealth) health = maxHealth
         cache.updateUniques()
     }
 
     fun takeDamage(amount: Int) {
         health -= amount
-        if (health > 100) health = 100 // For cheating modders, e.g. negative tile damage
+        if (health > maxHealth) health = maxHealth // For cheating modders, e.g. negative tile damage
         if (health < 0) health = 0
         if (health == 0) destroy()
         else cache.updateUniques()

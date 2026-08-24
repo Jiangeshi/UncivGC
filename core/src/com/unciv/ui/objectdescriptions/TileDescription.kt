@@ -75,7 +75,7 @@ object TileDescription {
         if (tileView.militaryUnit != null && isViewableToPlayer && !hideUnits
                 && (viewingCiv == null || viewingCiv.canSeeUnit(tileView.militaryUnit!!))) {
             val milUnitString = tileView.militaryUnit!!.name.tr() +
-                    (if (tileView.militaryUnit!!.health < 100) "(" + tileView.militaryUnit!!.health + ")" else "") +
+                    (if (tileView.militaryUnit!!.health < tileView.militaryUnit!!.maxHealth) "(" + tileView.militaryUnit!!.health + ")" else "") +
                     " - " + tileView.militaryUnit!!.civName.tr()
             lineList += FormattedLine(milUnitString, link = "Unit/${tileView.militaryUnit!!.name}")
         }

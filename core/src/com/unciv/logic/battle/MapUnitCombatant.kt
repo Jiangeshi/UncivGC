@@ -14,7 +14,7 @@ import yairm210.purity.annotations.Readonly
 
 class MapUnitCombatant(val unit: MapUnit) : ICombatant {
     override fun getHealth(): Int = unit.health
-    override fun getMaxHealth() = 100
+    override fun getMaxHealth() = unit.maxHealth
     override fun getCivInfo(): Civilization = unit.civ
     override fun getTile(): Tile = unit.getTile()
     override fun getName(): String = unit.name
