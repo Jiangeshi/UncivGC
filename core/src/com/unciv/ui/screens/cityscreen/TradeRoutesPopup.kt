@@ -25,13 +25,16 @@ import java.text.DecimalFormat
 class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, Scrollability.None) {
     private val city: City = cityScreen.cityView.city
     private val decimal = DecimalFormat("0.#")
+    // 滚动内容用独立 Table — 不能用 Popup.innerTable: AutoScrollPane(innerTable) 后再 add(scrollPane)
+    // 会循环包含 (innerTable→scrollPane→innerTable) → setStage StackOverflow (2026-08-24 用户点击商路按钮崩溃)
+    private val contentTable = Table()
 
     init {
         val header = "商路详情 · ${city.name}".toLabel()
         header.setAlignment(Align.center)
         add(header).pad(5f).growX().row()
 
-        val scrollPane = AutoScrollPane(innerTable)
+        val scrollPane = AutoScrollPane(contentTable)
         scrollPane.setOverscroll(false, false)
         val scrollPaneCell = add(scrollPane).padTop(0f)
         scrollPaneCell.maxHeight(cityScreen.stage.height * 3 / 4)
@@ -43,13 +46,13 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
     }
 
     private fun update() {
-        innerTable.clear()
+        contentTable.clear()
         val gameInfo = city.civ.gameInfo
         val network = gameInfo.getTradeRouteNetwork()
         val routes = network.getRoutes(city)
         if (routes.isEmpty()) {
-            innerTable.add("该城市当前没有商路连接".toLabel()).pad(10f).row()
-            innerTable.packIfNeeded()
+            contentTable.add("该城市当前没有商路连接".toLabel()).pad(10f).row()
+            contentTable.packIfNeeded()
             return
         }
         val domestic = routes.filter { it.otherCity.civ == city.civ }
@@ -59,7 +62,7 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
 
         addGroup("国内商路", domestic, canBlock = false)
         addGroup("国外商路", foreign, canBlock = true)
-        innerTable.packIfNeeded()
+        contentTable.packIfNeeded()
     }
 
     private fun addGroup(title: String, routes: List<TradeRouteNetwork.Route>, canBlock: Boolean) {
@@ -69,29 +72,29 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
             val rank = TradeRoutes.rankOf(city, route)
             totalGold += TradeRoutes.actualStats(city, route, rank).gold
         }
-        innerTable.add("$title（总计收益：${decimal.format(totalGold)} 金币/回合）".toLabel())
+        contentTable.add("$title（总计收益：${decimal.format(totalGold)} 金币/回合）".toLabel())
             .colspan(7).padTop(8f).padBottom(2f).row()
-        innerTable.addSeparator(colSpan = 7)
+        contentTable.addSeparator(colSpan = 7)
         // 表头
         for (head in listOf("#", "联通城市", "方式", "距离", "贸易收益", "额外收益", "操作"))
-            innerTable.add(head.toLabel()).pad(2f, 4f)
-        innerTable.row()
-        innerTable.addSeparator(colSpan = 7)
+            contentTable.add(head.toLabel()).pad(2f, 4f)
+        contentTable.row()
+        contentTable.addSeparator(colSpan = 7)
 
         for ((index, route) in routes.withIndex()) {
             val rank = TradeRoutes.rankOf(city, route)
             val stats = TradeRoutes.actualStats(city, route, rank)
             val other = route.otherCity
-            innerTable.add((index + 1).toString().toLabel()).pad(2f, 4f)
-            innerTable.add(other.name.toLabel()).pad(2f, 4f)
-            innerTable.add((if (route.isSea) "海路" else "陆路").toLabel()).pad(2f, 4f)
-            innerTable.add(route.distance.toString().toLabel()).pad(2f, 4f)
-            innerTable.add("${decimal.format(stats.gold)} 金币".toLabel()).pad(2f, 4f)
-            innerTable.add(formatExtra(stats).toLabel()).pad(2f, 4f)
-            innerTable.add(buildActionButtons(route, other, canBlock)).pad(2f, 4f)
-            innerTable.row()
+            contentTable.add((index + 1).toString().toLabel()).pad(2f, 4f)
+            contentTable.add(other.name.toLabel()).pad(2f, 4f)
+            contentTable.add((if (route.isSea) "海路" else "陆路").toLabel()).pad(2f, 4f)
+            contentTable.add(route.distance.toString().toLabel()).pad(2f, 4f)
+            contentTable.add("${decimal.format(stats.gold)} 金币".toLabel()).pad(2f, 4f)
+            contentTable.add(formatExtra(stats).toLabel()).pad(2f, 4f)
+            contentTable.add(buildActionButtons(route, other, canBlock)).pad(2f, 4f)
+            contentTable.row()
         }
-        innerTable.addSeparator(colSpan = 7)
+        contentTable.addSeparator(colSpan = 7)
     }
 
     private fun formatExtra(stats: Stats): String {
