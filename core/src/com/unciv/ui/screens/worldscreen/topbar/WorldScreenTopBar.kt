@@ -86,6 +86,7 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
     private val fsChatButton: com.badlogic.gdx.scenes.scene2d.Actor? by lazy {
         if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo)) {
             val btn = com.badlogic.gdx.scenes.scene2d.ui.TextButton("Chat".tr(), BaseScreen.skin)
+            fsChatButtonRef = btn
             btn.onClick {
                 val chat = com.unciv.logic.multiplayer.chat.ChatStore.getChatByGameId(worldScreen.gameInfo.gameId)
                 chat.unreadCount = 0
@@ -101,6 +102,17 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
     companion object {
         /** When the "fillers" are used, this is added to the required height, alleviating the "gap" problem a little. */
         const val gapFillingExtraHeight = 1f
+
+        /** 顶栏帧同步聊天按钮引用 (未读更新用) — 2026-08-25 */
+        @Volatile var fsChatButtonRef: com.badlogic.gdx.scenes.scene2d.ui.TextButton? = null
+
+        /** 更新顶栏聊天按钮文本: Chat (n) — 2026-08-25 用户要求 */
+        fun updateFsChatUnread(count: Int) {
+            val btn = fsChatButtonRef ?: return
+            btn.setText(if (count > 0) "Chat ($count)".tr() else "Chat".tr())
+            btn.pack()
+            btn.setSize(maxOf(btn.width, 60f), btn.height)
+        }
     }
     //endregion
 

@@ -33,8 +33,11 @@ class ChatButton(val worldScreen: WorldScreen) : IconTextButton(
         fun updateFsUnread(count: Int) {
             fsUnreadCount = count
             com.unciv.UncivGame.Current.let { game ->
-                (game.screen as? com.unciv.ui.screens.worldscreen.WorldScreen)?.chatButton?.updateBadge()
+                val ws = game.screen as? com.unciv.ui.screens.worldscreen.WorldScreen
+                ws?.chatButton?.updateBadge()
             }
+            // 顶栏帧同步聊天按钮也更新 (用户说的"聊天按钮" — 2026-08-25)
+            com.unciv.ui.screens.worldscreen.topbar.WorldScreenTopBar.updateFsChatUnread(count)
         }
     }
 

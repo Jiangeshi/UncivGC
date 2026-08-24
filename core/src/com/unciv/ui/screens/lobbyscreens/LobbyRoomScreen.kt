@@ -778,7 +778,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             if (!visible) continue
             val isMe = m.playerId == playerId
             val civName = currentRoom?.members?.firstOrNull { it.playerId == m.playerId }?.civ
-            val namePart = if (civName.isNullOrEmpty()) m.nickname else "${m.nickname}（$civName）"
+            val namePart = if (civName.isNullOrEmpty()) m.nickname else "${m.nickname}（${civName.tr()}）"
             val label = "[$namePart]: ${m.text}".toLabel(fontSize = 18)
             label.color = if (isMe) Color.GREEN else Color.WHITE
             label.setAlignment(com.badlogic.gdx.utils.Align.left)

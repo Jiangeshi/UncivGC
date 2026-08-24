@@ -246,7 +246,7 @@ class ChatPopup(
                 if (!visible) continue
                 val civName = fsMemberCivs[m.playerId]
                     ?: worldScreen.gameInfo.civilizations.firstOrNull { it.playerId == m.playerId }?.civName
-                val namePart = if (civName.isNullOrEmpty()) m.nickname else "${m.nickname}（$civName）"
+                val namePart = if (civName.isNullOrEmpty()) m.nickname else "${m.nickname}（${civName.tr()}）"
                 val label = "[$namePart]: ${m.text}".toLabel(fontSize = 18)
                 label.color = if (m.playerId == myId) Color.GREEN else Color.WHITE
                 label.setAlignment(Align.left)
