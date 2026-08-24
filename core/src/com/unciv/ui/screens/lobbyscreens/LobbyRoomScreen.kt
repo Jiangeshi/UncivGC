@@ -653,6 +653,8 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
     private val chatChannels = LinkedHashMap<String, String>()
     /** 各频道未读消息数 (key=频道key, 当前频道不累计) — 2026-08-25 用户要求 */
     private val channelUnread = HashMap<String, Int>()
+    /** 每频道已读 seq: 切换频道时记录, 切回不重计未读 — 2026-08-25 */
+    private val channelReadSeq = HashMap<String, Int>()
     private var chatPopup: Popup? = null
     private var chatPopupMessagesTable: Table? = null
     private var chatPopupScroll: com.badlogic.gdx.scenes.scene2d.ui.ScrollPane? = null
@@ -701,6 +703,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                 row.onClick {
                     currentChatChannel = key
                     channelUnread[key] = 0
+                    channelReadSeq[key] = lastChatSeq  // 切到该频道 = 已读到当前 (2026-08-25)
                     refreshChannels()
                     refreshChatPopupMessages()
                 }
@@ -811,6 +814,9 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             if (chanKey == currentChatChannel) continue
             // 私聊: 只算发给我的 (我发的消息在对方频道, 不算我的未读)
             if (chanKey.startsWith("player:") && m.playerId != playerId && m.to != "player:$playerId") continue
+            // 该频道已读进度: 读过的消息不重计 (2026-08-25)
+            val readSeq = channelReadSeq[chanKey] ?: 0
+            if (m.seq <= readSeq) continue
             channelUnread[chanKey] = (channelUnread[chanKey] ?: 0) + 1
         }
         if (chatPopup != null) refreshChatPopupMessages()

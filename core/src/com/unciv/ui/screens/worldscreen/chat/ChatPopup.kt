@@ -128,6 +128,8 @@ class ChatPopup(
     private var fsPolling = false
     /** playerId -> civName (消息显示文明用) — 2026-08-25 */
     private val fsMemberCivs = HashMap<String, String>()
+    /** 每频道已读 seq: 切换频道时记录, 切回不重计未读 — 2026-08-25 */
+    private val fsChannelReadSeq = HashMap<String, Int>()
 
     private val chatTable = Table(skin)
     private val scrollPane = ScrollPane(chatTable, skin)
@@ -271,6 +273,7 @@ class ChatPopup(
                 row.onClick {
                     fsChannel = key
                     fsUnread[key] = 0
+                    fsChannelReadSeq[key] = fsLastSeq  // 切到该频道 = 已读到当前 (2026-08-25)
                     refreshChannels()
                     refreshMessages()
                 }
@@ -342,6 +345,9 @@ class ChatPopup(
                             if (chanKey == null) continue
                             if (chanKey == fsChannel) continue
                             if (chanKey.startsWith("player:") && m.playerId != myId && m.to != "player:$myId") continue
+                            // 该频道已读进度: 读过的消息不重计 (2026-08-25)
+                            val readSeq = fsChannelReadSeq[chanKey] ?: 0
+                            if (m.seq <= readSeq) continue
                             fsUnread[chanKey] = (fsUnread[chanKey] ?: 0) + 1
                         }
                         val totalUnread = fsUnread.values.sum()
