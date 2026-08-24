@@ -81,7 +81,9 @@ object DiplomacyTurnManager {
     private fun DiplomacyManager.nextTurnCityStateInfluence() {
         val initialRelationshipLevel = relationshipIgnoreAfraid()  // Enough since only >= Friend is notified
 
-        val restingPoint = getCityStateInfluenceRestingPoint()
+        // UncivGC 2026-08-24: 城邦商路 → 静止点 +5/条 (不吃衰减, 多条叠加; 替代临时 addInfluence —
+        // 临时值下回合就衰减掉, 用户看到的"稳定点"没提升). 网络查询非 @Readonly, 只能在此结算处加.
+        val restingPoint = getCityStateInfluenceRestingPoint() + getCityStateTradeRouteInfluenceBonus()
         // We don't use `getInfluence()` here, as then during war with the ally of this CS,
         // our influence would be set to -59, overwriting the old value, which we want to keep
         // as it should be restored once the war ends (though we keep influence degradation from time during the war)
@@ -136,6 +138,21 @@ object DiplomacyTurnManager {
             modifierPercent += 50f  // 50% quicker recovery when sharing a religion
 
         return max(0f, increment) * max(0f, modifierPercent).toPercent()
+    }
+
+
+    /** UncivGC 2026-08-24: 城邦商路静止点加成 — 到该文明 (otherCiv) 的每条连接 +5.
+     * 只能在非 @Readonly 上下文调用 (网络查询带缓存失效) */
+    private fun DiplomacyManager.getCityStateTradeRouteInfluenceBonus(): Float {
+        if (civInfo.isBarbarian) return 0f
+        val network = civInfo.gameInfo.getTradeRouteNetwork()
+        var count = 0
+        for (city in civInfo.cities) {
+            for (route in network.getRoutes(city)) {
+                if (route.otherCity.civ == otherCiv) count++
+            }
+        }
+        return count * 5f
     }
 
     private fun DiplomacyManager.nextTurnFlags() {

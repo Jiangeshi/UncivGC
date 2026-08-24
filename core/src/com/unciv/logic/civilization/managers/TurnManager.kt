@@ -251,6 +251,8 @@ class TurnManager(val civInfo: Civilization) {
     fun endTurn(progressBar: NextTurnProgress? = null):Unit = timeThis("TurnManager.endTurn") {
         // UncivGC 2026-08-24: 跨回合商路连接缓存失效 (道路/人口/开边/屏蔽都可能变化)
         civInfo.gameInfo.invalidateTradeRoutes()
+        // 城邦商路影响力改为静止点机制 (DiplomacyManager.getCityStateInfluenceRestingPoint +5/条),
+        // 不再这里临时 addInfluence — 临时值下回合衰减, 静止点才是"稳定点" (2026-08-24 用户反馈)
         if (UncivGame.Current.settings.citiesAutoBombardAtEndOfTurn)
             NextTurnAutomation.automateCityBombardment(civInfo) // Bombard with all cities that haven't, maybe you missed one
 
