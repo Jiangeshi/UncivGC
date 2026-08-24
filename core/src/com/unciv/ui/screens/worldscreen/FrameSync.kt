@@ -1195,6 +1195,31 @@ object FrameSync {
                     }
                 } catch (ignored: Exception) {
                 }
+                // 使馆条款: 立即应用 Embassy modifier (服务器已应用; 本地同步避免下回合才生效 — 2026-08-24 用户反馈)
+                val embassy = msg["embassy"]?.jsonPrimitive?.contentOrNull == "true"
+                val providerName = msg["embassyProvider"]?.jsonPrimitive?.contentOrNull
+                if (embassy && providerName != null && acceptingCiv != null && !myCiv.isSpectator()) {
+                    try {
+                        val myDm = myCiv.getDiplomacyManager(acceptingCiv)
+                        val theirDm = acceptingCiv.getDiplomacyManager(myCiv)
+                        if (myDm != null && theirDm != null) {
+                            fun applyEmbassy(dm: com.unciv.logic.civilization.diplomacy.DiplomacyManager) {
+                                if (dm.hasModifier(com.unciv.logic.civilization.diplomacy.DiplomaticModifiers.EstablishedEmbassy)) {
+                                    dm.replaceModifier(com.unciv.logic.civilization.diplomacy.DiplomaticModifiers.EstablishedEmbassy,
+                                        com.unciv.logic.civilization.diplomacy.DiplomaticModifiers.SharedEmbassies, 3f)
+                                    dm.otherCivDiplomacy().replaceModifier(com.unciv.logic.civilization.diplomacy.DiplomaticModifiers.ReceivedEmbassy,
+                                        com.unciv.logic.civilization.diplomacy.DiplomaticModifiers.SharedEmbassies, 3f)
+                                } else {
+                                    dm.addModifier(com.unciv.logic.civilization.diplomacy.DiplomaticModifiers.ReceivedEmbassy, 1f)
+                                    dm.otherCivDiplomacy().addModifier(com.unciv.logic.civilization.diplomacy.DiplomaticModifiers.EstablishedEmbassy, 2f)
+                                }
+                            }
+                            if (providerName == myCiv.civName) applyEmbassy(myDm)
+                            else if (providerName == acceptingCiv.civName) applyEmbassy(theirDm)
+                        }
+                    } catch (ignored: Exception) {
+                    }
+                }
             }
             worldScreen.shouldUpdate = true
         }
