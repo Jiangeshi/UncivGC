@@ -27,13 +27,18 @@ object TradeRoutes {
     }
 
     /** 我方城市有、对方城市没有的资源差奖励 (奢侈+200/战略+100/奖金+100, 每种资源) */
+    /** 我方城市有、对方城市没有的资源差奖励 (奢侈+1/战略+0.5/奖金+0.5, 每种资源).
+     *  只算地图/改良资源 (origin=Tiles/Improvements) — 排除建筑/文明级 uniques 的全局资源
+     *  (不在地图生成的资源不能贸易, 2026-08-24 用户确认) */
     fun resourceBonus(city: City, otherCity: City): Float {
         var bonus = 0f
         val ruleset = city.civ.gameInfo.ruleset
-        val myResources = city.getResourcesGeneratedByCity()
-            .filter { it.amount > 0 }.map { it.resource }.toSet()
-        val otherResources = otherCity.getResourcesGeneratedByCity()
-            .filter { it.amount > 0 }.map { it.resource }.toSet()
+        val myResources = com.unciv.logic.city.CityResources.getResourcesGeneratedByCity(city)
+            .filter { it.amount > 0 && (it.origin == "Tiles" || it.origin == "Improvements") }
+            .map { it.resource }.toSet()
+        val otherResources = com.unciv.logic.city.CityResources.getResourcesGeneratedByCity(otherCity)
+            .filter { it.amount > 0 && (it.origin == "Tiles" || it.origin == "Improvements") }
+            .map { it.resource }.toSet()
         for (resource in myResources) {
             if (resource in otherResources) continue
             bonus += when (resource.resourceType) {
