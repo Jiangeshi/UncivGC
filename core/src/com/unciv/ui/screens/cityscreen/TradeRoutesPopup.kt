@@ -8,6 +8,7 @@ import com.unciv.logic.trade.TradeRouteNetwork
 import com.unciv.logic.trade.TradeRoutes
 import com.unciv.models.stats.Stat
 import com.unciv.models.stats.Stats
+import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.translations.tr
 import com.unciv.ui.components.extensions.addSeparator
 import com.unciv.ui.components.extensions.brighten
@@ -93,13 +94,19 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
 
         for ((index, route) in routes.withIndex()) {
             val rank = TradeRoutes.rankOf(city, route)
-            val stats = TradeRoutes.actualStats(city, route, rank)
             val other = route.otherCity
+            val seaFactor = if (route.isSea) 0.7f else 1f  // 与 TradeRoutes.actualStats 一致 (2026-08-25)
             val resBonus = TradeRoutes.resourceBonus(city, other)
-            val seaFactor = if (route.isSea) 0.9f else 1f
             val resBonusDecayed = resBonus * seaFactor
-            val baseGold = stats.gold - resBonusDecayed
-            addRouteRow(index + 1, route, other, baseGold, resBonusDecayed, stats)
+            // 贸易收益列 = 纯人口距离基础 (吃排名衰减 + 海商修正)
+            val popGold = (route.otherCity.population.population * 0.3f + city.population.population * 0.3f) *
+                TradeRoutes.distFactor(route.distance)
+            val baseGold = popGold / rank * seaFactor
+            // 额外收益列 = unique 加成 (含金币, 吃 1/(rank+1) 衰减 + 海商修正)
+            val uniqueStats = Stats()
+            for (unique in city.getMatchingUniques(UniqueType.StatsFromTradeRoute))
+                uniqueStats.add(unique.stats * (1f / (rank + 1)) * seaFactor)
+            addRouteRow(index + 1, route, other, baseGold, resBonusDecayed, uniqueStats)
         }
         contentTable.addSeparator(colSpan = 7).padTop(4f)
     }
@@ -132,7 +139,6 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
     private fun formatExtra(stats: Stats): String {
         val parts = mutableListOf<String>()
         for (stat in Stat.entries) {
-            if (stat == Stat.Gold) continue
             val value = stats[stat]
             if (value != 0f) parts.add("${decimal.format(value)} ${stat.name.tr()}")
         }
