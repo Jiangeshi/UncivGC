@@ -145,8 +145,8 @@ class UnitIconGroup(val unit: MapUnit, val size: Float) : NonTransformGroup() {
             addActor(actionGroup)
         }
 
-        if (unit.health < 100) { // add health bar
-            val hp = ImageGetter.getHealthBar(unit.health.toFloat(), 100f, size * 0.78f)
+        if (unit.health < unit.maxHealth) { // add health bar (编队上限 125/150, 2026-08-24)
+            val hp = ImageGetter.getHealthBar(unit.health.toFloat(), unit.maxHealth.toFloat(), size * 0.78f)
             addActor(hp)
             hp.centerX(this)
         }
