@@ -344,7 +344,7 @@ class MapUnit : IsPartOfGameInfoSerialization {
         // Single+Single → 2 单位均值; Corps/Fleet + Single → 3 单位均值
         // health 是编队均值 → 恢复 n-1 单位总血 (health×(n-1)) + target 再平均 = 各单位当前血量均值
         val totalUnits = if (formation == UnitFormation.Single) 2 else 3
-        val newHealth = ((health * (totalUnits - 1) + target.health) / totalUnits).coerceAtMost(125)
+        val newHealth = ((health * (totalUnits - 1) + target.health) / totalUnits).coerceAtMost(130)
 
         // 升级形态: 水军 → 舰队/无敌舰队, 陆军 → 军团/集团军 (2026-08-22)
         formation = when (formation) {
@@ -366,8 +366,8 @@ class MapUnit : IsPartOfGameInfoSerialization {
     /** 血量上限: 单体 100, 军团/舰队 125, 集团军/无敌舰队 150 (2026-08-24 用户要求) */
     val maxHealth: Int
         get() = when (formation) {
-            UnitFormation.Corps, UnitFormation.Fleet -> 125
-            UnitFormation.Army, UnitFormation.Armada -> 150
+            UnitFormation.Corps, UnitFormation.Fleet -> 115
+            UnitFormation.Army, UnitFormation.Armada -> 130
             else -> 100
         }
 
