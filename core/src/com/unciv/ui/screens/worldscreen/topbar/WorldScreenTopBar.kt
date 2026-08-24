@@ -109,9 +109,8 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
         /** 更新顶栏聊天按钮文本: Chat (n) — 2026-08-25 用户要求 */
         fun updateFsChatUnread(count: Int) {
             val btn = fsChatButtonRef ?: return
-            btn.setText(if (count > 0) "Chat ($count)".tr() else "Chat".tr())
-            btn.pack()
-            btn.setSize(maxOf(btn.width, 60f), btn.height)
+            // 翻译拆开: "Chat".tr() + 数字 (整体字符串无词条不翻译); 固定宽度不 pack (防向右衍生挡状态按钮) — 2026-08-25
+            btn.setText("Chat".tr() + if (count > 0) " ($count)" else "")
         }
     }
     //endregion

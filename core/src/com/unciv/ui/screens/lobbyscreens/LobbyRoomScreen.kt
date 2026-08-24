@@ -692,8 +692,8 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             for ((label, key) in chatChannels) {
                 val unread = channelUnread[key] ?: 0
                 val labelText = if (unread > 0) "$label ($unread)".tr() else label.tr()
-                // 矩形列表行 (参考模组编辑器): 选中绿色高亮, 未选中深灰 — 2026-08-25 用户要求
-                val row = Table()
+                // 矩形列表行: 用 Button (点击可靠 — Table.onClick 在部分环境不触发, 2026-08-25)
+                val row = com.badlogic.gdx.scenes.scene2d.ui.Button()
                 row.background = com.unciv.ui.screens.basescreen.BaseScreen.skinStrings.getUiBackground(
                     "General/Border",
                     tintColor = if (key == currentChatChannel) Color.valueOf("3a7d44") else Color.valueOf("4a4a5a"))

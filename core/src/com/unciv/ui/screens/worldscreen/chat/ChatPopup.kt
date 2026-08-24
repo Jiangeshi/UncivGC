@@ -262,8 +262,8 @@ class ChatPopup(
             for ((label, key) in fsChannels) {
                 val unread = fsUnread[key] ?: 0
                 val text = if (unread > 0) "$label ($unread)" else label
-                // 矩形列表行 (与房间聊天一致) — 2026-08-25
-                val row = Table(skin)
+                // 矩形列表行: 用 Button (点击可靠 — Table.onClick 在部分环境不触发, 2026-08-25 用户反馈)
+                val row = Button(skin)
                 row.background = com.unciv.ui.screens.basescreen.BaseScreen.skinStrings.getUiBackground(
                     "General/Border",
                     tintColor = if (key == fsChannel) Color.valueOf("3a7d44") else Color.valueOf("4a4a5a"))
