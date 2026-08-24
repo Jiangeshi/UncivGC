@@ -162,6 +162,8 @@ class TradeRouteNetwork(val gameInfo: GameInfo) {
             if (dist > 0 && tile.isCityCenter()) {
                 val otherCity = tile.getCity()
                 if (otherCity != null && otherCity != city && !otherCity.civ.isBarbarian
+                    // 海路同样要外交门槛: 和平+已遇见+开边 (设计稿 §8/§2.4 — 2026-08-25 补齐, 之前漏了)
+                    && canEnterBordersOf(city.civ, otherCity.civ)
                     && otherCity.containsBuildingUnique(UniqueType.ConnectTradeRoutes)
                     && !otherCity.isBlockaded()
                     && !reachable.containsKey(otherCity)
