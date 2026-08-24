@@ -692,20 +692,19 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             for ((label, key) in chatChannels) {
                 val unread = channelUnread[key] ?: 0
                 val labelText = if (unread > 0) "$label ($unread)".tr() else label.tr()
-                val btn = labelText.toTextButton()
-                if (key == currentChatChannel) {
-                    // 选中高亮: 绿色背景 + 加粗感 (用户要求明确选中项 — 2026-08-25)
-                    btn.color = Color.GREEN
-                } else {
-                    btn.color = Color.WHITE
-                }
-                btn.onClick {
+                // 矩形列表行 (参考模组编辑器): 选中绿色高亮, 未选中深灰 — 2026-08-25 用户要求
+                val row = Table()
+                row.background = com.unciv.ui.screens.basescreen.BaseScreen.skinStrings.getUiBackground(
+                    "General/Border",
+                    tintColor = if (key == currentChatChannel) Color.valueOf("3a7d44") else Color.valueOf("4a4a5a"))
+                row.add(labelText.toLabel().apply { color = Color.WHITE }).growX().pad(6f, 10f, 6f, 10f)
+                row.onClick {
                     currentChatChannel = key
                     channelUnread[key] = 0
                     refreshChannels()
                     refreshChatPopupMessages()
                 }
-                channelTable.add(btn).growX().pad(2f).row()
+                channelTable.add(row).growX().pad(2f).row()
             }
             channelTable.pack()
         }

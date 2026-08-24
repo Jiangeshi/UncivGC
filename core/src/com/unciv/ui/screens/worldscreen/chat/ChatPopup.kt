@@ -119,6 +119,14 @@ class ChatPopup(
     val chat: Chat,
     private val worldScreen: WorldScreen,
 ) : Popup(screen = worldScreen, scrollable = Scrollability.None) {
+    // ==================== UncivGC 帧同步新版聊天 (私聊) — 必须在 init 之前声明 (Kotlin 属性初始化顺序) ====================
+    private var fsChannel = "world"
+    private val fsChannels = LinkedHashMap<String, String>()
+    private val fsUnread = HashMap<String, Int>()
+    private val fsMessages = ArrayList<com.unciv.logic.lobby.LobbyChatMessage>()
+    private var fsLastSeq = 0
+    private var fsPolling = false
+
     private val chatTable = Table(skin)
     private val scrollPane = ScrollPane(chatTable, skin)
     private val messageField = UncivTextField(hint = "Type something...")
@@ -185,14 +193,6 @@ class ChatPopup(
         })
     }
 
-    // ==================== UncivGC 帧同步新版聊天 (私聊) ====================
-    private var fsChannel = "world"
-    private val fsChannels = LinkedHashMap<String, String>()
-    private val fsUnread = HashMap<String, Int>()
-    private val fsMessages = ArrayList<com.unciv.logic.lobby.LobbyChatMessage>()
-    private var fsLastSeq = 0
-    private var fsPolling = false
-
     private fun buildFsChat() {
         val roomId = com.unciv.ui.screens.lobbyscreens.LobbyRoomScreen.activeRoomId ?: return
         val myId = com.unciv.ui.screens.lobbyscreens.LobbyRoomScreen.currentPlayerId()
@@ -254,15 +254,19 @@ class ChatPopup(
             for ((label, key) in fsChannels) {
                 val unread = fsUnread[key] ?: 0
                 val text = if (unread > 0) "$label ($unread)" else label
-                val btn = text.toTextButton()
-                btn.color = if (key == fsChannel) Color.GREEN else Color.WHITE
-                btn.onClick {
+                // 矩形列表行 (与房间聊天一致) — 2026-08-25
+                val row = Table(skin)
+                row.background = com.unciv.ui.screens.basescreen.BaseScreen.skinStrings.getUiBackground(
+                    "General/Border",
+                    tintColor = if (key == fsChannel) Color.valueOf("3a7d44") else Color.valueOf("4a4a5a"))
+                row.add(text.toLabel().apply { color = Color.WHITE }).growX().pad(6f, 10f, 6f, 10f)
+                row.onClick {
                     fsChannel = key
                     fsUnread[key] = 0
                     refreshChannels()
                     refreshMessages()
                 }
-                channelTable.add(btn).growX().pad(2f).row()
+                channelTable.add(row).growX().pad(2f).row()
             }
             channelTable.pack()
         }
