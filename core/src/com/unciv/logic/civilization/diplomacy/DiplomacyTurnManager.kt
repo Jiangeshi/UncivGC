@@ -91,14 +91,13 @@ object DiplomacyTurnManager {
             val decrement = getCityStateInfluenceDegrade()
             setInfluence(max(restingPoint, influence - decrement))
         } else if (influence < restingPoint) {
-            // 商路静止点加成部分立即到位 (用户可立即看到 +5); 其余部分按原版恢复速度 — 2026-08-24
-            // 不能直接用 getCityStateInfluenceRecovery: 它内部用原静止点判定 (不含商路加成),
-            // 影响力在 [原静止点, 新静止点] 之间时返回 0 → 永不回升 (用户反馈"稳定点没提升")
-            val bonus = getCityStateTradeRouteInfluenceBonus()
-            if (bonus > 0f && influence < bonus) {
-                setInfluence(min(restingPoint, bonus))
+            // 每回合回升到新基准点 (含商路加成). getCityStateInfluenceRecovery 用原静止点判定,
+            // influence >= 原静止点时返回 0 → 商路加成部分永不回升; 此时每回合至少 +1
+            // (用户要求: 一回合一回合增加, 不是立即跳到新基准点; 2026-08-24)
+            val increment = getCityStateInfluenceRecovery()
+            if (increment <= 0f) {
+                setInfluence(min(restingPoint, influence + 1f))
             } else {
-                val increment = getCityStateInfluenceRecovery()
                 setInfluence(min(restingPoint, influence + increment))
             }
         }
