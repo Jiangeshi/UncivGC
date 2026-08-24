@@ -200,6 +200,9 @@ class ChatPopup(
 
         val header = Table(skin)
         header.add("Chat".toLabel(fontSize = 30, alignment = Align.center)).expandX()
+        header.add(
+            ImageButton(ImageGetter.getImage("OtherIcons/Close").drawable).onClick { close() }
+        ).size(30f, 30f).right()
         add(header).left().pad(5f).expandX().row()
 
         val mainRow = Table()

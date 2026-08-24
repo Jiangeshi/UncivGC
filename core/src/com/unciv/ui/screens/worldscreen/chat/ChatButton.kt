@@ -56,6 +56,13 @@ class ChatButton(val worldScreen: WorldScreen) : IconTextButton(
         private fun updateBadge() {
         val count = if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo))
             fsUnreadCount else chat.unreadCount
+        // 帧同步: 未读显示在按钮文字上 "Chat (n)" (用户要求, 与房间聊天一致 — 2026-08-25)
+        if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo)) {
+            label.setText(if (count > 0) "Chat ($count)" else "Chat")
+            badge.setText("")
+            badge.isVisible = false
+            return
+        }
         badge.setText(if (count > 0) count.toString() else "")
         badge.height = height / 3
         badge.setPosition(
