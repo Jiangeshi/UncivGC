@@ -340,8 +340,11 @@ class MapUnit : IsPartOfGameInfoSerialization {
         )
         formationSnapshots.add(snapshot)
 
-        // HP 合并 (上限 100)
-        health = (health + target.health).coerceAtMost(100)
+        // HP 合并: 改为各单位当前血量均值 (2026-08-24 用户要求; 之前是相加上限 100)
+        // Single+Single → 2 单位均值; Corps/Fleet + Single → 3 单位均值
+        // health 是编队均值 → 恢复 n-1 单位总血 (health×(n-1)) + target 再平均 = 各单位当前血量均值
+        val totalUnits = if (formation == UnitFormation.Single) 2 else 3
+        health = ((health * (totalUnits - 1) + target.health) / totalUnits).coerceAtMost(100)
 
         // 升级形态: 水军 → 舰队/无敌舰队, 陆军 → 军团/集团军 (2026-08-22)
         formation = when (formation) {
