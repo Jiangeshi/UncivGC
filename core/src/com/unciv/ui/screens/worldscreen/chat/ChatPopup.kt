@@ -120,6 +120,11 @@ class ChatPopup(
     private val worldScreen: WorldScreen,
 ) : Popup(screen = worldScreen, scrollable = Scrollability.None) {
     // ==================== UncivGC 帧同步新版聊天 (私聊) — 必须在 init 之前声明 (Kotlin 属性初始化顺序) ====================
+    companion object {
+        /** 每频道已读 seq (静态: 弹窗关闭重开不重置) — 2026-08-25 */
+        val fsChannelReadSeqStatic = HashMap<String, Int>()
+    }
+
     private var fsChannel = "world"
     private val fsChannels = LinkedHashMap<String, String>()
     private val fsUnread = HashMap<String, Int>()
@@ -129,7 +134,7 @@ class ChatPopup(
     /** playerId -> civName (消息显示文明用) — 2026-08-25 */
     private val fsMemberCivs = HashMap<String, String>()
     /** 每频道已读 seq: 切换频道时记录, 切回不重计未读 — 2026-08-25 */
-    private val fsChannelReadSeq = HashMap<String, Int>()
+    private val fsChannelReadSeq = fsChannelReadSeqStatic
 
     private val chatTable = Table(skin)
     private val scrollPane = ScrollPane(chatTable, skin)

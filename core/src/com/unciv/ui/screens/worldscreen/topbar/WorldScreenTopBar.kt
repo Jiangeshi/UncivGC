@@ -85,7 +85,7 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
      *  init 直接访问会 NPE (开房卡住根因) */
     private val fsChatButton: com.badlogic.gdx.scenes.scene2d.Actor? by lazy {
         if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo)) {
-            val btn = com.badlogic.gdx.scenes.scene2d.ui.TextButton("Chat".tr(), BaseScreen.skin)
+            val btn = com.badlogic.gdx.scenes.scene2d.ui.TextButton("聊天", BaseScreen.skin)
             fsChatButtonRef = btn
             btn.onClick {
                 val chat = com.unciv.logic.multiplayer.chat.ChatStore.getChatByGameId(worldScreen.gameInfo.gameId)
@@ -94,7 +94,7 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
                 com.unciv.ui.screens.worldscreen.chat.ChatPopup(chat, worldScreen).open()
             }
             btn.pack()
-            btn.setSize(maxOf(btn.width, 60f), btn.height)  // 与其他按钮同宽 (2026-08-22)
+            btn.setSize(maxOf(btn.width, 60f) * 2f, btn.height)  // 固定两倍宽, 未读不改变宽度 (2026-08-25 用户要求)
             btn
         } else null
     }
@@ -109,8 +109,8 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
         /** 更新顶栏聊天按钮文本: Chat (n) — 2026-08-25 用户要求 */
         fun updateFsChatUnread(count: Int) {
             val btn = fsChatButtonRef ?: return
-            // 翻译拆开: "Chat".tr() + 数字 (整体字符串无词条不翻译); 固定宽度不 pack (防向右衍生挡状态按钮) — 2026-08-25
-            btn.setText("Chat".tr() + if (count > 0) " ($count)" else "")
+            // 中文"聊天" + 数字; 只改文本不 pack (宽度固定, 不向右衍生) — 2026-08-25
+            btn.setText("聊天" + if (count > 0) " ($count)" else "")
         }
     }
     //endregion
