@@ -143,18 +143,18 @@ object UnitActions {
         addAutomateActions(unit)
         if (unit.isMoving())
             yield(UnitAction(UnitActionType.StopMovement, 20f) {
-                // UncivGC 帧同步: 统一服务器广播 + 本地乐观 (立即反馈, 广播纠正)
-                if (FrameSync.tryInterceptOp(FrameSync.currentWorldScreenOrNull(), "unit.stopMovement", mapOf("unitId" to unit.id)))
+                // UncivGC 帧同步: 统一服务器广播; 单机本地执行 — 2026-08-24 修复写反 (if 反了 → 单机无法停止移动)
+                if (!FrameSync.tryInterceptOp(FrameSync.currentWorldScreenOrNull(), "unit.stopMovement", mapOf("unitId" to unit.id)))
                     unit.action = null
             })
         if (unit.isExploring())
             yield(UnitAction(UnitActionType.StopExploration, 20f) {
-                if (FrameSync.tryInterceptOp(FrameSync.currentWorldScreenOrNull(), "unit.explore", mapOf("unitId" to unit.id, "on" to false)))
+                if (!FrameSync.tryInterceptOp(FrameSync.currentWorldScreenOrNull(), "unit.explore", mapOf("unitId" to unit.id, "on" to false)))
                     unit.action = null
             })
         if (unit.isAutomated())
             yield(UnitAction(UnitActionType.StopAutomation, 10f) {
-                if (FrameSync.tryInterceptOp(FrameSync.currentWorldScreenOrNull(), "unit.automate", mapOf("unitId" to unit.id, "on" to false)))
+                if (!FrameSync.tryInterceptOp(FrameSync.currentWorldScreenOrNull(), "unit.automate", mapOf("unitId" to unit.id, "on" to false)))
                     unit.run {
                         action = null
                         automated = false
@@ -213,7 +213,9 @@ object UnitActions {
                 type = UnitActionType.StopEscortFormation,
                 useFrequency = 50f,
                 action = {
-                    if (FrameSync.tryInterceptOp(worldScreen, "unit.escort", mapOf("unitId" to unit.id, "on" to false)))
+                    // 注意: 条件与开始护送一致 (!tryInterceptOp = 单机本地执行) — 2026-08-24 修复写反:
+                    // 之前 if (tryInterceptOp) → 单机 false 不执行 → 编队后无法解开
+                    if (!FrameSync.tryInterceptOp(worldScreen, "unit.escort", mapOf("unitId" to unit.id, "on" to false)))
                         unit.stopEscorting()
                 }))
         }
