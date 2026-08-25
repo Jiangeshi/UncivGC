@@ -163,6 +163,10 @@ object FrameSync {
     @Volatile private var reloading = false
     /** 2026-08-25 结算就绪: 重载完成后待发送的 turnReady 标记 (新连接建立时发送) */
     @Volatile private var pendingTurnReady = false
+    /** 2026-08-26 重载重连标记: 连接 URL 带 reload=1 → fs_server 跳过全量拉取
+     *  (重载后本地数据 = 刚下载的存档 = 全量, 再拉 451KB 全量纯属浪费; 连接成功后才清 —
+     *  失败重试期间保持, 掉线自动重连时已清 → 恢复全量拉取) */
+    @Volatile private var reloadReconnect = false
     /** 已重载到的服务器回合 (saveUpdated 幂等: 只重载更新的存档) */
     @Volatile private var lastReloadedTurn = -1
     /** 本次状态广播中城市状态是否有变化 (hp/人口/地块) → 打开的城市界面需要刷新 */
@@ -229,6 +233,7 @@ object FrameSync {
         // 跨局状态重置 (跳海/换房后新局: 完成回合/倒计时/重载幂等必须清零, 否则新局失效)
         lastReloadedTurn = -1
         pendingTurnReady = false  // 新局/新连接: 不发送就绪 (仅结算重载后发送)
+        reloadReconnect = false  // 新局: 不跳过全量 (防上一局重载标记残留)
         myTurnFinished = false
         turnDeadline = 0
         turnReadyPlayers = emptyList()
@@ -340,6 +345,7 @@ object FrameSync {
                 meetUnitPos.clear()
                 meetCitySnapshot.clear()
                 teamExploredMerged = false  // 重载后重新全量合并队友探索历史
+                reloadReconnect = true  // 2026-08-26: 重载重连标记 — 新连接跳过全量拉取 (数据=存档)
                 com.unciv.UncivGame.Current.loadGame(gi)
                 if (turn >= 0) lastReloadedTurn = turn  // 成功才记录
                 // 2026-08-25 结算就绪: 重载完成 → 新连接建立后通知服务器 (全员就绪才广播新回合)
@@ -690,7 +696,9 @@ object FrameSync {
             ?: LobbyApi.SERVER_URL.substringAfter("://").substringBefore(':')
         val spec = if (isSpectating) "&spectator=true" else ""
         // v=2: 声明支持状态广播 gzip 压缩 (fs_server 按连接能力分发, 旧客户端不受影响)
-        return "ws://$host:$FS_PORT/ws?gameId=$gameId&playerId=$playerId&nickname=${java.net.URLEncoder.encode(nickname, "UTF-8")}$spec&v=2"
+        // reload=1: 重载重连 — 数据=刚下载的存档(全量), 跳过服务器全量拉取 (2026-08-26); 不消费标记 (连接成功才清)
+        val reload = if (reloadReconnect) "&reload=1" else ""
+        return "ws://$host:$FS_PORT/ws?gameId=$gameId&playerId=$playerId&nickname=${java.net.URLEncoder.encode(nickname, "UTF-8")}$spec&v=2$reload"
     }
 
     private fun connectLoop() {
@@ -732,6 +740,7 @@ object FrameSync {
         val ws = client.webSocketSession { url(fsUrl()) }
         session = ws
         connected = true
+        reloadReconnect = false  // 2026-08-26: 连接成功 → 后续掉线重连恢复全量拉取
         lastErrorShown = ""
         lastPongAt = System.currentTimeMillis()
         updateStatusLabel()
