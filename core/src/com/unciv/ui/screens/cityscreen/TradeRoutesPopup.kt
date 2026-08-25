@@ -42,11 +42,12 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
 
         val scrollPane = AutoScrollPane(contentTable)
         scrollPane.setOverscroll(false, false)
+        scrollPane.setScrollingDisabled(false, false)  // 双向滚动: 城市/商路多时竖向滚, 超宽横向滚
         scrollPane.fadeScrollBars = false
         val scrollPaneCell = add(scrollPane).padTop(0f)
-        // 固定尺寸视口 (模组编辑器/游戏设置同款, 2026-08-26 用户确认): 内容多大都不撑爆, 双向滚动
-        scrollPaneCell.width(min(screen.stage.width * 0.92f, 720f))
-        scrollPaneCell.height(min(screen.stage.height * 0.6f, 440f))
+        // 固定尺寸视口 (模组编辑器/游戏设置同款): 内容多大都不撑爆; 宽度覆盖全部列 (不横向溢出), 高度留给竖向滚动
+        scrollPaneCell.width(min(screen.stage.width * 0.95f, 780f))
+        scrollPaneCell.height(min(screen.stage.height * 0.7f, 520f))
 
         row()
         addCloseButton(additionalKey = KeyCharAndCode.SPACE)
@@ -138,7 +139,7 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
             val theirStats = if (isInitiatorGroup) TradeRoutes.receiverStats(fromCity, route)
                              else TradeRoutes.initiatorStats(fromCity, route)
             contentTable.add(makeLabel(type)).minWidth(columnWidths[0]).pad(6f, 8f)
-            contentTable.add(makeLabel(other.name.tr())).minWidth(columnWidths[1]).pad(6f, 8f)
+            contentTable.add(makeCityLabel(other.name.tr())).minWidth(columnWidths[1]).maxWidth(columnWidths[1]).pad(6f, 8f)
             contentTable.add(makeLabel(route.distance.toString())).minWidth(columnWidths[2]).pad(6f, 8f)
             contentTable.add(makeLabel(way)).minWidth(columnWidths[3]).pad(6f, 8f)
             contentTable.add(makeLabel(formatStats(myStats))).minWidth(columnWidths[4]).pad(6f, 8f)
@@ -210,7 +211,7 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
                 else -> "道路"
             }
             contentTable.add(makeLabel(type)).minWidth(columnWidths[0]).pad(6f, 8f)
-            contentTable.add(makeLabel(other.name.tr())).minWidth(columnWidths[1]).pad(6f, 8f)
+            contentTable.add(makeCityLabel(other.name.tr())).minWidth(columnWidths[1]).maxWidth(columnWidths[1]).pad(6f, 8f)
             contentTable.add(makeLabel(route.distance.toString())).minWidth(columnWidths[2]).pad(6f, 8f)
             contentTable.add(makeLabel(way)).minWidth(columnWidths[3]).pad(6f, 8f)
             contentTable.add(makeLabel(formatStats(myStats))).minWidth(columnWidths[4]).pad(6f, 8f)
@@ -265,6 +266,12 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
     }
 
     private fun makeLabel(text: String) = text.toLabel().apply { setAlignment(Align.center) }
+
+    /** 城市名: 超长用省略号截断 (2026-08-26 用户要求) */
+    private fun makeCityLabel(text: String) = text.toLabel().apply {
+        setAlignment(Align.center)
+        setEllipsis(true)
+    }
 
     private fun formatStats(stats: Stats): String {
         val parts = mutableListOf<String>()

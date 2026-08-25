@@ -46,6 +46,7 @@ object TradeAutomation {
                     for (route in gameInfo.getTradeRouteNetwork().getReachable(city)) {
                         val t = route.otherCity
                         if (t.civ.isBarbarian) continue
+                        if (t.civ.isHuman()) continue  // 2026-08-26 用户要求: AI 不主动向玩家发起外商连接 (玩家城市只能被玩家自己连)
                         val connected = gameInfo.tradeRoutes[city.id]?.contains(t.id) == true
                         val offered = gameInfo.tradeRouteOffers[city.id]?.contains(t.id) == true
                         if (connected || offered) continue
