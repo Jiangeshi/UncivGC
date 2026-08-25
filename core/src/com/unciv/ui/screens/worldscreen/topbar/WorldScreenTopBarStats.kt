@@ -68,7 +68,7 @@ internal class WorldScreenTopBarStats(topbar: WorldScreenTopBar) : ScalingTableW
         }
         icon.onClick(invokeTradeRoute)
         tradeRouteLabel.onClick(invokeTradeRoute)
-        add(icon).padBottom(defaultImageBottomPad + 5f).size(defaultImageSize - 1f)  // 贸易图标视觉重心偏高, 微调下移
+        add(icon).padBottom(defaultImageBottomPad - 5f).size(defaultImageSize - 1f)  // 贸易图标视觉重心偏高, 下移5px (2026-08-26 修复: padBottom 增大=内容上移, 之前 +5f 方向反了)
         add(tradeRouteLabel).padRight(padRightBetweenStats)
     }
 
