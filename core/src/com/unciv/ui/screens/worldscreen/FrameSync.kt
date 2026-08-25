@@ -345,9 +345,12 @@ object FrameSync {
                 meetUnitPos.clear()
                 meetCitySnapshot.clear()
                 teamExploredMerged = false  // 重载后重新全量合并队友探索历史
-                reloadReconnect = true  // 2026-08-26: 重载重连标记 — 新连接跳过全量拉取 (数据=存档)
                 com.unciv.UncivGame.Current.loadGame(gi)
                 if (turn >= 0) lastReloadedTurn = turn  // 成功才记录
+                // 2026-08-26 重载重连标记: 必须在 loadGame 之后设置 — loadGame 同步触发新 WorldScreen →
+                // start() (单例 object) 会无条件重置标记, loadGame 前设置会被清掉 → reload=1 失效;
+                // 设在成功后还能保证 loadGame 异常 (catch 恢复旧连接) 时不残留 → 旧连接正常拉全量
+                reloadReconnect = true
                 // 2026-08-25 结算就绪: 重载完成 → 新连接建立后通知服务器 (全员就绪才广播新回合)
                 pendingTurnReady = true
             } catch (e: Exception) {
