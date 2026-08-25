@@ -22,6 +22,7 @@ import com.unciv.ui.popups.ConfirmPopup
 import com.unciv.ui.popups.Popup
 import com.unciv.ui.screens.worldscreen.FrameSync
 import java.text.DecimalFormat
+import kotlin.math.min
 
 /** 商路管理弹窗 (UncivGC 2026-08-26 设计稿 v2): 每城管理自己的 — 本城发起/本城接收/可建立。
  *  表格列: 类型(内商/外商) | 目的地 | 距离 | 方式 | 收益(stat) | 操作
@@ -41,9 +42,11 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
 
         val scrollPane = AutoScrollPane(contentTable)
         scrollPane.setOverscroll(false, false)
+        scrollPane.fadeScrollBars = false
         val scrollPaneCell = add(scrollPane).padTop(0f)
-        scrollPaneCell.maxHeight(screen.stage.height * 3 / 4)
-        scrollPaneCell.minWidth(screen.stage.width * 3 / 5)
+        // 固定尺寸视口 (模组编辑器/游戏设置同款, 2026-08-26 用户确认): 内容多大都不撑爆, 双向滚动
+        scrollPaneCell.width(min(screen.stage.width * 0.92f, 720f))
+        scrollPaneCell.height(min(screen.stage.height * 0.6f, 440f))
 
         row()
         addCloseButton(additionalKey = KeyCharAndCode.SPACE)
@@ -84,9 +87,11 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
         addGroup("我的接收", receiverRoutes, isInitiatorGroup = false, showEmpty = true)
 
         // 可建立 (可达且未连接, 容量未满)
+        // 2026-08-26 用户要求: 允许双向 — A→B 已存在时 B 也能连 A (各自方向一次);
+        // 只排除自己已发起的连接 (接收的不算), 已有邀请也只算自己发出的
         if (used < cap) {
-            val existing = network.getEstablishedRoutes(city).map { it.otherCity.id }.toSet()
-            val offerTargets = gameInfo.tradeRouteOffers.values.flatten().toSet()
+            val existing = gameInfo.tradeRoutes[city.id]?.toSet() ?: emptySet()
+            val offerTargets = gameInfo.tradeRouteOffers[city.id]?.toSet() ?: emptySet()
             val candidates = network.getReachable(city)
                 .filter { it.otherCity.id !in existing && it.otherCity.id !in offerTargets }
                 .sortedByDescending { TradeRoutes.initiatorStats(city, it).gold }
