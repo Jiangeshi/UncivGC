@@ -98,6 +98,7 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
     }
 
     private fun addGroup(title: String, routes: List<TradeRouteNetwork.Route>, isInitiatorGroup: Boolean, showEmpty: Boolean) {
+        val gameInfo = city.civ.gameInfo
         val groupLabel = title.toLabel()
         groupLabel.setAlignment(Align.center)
         contentTable.add(groupLabel).colspan(6).growX().padTop(10f).padBottom(2f).row()
@@ -135,7 +136,18 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
             val opCell = Table()
             opCell.add("断开".toTextButton().apply {
                 onClick {
-                    FrameSync.sendTradeRouteDisconnect(city.id, other.id)
+                    if (FrameSync.isFsMode(gameInfo)) {
+                        FrameSync.sendTradeRouteDisconnect(city.id, other.id)
+                    } else {
+                        // 单机: 本地直接执行 (任一方断开)
+                        val fromList = gameInfo.tradeRoutes[city.id]
+                        if (fromList != null && fromList.remove(other.id) && fromList.isEmpty())
+                            gameInfo.tradeRoutes.remove(city.id)
+                        val revList = gameInfo.tradeRoutes[other.id]
+                        if (revList != null && revList.remove(city.id) && revList.isEmpty())
+                            gameInfo.tradeRoutes.remove(other.id)
+                        gameInfo.invalidateTradeRoutes()
+                    }
                     isDisabled = true
                 }
             }).pad(2f)
@@ -146,6 +158,7 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
     }
 
     private fun addCandidates(candidates: List<TradeRouteNetwork.Route>) {
+        val gameInfo = city.civ.gameInfo
         val groupLabel = "可建立商路".toLabel()
         groupLabel.setAlignment(Align.center)
         contentTable.add(groupLabel).colspan(6).growX().padTop(10f).padBottom(2f).row()
@@ -180,7 +193,14 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
             val opCell = Table()
             opCell.add("建立".toTextButton().apply {
                 onClick {
-                    FrameSync.sendTradeRouteOffer(city.id, other.id)
+                    if (FrameSync.isFsMode(gameInfo)) {
+                        FrameSync.sendTradeRouteOffer(city.id, other.id)
+                    } else {
+                        // 单机: 本地直接执行 (内商/外商/城邦都直接建立)
+                        val list = gameInfo.tradeRoutes.getOrPut(city.id) { ArrayList() }
+                        if (!list.contains(other.id)) list.add(other.id)
+                        gameInfo.invalidateTradeRoutes()
+                    }
                     isDisabled = true
                 }
             }).pad(2f)

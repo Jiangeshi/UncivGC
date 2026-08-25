@@ -309,14 +309,29 @@ class AlertPopup(
         addCloseButton("接受", KeyboardBinding.Confirm) {
             if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
                 FrameSync.sendTradeRouteAcceptOffer(fromCity.id)
-                viewingCiv.popupAlerts.remove(popupAlert)
+            } else {
+                // 单机: 本地直接建立
+                val list = viewingCiv.gameInfo.tradeRoutes.getOrPut(fromCity.id) { ArrayList() }
+                if (!list.contains(toCity.id)) list.add(toCity.id)
+                viewingCiv.gameInfo.tradeRouteOffers[fromCity.id]?.remove(toCity.id)
+                viewingCiv.gameInfo.tradeRouteOffers[fromCity.id]?.takeIf { it.isEmpty() }?.let {
+                    viewingCiv.gameInfo.tradeRouteOffers.remove(fromCity.id)
+                }
+                viewingCiv.gameInfo.invalidateTradeRoutes()
             }
+            viewingCiv.popupAlerts.remove(popupAlert)
         }.row()
         addCloseButton("拒绝", KeyboardBinding.Cancel) {
             if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
                 FrameSync.sendTradeRouteRejectOffer(fromCity.id)
-                viewingCiv.popupAlerts.remove(popupAlert)
+            } else {
+                viewingCiv.gameInfo.tradeRouteOffers[fromCity.id]?.remove(toCity.id)
+                viewingCiv.gameInfo.tradeRouteOffers[fromCity.id]?.takeIf { it.isEmpty() }?.let {
+                    viewingCiv.gameInfo.tradeRouteOffers.remove(fromCity.id)
+                }
+                viewingCiv.gameInfo.invalidateTradeRoutes()
             }
+            viewingCiv.popupAlerts.remove(popupAlert)
         }.row()
         return true
     }

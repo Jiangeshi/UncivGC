@@ -18,10 +18,11 @@ import com.unciv.models.stats.Stats
  */
 object TradeRoutes {
 
-    /** 发起方收益: 金币 = 已改良地块资源数 + 0.5×距离 */
+    /** 发起方收益: 金币 = 已改良地块资源数 + 距离×系数 (2026-08-26 用户调整: 陆商 1/格, 海商 0.5/格) */
     fun initiatorStats(city: City, route: TradeRouteNetwork.Route): Stats {
         val stats = Stats()
-        stats.gold = improvedResourceCount(city) + 0.5f * route.distance
+        val distFactor = if (route.isSea) 0.5f else 1f
+        stats.gold = improvedResourceCount(city) + distFactor * route.distance
         return stats
     }
 
