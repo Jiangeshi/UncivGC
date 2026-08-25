@@ -22,15 +22,16 @@ object TradeRoutes {
     fun baseFor(city: City, route: TradeRouteNetwork.Route): Float {
         val otherPop = route.otherCity.population.population
         val ownPop = city.population.population
-        // 人口系数 0.3/0.3 (2026-08-25 用户调整)
-        var gold = (otherPop * 0.3f + ownPop * 0.3f) * distFactor(route.distance)
+        // 人口系数 0.2/0.2 (2026-08-25 用户削弱: 0.3→0.2)
+        var gold = (otherPop * 0.2f + ownPop * 0.2f) * distFactor(route.distance)
         gold += resourceBonus(city, route.otherCity)
         return gold
     }
 
-    /** 我方城市有、对方城市没有的资源差奖励 (奢侈+1/战略+0.5/奖金+0.5, 每种资源).
+    /** 我方城市有、对方城市没有的资源差奖励 (奢侈+0.3/战略+0.15/奖金+0.15, 每种资源).
      *  只算归属本城的地块资源 (tile.getCity()==city — 重叠地块只算归属城市, 2026-08-24 用户要求)
-     *  且已改良 (或城市中心自动供应); 排除建筑/文明级 uniques 全局资源 */
+     *  且已改良 (或城市中心自动供应); 排除建筑/文明级 uniques 全局资源
+     *  2026-08-25 用户削弱: 奢侈 0.5→0.3 / 战略 0.25→0.15 / 奖金 0.25→0.15 */
     fun resourceBonus(city: City, otherCity: City): Float {
         var bonus = 0f
         val ruleset = city.civ.gameInfo.ruleset
@@ -49,9 +50,9 @@ object TradeRoutes {
         for (resource in myResources) {
             if (resource in otherResources) continue
             bonus += when (resource.resourceType) {
-                ResourceType.Luxury -> 0.5f
-                ResourceType.Strategic -> 0.25f
-                ResourceType.Bonus -> 0.25f
+                ResourceType.Luxury -> 0.3f
+                ResourceType.Strategic -> 0.15f
+                ResourceType.Bonus -> 0.15f
             }
         }
         return bonus
@@ -68,13 +69,15 @@ object TradeRoutes {
 
     /** 单条商路实际收益:
      *  [ (对方人口×0.5 + 本城人口×0.3) × 距离系数 ÷ rank + 资源差 ] × 海商系数(海路0.9)
-     *  资源差不吃排名衰减, 吃海商系数 (2026-08-24 用户确认) */
+     *  资源差不吃排名衰减, 吃海商系数 (2026-08-24 用户确认)
+     *  2026-08-25 用户削弱: 人口系数 0.3→0.2, 衰减统一 1/rank → 1/(rank+1) */
     fun actualStats(city: City, route: TradeRouteNetwork.Route, rank: Int): Stats {
         val stats = Stats()
         val seaFactor = if (route.isSea) 0.7f else 1f  // 海商系数 0.7 (2026-08-25 用户调整)
-        val popGold = ((route.otherCity.population.population * 0.3f + city.population.population * 0.3f)
+        val popGold = ((route.otherCity.population.population * 0.2f + city.population.population * 0.2f)
                 * distFactor(route.distance))
-        stats.gold = (popGold / rank + resourceBonus(city, route.otherCity)) * seaFactor
+        // 衰减统一 1/(rank+1) (2026-08-25 用户削弱: 之前基础 1/rank, 加成 1/(rank+1))
+        stats.gold = (popGold / (rank + 1) + resourceBonus(city, route.otherCity)) * seaFactor
         // 加成类也吃海商系数 (2026-08-25 用户要求)
         for (unique in city.getMatchingUniques(UniqueType.StatsFromTradeRoute))
             stats.add(unique.stats * (1f / (rank + 1)) * seaFactor)
