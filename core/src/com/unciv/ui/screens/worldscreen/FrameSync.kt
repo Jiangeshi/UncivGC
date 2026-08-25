@@ -818,6 +818,7 @@ object FrameSync {
             "tradeRequest" -> handleTradeRequest(msg)
             "tradeRetracted" -> handleTradeRetracted(msg)
             "tradeAccepted" -> handleTradeAccepted(msg)
+            "tradeRejected" -> handleTradeRejected(msg)
             "friendshipOffer" -> handleFriendshipOffer(msg)
             "demandOffer" -> handleDemandOffer(msg)
             "denounced" -> handleDenounced(msg)
@@ -1212,6 +1213,16 @@ object FrameSync {
                 } else {
                     myCiv.tradeRequests.removeAll { it.requestingCiv == acceptingCivName }
                 }
+                // 成交通知 (原版 TradePopup 接受路径有, 帧同步纯拦截路径缺失 — 2026-08-26 用户反馈):
+                // 只给发起方 (handleTradeAccepted 已被 playerId 过滤); acceptingCiv = 接受方
+                if (acceptingCiv != null) {
+                    try {
+                        myCiv.addNotification("[${acceptingCiv.civName}] has accepted your trade request",
+                            com.unciv.logic.civilization.NotificationCategory.Trade, acceptingCiv.civName,
+                            com.unciv.logic.civilization.NotificationIcon.Trade)
+                    } catch (ignored: Exception) {
+                    }
+                }
                 try {
                     val cur = com.unciv.UncivGame.Current.screen
                     if (cur is com.unciv.ui.screens.worldscreen.TradePopup) {
@@ -1247,6 +1258,25 @@ object FrameSync {
                     } catch (ignored: Exception) {
                     }
                 }
+            }
+            worldScreen.shouldUpdate = true
+        }
+    }
+
+    private fun handleTradeRejected(msg: JsonObject) {
+        // 2026-08-26: 被拒通知 (原版 TradePopup 拒绝路径有, 帧同步缺失 → 发起方不知道被拒, 反复重发)
+        val rejectingCivName = msg["requestingCiv"]?.jsonPrimitive?.contentOrNull ?: return
+        val targetPlayerId = msg["playerId"]?.jsonPrimitive?.contentOrNull
+        if (targetPlayerId != null && targetPlayerId != playerId) return
+        Concurrency.runOnGLThread {
+            val worldScreen = currentWorldScreenOrNull() ?: return@runOnGLThread
+            val gameInfo = worldScreen.gameInfo ?: return@runOnGLThread
+            if (gameInfo.gameId != gameId) return@runOnGLThread
+            val myCiv = worldScreen.viewingCiv
+            if (myCiv != null && !myCiv.isSpectator()) {
+                myCiv.addNotification("[$rejectingCivName] has denied your trade request",
+                    com.unciv.logic.civilization.NotificationCategory.Trade, rejectingCivName,
+                    com.unciv.logic.civilization.NotificationIcon.Trade)
             }
             worldScreen.shouldUpdate = true
         }
