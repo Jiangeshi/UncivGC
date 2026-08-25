@@ -42,11 +42,12 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
 
         val scrollPane = AutoScrollPane(contentTable)
         scrollPane.setOverscroll(false, false)
-        scrollPane.setScrollingDisabled(false, false)  // 双向滚动: 城市/商路多时竖向滚, 超宽横向滚
+        scrollPane.setScrollingDisabled(true, false)  // 2026-08-26 用户要求: 禁横向滚动, 只竖向
         scrollPane.fadeScrollBars = false
         val scrollPaneCell = add(scrollPane).padTop(0f)
-        // 固定尺寸视口 (模组编辑器/游戏设置同款): 内容多大都不撑爆; 宽度覆盖全部列 (不横向溢出), 高度留给竖向滚动
-        scrollPaneCell.width(min(screen.stage.width * 0.95f, 780f))
+        // 固定视口 (模组编辑器/游戏设置同款): 宽度自适应内容 (不横向溢出), 高度固定留竖向滚动
+        scrollPaneCell.minWidth(min(screen.stage.width * 0.9f, 742f))
+        scrollPaneCell.maxWidth(min(screen.stage.width * 0.98f, 900f))
         scrollPaneCell.height(min(screen.stage.height * 0.7f, 520f))
 
         row()
@@ -89,12 +90,11 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
 
         // 可建立 (可达且未连接, 容量未满)
         // 2026-08-26 用户要求: 允许双向 — A→B 已存在时 B 也能连 A (各自方向一次);
-        // 只排除自己已发起的连接 (接收的不算), 已有邀请也只算自己发出的
+        // 只排除自己已发起的连接 (已发出的邀请目标仍显示, 按钮变「等待」)
         if (used < cap) {
             val existing = gameInfo.tradeRoutes[city.id]?.toSet() ?: emptySet()
-            val offerTargets = gameInfo.tradeRouteOffers[city.id]?.toSet() ?: emptySet()
             val candidates = network.getReachable(city)
-                .filter { it.otherCity.id !in existing && it.otherCity.id !in offerTargets }
+                .filter { it.otherCity.id !in existing }
                 .sortedByDescending { TradeRoutes.initiatorStats(city, it).gold }
             addCandidates(candidates)
         } else {
@@ -151,15 +151,20 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
                     isDisabled = true
                     ConfirmPopup(stageToShowOn, "确定断开与 ${other.name.tr()} 的商路？\n断开后 3 回合内本城不能发起新商路", "断开", isConfirmPositive = false, restoreDefault = { isDisabled = false }) {
                         if (FrameSync.isFsMode(gameInfo)) {
-                            FrameSync.sendTradeRouteDisconnect(city.id, other.id)
+                            // 2026-08-26 用户要求: 只断当前方向 (A→B 断开不影响 B→A)
+                            if (isInitiatorGroup) FrameSync.sendTradeRouteDisconnect(city.id, other.id)
+                            else FrameSync.sendTradeRouteDisconnect(other.id, city.id)
                         } else {
-                            // 单机: 本地直接执行 (任一方断开)
-                            val fromList = gameInfo.tradeRoutes[city.id]
-                            if (fromList != null && fromList.remove(other.id) && fromList.isEmpty())
-                                gameInfo.tradeRoutes.remove(city.id)
-                            val revList = gameInfo.tradeRoutes[other.id]
-                            if (revList != null && revList.remove(city.id) && revList.isEmpty())
-                                gameInfo.tradeRoutes.remove(other.id)
+                            // 单机: 只删当前方向 (本城发起 → city→other; 本城接收 → other→city)
+                            if (isInitiatorGroup) {
+                                val fromList = gameInfo.tradeRoutes[city.id]
+                                if (fromList != null && fromList.remove(other.id) && fromList.isEmpty())
+                                    gameInfo.tradeRoutes.remove(city.id)
+                            } else {
+                                val revList = gameInfo.tradeRoutes[other.id]
+                                if (revList != null && revList.remove(city.id) && revList.isEmpty())
+                                    gameInfo.tradeRoutes.remove(other.id)
+                            }
                             gameInfo.invalidateTradeRoutes()
                             // 断开冷却 (2026-08-26 用户要求): 本城 3 回合内不能发起新商路
                             gameInfo.tradeRouteCooldowns[city.id] = gameInfo.turns
@@ -220,12 +225,20 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
             // 断开冷却 (2026-08-26 用户要求): 冷却中按钮变红 + ⏳图标 + 剩余回合, 不可发起
             val cdTurn = gameInfo.tradeRouteCooldowns[city.id]
             val cdRemaining = if (cdTurn != null) 3 - (gameInfo.turns - cdTurn) else 0
+            // 已发出邀请 (2026-08-26 用户要求): 按钮变「等待」, 行不消失
+            val pendingOffer = gameInfo.tradeRouteOffers[city.id]?.contains(other.id) == true
+            // 玩家之间外商 → 「申请」; 内商/城邦/AI接收方 → 「建立」
+            val isForeignPlayer = other.civ != city.civ && other.civ.isHuman()
             if (cdRemaining > 0) {
                 val cdBtn = (Fonts.turn.toString() + cdRemaining).toTextButton()
                 cdBtn.label.color = Color.RED
                 opCell.add(cdBtn).pad(2f)
+            } else if (pendingOffer) {
+                opCell.add("等待".toTextButton().apply { isDisabled = true }).pad(2f)
             } else {
-                opCell.add("建立".toTextButton().apply {
+                val btnText = if (isForeignPlayer) "申请" else "建立"
+                val question = if (isForeignPlayer) "确定向 ${other.name.tr()} 申请建立商路？" else "确定与 ${other.name.tr()} 建立商路？"
+                opCell.add(btnText.toTextButton().apply {
                     onClick {
                         // 单机冷却检查 (联机由服务器判) — 冷却中直接不响应
                         if (!FrameSync.isFsMode(gameInfo)) {
@@ -236,10 +249,10 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
                         if (!TradeRoutes.canInitiate(city)) return@onClick
                         // 确认弹窗 (2026-08-26 用户要求): 防误触; 确认前先禁用按钮防重复弹窗
                         isDisabled = true
-                        ConfirmPopup(stageToShowOn, "确定与 ${other.name.tr()} 建立商路？", "建立", isConfirmPositive = true, restoreDefault = { isDisabled = false }) {
+                        ConfirmPopup(stageToShowOn, question, btnText, isConfirmPositive = true, restoreDefault = { isDisabled = false }) {
                             if (FrameSync.isFsMode(gameInfo)) {
                                 FrameSync.sendTradeRouteOffer(city.id, other.id)
-                            } else if (other.civ != city.civ && other.civ.isHuman()) {
+                            } else if (isForeignPlayer) {
                                 // 单机热座双玩家之间: 需要请求 (2026-08-26 用户要求) — 写邀请 + 接收方弹窗接受/拒绝
                                 val off = gameInfo.tradeRouteOffers.getOrPut(city.id) { ArrayList() }
                                 if (!off.contains(other.id)) off.add(other.id)
