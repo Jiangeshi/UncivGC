@@ -48,7 +48,7 @@ class CityStatsTable(private val cityScreen: CityScreen) : Table() {
     private val tradeRoutesButton = "商路".toTextButton().apply {
         labelCell.pad(10f)
         onClick {
-            TradeRoutesPopup(cityScreen).open()
+            TradeRoutesPopup(cityScreen, cityScreen.cityView.city).open()
         }
     }
 

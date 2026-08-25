@@ -2,6 +2,7 @@ package com.unciv.ui.screens.worldscreen.topbar
 
 import com.badlogic.gdx.scenes.scene2d.Group
 import com.badlogic.gdx.scenes.scene2d.ui.Label
+import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.unciv.Constants
 import com.unciv.GUI
 import com.unciv.logic.civilization.Civilization
@@ -51,6 +52,25 @@ internal class WorldScreenTopBarStats(topbar: WorldScreenTopBar) : ScalingTableW
     private val happinessColor = colorFromRGB(92, 194, 77) // Color.valueOf("8cc24d")
     private val malcontentImage = ImageGetter.getStatIcon("Malcontent")
     private val happinessImage = ImageGetter.getStatIcon("Happiness")
+
+    // UncivGC 2026-08-26 商路 v2: 顶栏商路 已用/总量 (快乐后, 两种 UI 都显示; 点击打开选中城市商路管理)
+    private val tradeRouteLabel = Label("", BaseScreen.skin)
+    private val tradeRouteContainer = Table().apply {
+        val icon = ImageGetter.getStatIcon("Gold")
+        val invokeTradeRoute = {
+            val selected = worldScreen.selectedCiv
+            val city = selected?.cities?.firstOrNull()
+            if (city != null) {
+                com.unciv.ui.screens.cityscreen.TradeRoutesPopup(worldScreen, city).open()
+            } else {
+                worldScreen.openEmpireOverview(com.unciv.ui.screens.overviewscreen.EmpireOverviewCategories.Stats)
+            }
+        }
+        icon.onClick(invokeTradeRoute)
+        tradeRouteLabel.onClick(invokeTradeRoute)
+        add(icon).padBottom(defaultImageBottomPad).size(defaultImageSize)
+        add(tradeRouteLabel).padRight(padRightBetweenStats)
+    }
 
     private val worldScreen = topbar.worldScreen
 
@@ -124,6 +144,9 @@ internal class WorldScreenTopBarStats(topbar: WorldScreenTopBar) : ScalingTableW
         add(happinessContainer).padBottom(defaultImageBottomPad).size(defaultImageSize)
         add(happinessLabel).padRight(padRightBetweenStats)
 
+        // UncivGC 2026-08-26 商路 v2: 快乐后插入商路 已用/总量 (实验性/原版 UI 都显示)
+        add(tradeRouteContainer)
+
         // UncivGC 实验性 UI (2026-08-22): 领土 + 人口 (信仰后, 图标/数字, 开关控制显示)
         val invokeStatsPage = { worldScreen.openEmpireOverview(EmpireOverviewCategories.Stats) }
         val territoryIcon = ImageGetter.getImage("OtherIcons/Hexagon").apply { onClick(invokeStatsPage) }
@@ -168,6 +191,9 @@ internal class WorldScreenTopBarStats(topbar: WorldScreenTopBar) : ScalingTableW
 
         faithLabel.setText(civInfo.religionManager.storedFaith.tr())
         faithPerTurnLabel.setText(rateLabel(nextTurnStats.faith))
+
+        // UncivGC 2026-08-26 商路 v2: 顶栏商路 已用/总量 (文明级容量)
+        tradeRouteLabel.setText("${com.unciv.logic.trade.TradeRoutes.usedByCiv(civInfo)}/${com.unciv.logic.trade.TradeRoutes.capacity(civInfo)}")
 
         // UncivGC 实验性 UI: 领土/人口 (信仰后) — 开关控制显示
         val expUi = GUI.getSettings().experimentalUi

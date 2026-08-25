@@ -24,11 +24,13 @@ import java.text.DecimalFormat
 /** 商路管理弹窗 (UncivGC 2026-08-26 设计稿 v2): 每城管理自己的 — 本城发起/本城接收/可建立。
  *  表格列: 类型(内商/外商) | 目的地 | 距离 | 方式 | 收益(stat) | 操作
  *  纯拦截: 操作发 op, 等服务器广播后刷新 */
-class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, Scrollability.None) {
-    private val city: City = cityScreen.cityView.city
+class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, private val city: City) :
+    Popup(screen, Scrollability.None) {
     private val decimal = DecimalFormat("0.#")
-    private val columnWidths = listOf(60f, 120f, 60f, 60f, 140f, 110f)
+    private val columnWidths = listOf(60f, 120f, 60f, 60f, 110f, 110f, 110f)
     private val contentTable = Table()
+    /** 广播到达后自动刷新 (纯拦截: 建立/断开后等服务器 state 同步) */
+    private var lastRoutesSig = ""
 
     init {
         val header = ("贸易路线".tr() + " · " + city.name.tr()).toLabel()
@@ -38,13 +40,22 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
         val scrollPane = AutoScrollPane(contentTable)
         scrollPane.setOverscroll(false, false)
         val scrollPaneCell = add(scrollPane).padTop(0f)
-        scrollPaneCell.maxHeight(cityScreen.stage.height * 3 / 4)
-        scrollPaneCell.minWidth(cityScreen.stage.width * 3 / 5)
+        scrollPaneCell.maxHeight(screen.stage.height * 3 / 4)
+        scrollPaneCell.minWidth(screen.stage.width * 3 / 5)
 
         row()
         addCloseButton(additionalKey = KeyCharAndCode.SPACE)
 
         update()
+    }
+
+    override fun act(delta: Float) {
+        super.act(delta)
+        val sig = city.civ.gameInfo.tradeRoutes.toString() + "|" + city.civ.gameInfo.tradeRouteOffers.toString()
+        if (sig != lastRoutesSig) {
+            lastRoutesSig = sig
+            update()
+        }
     }
 
     private fun update() {
@@ -105,19 +116,22 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
 
         for (route in routes) {
             val other = route.otherCity
-            val stats = if (isInitiatorGroup) TradeRoutes.initiatorStats(city, route)
-                        else TradeRoutes.receiverStats(city, route)
             val type = if (other.civ == city.civ) "内商" else "外商"
             val way = when {
                 route.isSea -> "海路"
                 route.hasRailroad -> "铁路"
                 else -> "道路"
             }
+            val myStats = if (isInitiatorGroup) TradeRoutes.initiatorStats(city, route)
+                          else TradeRoutes.receiverStats(city, route)
+            val theirStats = if (isInitiatorGroup) TradeRoutes.receiverStats(city, route)
+                             else TradeRoutes.initiatorStats(city, route)
             contentTable.add(makeLabel(type)).minWidth(columnWidths[0]).pad(6f, 8f)
             contentTable.add(makeLabel(other.name.tr())).minWidth(columnWidths[1]).pad(6f, 8f)
             contentTable.add(makeLabel(route.distance.toString())).minWidth(columnWidths[2]).pad(6f, 8f)
             contentTable.add(makeLabel(way)).minWidth(columnWidths[3]).pad(6f, 8f)
-            contentTable.add(makeLabel(formatStats(stats))).minWidth(columnWidths[4]).pad(6f, 8f)
+            contentTable.add(makeLabel(formatStats(myStats))).minWidth(columnWidths[4]).pad(6f, 8f)
+            contentTable.add(makeLabel(formatStats(theirStats))).minWidth(columnWidths[5]).pad(6f, 8f)
             val opCell = Table()
             opCell.add("断开".toTextButton().apply {
                 onClick {
@@ -125,14 +139,14 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
                     isDisabled = true
                 }
             }).pad(2f)
-            contentTable.add(opCell).minWidth(columnWidths[5]).pad(6f, 8f)
+            contentTable.add(opCell).minWidth(columnWidths[6]).pad(6f, 8f)
             contentTable.row()
         }
         contentTable.addSeparator(colSpan = 6).padTop(4f)
     }
 
     private fun addCandidates(candidates: List<TradeRouteNetwork.Route>) {
-        val groupLabel = "可建立（本城发起）".toLabel()
+        val groupLabel = "可建立商路".toLabel()
         groupLabel.setAlignment(Align.center)
         contentTable.add(groupLabel).colspan(6).growX().padTop(10f).padBottom(2f).row()
         contentTable.addSeparator(colSpan = 6)
@@ -149,18 +163,20 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
         for (route in candidates) {
             val other = route.otherCity
             val myStats = TradeRoutes.initiatorStats(city, route)
+            val theirStats = if (other.civ == city.civ) TradeRoutes.receiverStats(city, route)
+                             else TradeRoutes.receiverStats(city, route)
             val type = if (other.civ == city.civ) "内商" else "外商"
             val way = when {
                 route.isSea -> "海路"
                 route.hasRailroad -> "铁路"
                 else -> "道路"
             }
-            val targetStats = if (other.civ == city.civ) "" else " → " + formatStats(TradeRoutes.receiverStats(city, route))
             contentTable.add(makeLabel(type)).minWidth(columnWidths[0]).pad(6f, 8f)
             contentTable.add(makeLabel(other.name.tr())).minWidth(columnWidths[1]).pad(6f, 8f)
             contentTable.add(makeLabel(route.distance.toString())).minWidth(columnWidths[2]).pad(6f, 8f)
             contentTable.add(makeLabel(way)).minWidth(columnWidths[3]).pad(6f, 8f)
-            contentTable.add(makeLabel(formatStats(myStats) + targetStats)).minWidth(columnWidths[4]).pad(6f, 8f)
+            contentTable.add(makeLabel(formatStats(myStats))).minWidth(columnWidths[4]).pad(6f, 8f)
+            contentTable.add(makeLabel(formatStats(theirStats))).minWidth(columnWidths[5]).pad(6f, 8f)
             val opCell = Table()
             opCell.add("建立".toTextButton().apply {
                 onClick {
@@ -168,14 +184,14 @@ class TradeRoutesPopup(private val cityScreen: CityScreen) : Popup(cityScreen, S
                     isDisabled = true
                 }
             }).pad(2f)
-            contentTable.add(opCell).minWidth(columnWidths[5]).pad(6f, 8f)
+            contentTable.add(opCell).minWidth(columnWidths[6]).pad(6f, 8f)
             contentTable.row()
         }
         contentTable.addSeparator(colSpan = 6).padTop(4f)
     }
 
     private fun addHeaderRow() {
-        val heads = listOf("类型", "目的地", "距离", "方式", "收益", "操作")
+        val heads = listOf("类型", "目的地", "距离", "方式", "我方收益", "对方收益", "操作")
         for ((i, head) in heads.withIndex()) {
             contentTable.add(makeLabel(head)).minWidth(columnWidths[i]).pad(6f, 8f)
         }
