@@ -18,10 +18,10 @@ import com.unciv.models.stats.Stats
  */
 object TradeRoutes {
 
-    /** 发起方收益: 金币 = 已改良地块资源数 + 距离×系数 (2026-08-26 用户调整: 陆商 1/格, 海商 0.5/格) */
+    /** 发起方收益: 金币 = 已改良地块资源数 + 距离×系数 (2026-08-26 用户调整: 陆商 1.5/格, 海商 0.5/格) */
     fun initiatorStats(city: City, route: TradeRouteNetwork.Route): Stats {
         val stats = Stats()
-        val distFactor = if (route.isSea) 0.5f else 1f
+        val distFactor = if (route.isSea) 0.5f else 1.5f  // 2026-08-26 用户调整: 陆商 1.5/格, 海商 0.5/格
         stats.gold = improvedResourceCount(city) + distFactor * route.distance
         return stats
     }
@@ -70,6 +70,9 @@ object TradeRoutes {
             .filter { (fromId, _) -> fromId in myCityIds }
             .sumOf { (_, toIds) -> toIds.size }
     }
+
+    /** 发起条件 (2026-08-26 用户要求): 发起城市必须有已开发的地块资源 (改良后的资源地块) */
+    fun canInitiate(city: City): Boolean = improvedResourceCount(city) > 0
 
     /** 本城商路收益汇总 (发起方金币 + 接收方文产食) — CityStats 用
      *  receiverStats/initiatorStats 第一参数必须是发起方城市 — 接收方分支传 route.otherCity (2026-08-26 修复) */

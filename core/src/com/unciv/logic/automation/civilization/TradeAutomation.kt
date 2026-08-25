@@ -42,6 +42,7 @@ object TradeAutomation {
                 var bestRoute: TradeRouteNetwork.Route? = null
                 var bestGold = -1f
                 for (city in civInfo.cities) {
+                    if (!TradeRoutes.canInitiate(city)) continue  // 2026-08-26 用户要求: 无已开发地块资源的城市不能发起
                     for (route in gameInfo.getTradeRouteNetwork().getReachable(city)) {
                         val t = route.otherCity
                         if (t.civ.isBarbarian) continue

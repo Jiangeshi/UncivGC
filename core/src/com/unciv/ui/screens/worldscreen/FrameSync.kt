@@ -1812,6 +1812,20 @@ object FrameSync {
                     changed = true
                 }
             }
+            // 商路断开冷却 (2026-08-26 用户要求): 服务器权威 (断开后 3 回合内不能发起) — 客户端用于红色冷却显示
+            state["tradeRouteCooldowns"]?.jsonArray?.let { cdArr ->
+                val newCd = HashMap<String, Int>()
+                for (pair in cdArr) {
+                    val arr = pair.jsonArray ?: continue
+                    val cid = arr.getOrNull(0)?.jsonPrimitive?.contentOrNull ?: continue
+                    val turn = arr.getOrNull(1)?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: continue
+                    newCd[cid] = turn
+                }
+                if (newCd != gi.tradeRouteCooldowns) {
+                    gi.tradeRouteCooldowns = newCd
+                    changed = true
+                }
+            }
             if (changed) {
                 gi.invalidateTradeRoutes()
                 worldScreen.shouldUpdate = true

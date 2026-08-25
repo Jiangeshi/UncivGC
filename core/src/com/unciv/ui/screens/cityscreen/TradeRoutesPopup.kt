@@ -14,9 +14,11 @@ import com.unciv.ui.components.extensions.pad
 import com.unciv.ui.components.extensions.packIfNeeded
 import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.components.extensions.toTextButton
+import com.unciv.ui.components.fonts.Fonts
 import com.unciv.ui.components.input.KeyCharAndCode
 import com.unciv.ui.components.input.onClick
 import com.unciv.ui.components.widgets.AutoScrollPane
+import com.unciv.ui.popups.ConfirmPopup
 import com.unciv.ui.popups.Popup
 import com.unciv.ui.screens.worldscreen.FrameSync
 import java.text.DecimalFormat
@@ -51,7 +53,8 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
 
     override fun act(delta: Float) {
         super.act(delta)
-        val sig = city.civ.gameInfo.tradeRoutes.toString() + "|" + city.civ.gameInfo.tradeRouteOffers.toString()
+        val sig = city.civ.gameInfo.tradeRoutes.toString() + "|" + city.civ.gameInfo.tradeRouteOffers.toString() +
+                "|" + city.civ.gameInfo.tradeRouteCooldowns.toString()
         if (sig != lastRoutesSig) {
             lastRoutesSig = sig
             update()
@@ -138,22 +141,25 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
             val opCell = Table()
             opCell.add("断开".toTextButton().apply {
                 onClick {
-                    if (FrameSync.isFsMode(gameInfo)) {
-                        FrameSync.sendTradeRouteDisconnect(city.id, other.id)
-                    } else {
-                        // 单机: 本地直接执行 (任一方断开)
-                        val fromList = gameInfo.tradeRoutes[city.id]
-                        if (fromList != null && fromList.remove(other.id) && fromList.isEmpty())
-                            gameInfo.tradeRoutes.remove(city.id)
-                        val revList = gameInfo.tradeRoutes[other.id]
-                        if (revList != null && revList.remove(city.id) && revList.isEmpty())
-                            gameInfo.tradeRoutes.remove(other.id)
-                        gameInfo.invalidateTradeRoutes()
-                        // 断开冷却 (2026-08-26 用户要求): 本城 3 回合内不能发起新商路
-                        gameInfo.tradeRouteCooldowns[city.id] = gameInfo.turns
-                        try { city.cityStats.update() } catch (ignored: Exception) {}
-                    }
+                    // 确认弹窗 (2026-08-26 用户要求): 防误触; 确认前先禁用按钮防重复弹窗
                     isDisabled = true
+                    ConfirmPopup(stageToShowOn, "确定断开与 ${other.name.tr()} 的商路？\n断开后 3 回合内本城不能发起新商路", "断开", isConfirmPositive = false, restoreDefault = { isDisabled = false }) {
+                        if (FrameSync.isFsMode(gameInfo)) {
+                            FrameSync.sendTradeRouteDisconnect(city.id, other.id)
+                        } else {
+                            // 单机: 本地直接执行 (任一方断开)
+                            val fromList = gameInfo.tradeRoutes[city.id]
+                            if (fromList != null && fromList.remove(other.id) && fromList.isEmpty())
+                                gameInfo.tradeRoutes.remove(city.id)
+                            val revList = gameInfo.tradeRoutes[other.id]
+                            if (revList != null && revList.remove(city.id) && revList.isEmpty())
+                                gameInfo.tradeRoutes.remove(other.id)
+                            gameInfo.invalidateTradeRoutes()
+                            // 断开冷却 (2026-08-26 用户要求): 本城 3 回合内不能发起新商路
+                            gameInfo.tradeRouteCooldowns[city.id] = gameInfo.turns
+                            try { city.cityStats.update() } catch (ignored: Exception) {}
+                        }
+                    }.open(force = true)
                 }
             }).pad(2f)
             contentTable.add(opCell).minWidth(columnWidths[6]).pad(6f, 8f)
@@ -168,6 +174,15 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
         groupLabel.setAlignment(Align.center)
         contentTable.add(groupLabel).colspan(6).growX().padTop(10f).padBottom(2f).row()
         contentTable.addSeparator(colSpan = 6)
+
+        // 发起条件 (2026-08-26 用户要求): 无已开发地块资源的城市不能发起商路
+        if (!TradeRoutes.canInitiate(city)) {
+            val notice = "需要已开发的地块资源（改良后的资源地块）才能发起商路".toLabel()
+            notice.setAlignment(Align.center)
+            notice.color = Color.GRAY
+            contentTable.add(notice).colspan(6).pad(8f).growX().row()
+            return
+        }
         addHeaderRow()
 
         if (candidates.isEmpty()) {
@@ -196,22 +211,39 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
             contentTable.add(makeLabel(formatStats(myStats))).minWidth(columnWidths[4]).pad(6f, 8f)
             contentTable.add(makeLabel(formatStats(theirStats))).minWidth(columnWidths[5]).pad(6f, 8f)
             val opCell = Table()
-            opCell.add("建立".toTextButton().apply {
-                onClick {
-                    if (FrameSync.isFsMode(gameInfo)) {
-                        FrameSync.sendTradeRouteOffer(city.id, other.id)
-                    } else {
-                        // 单机: 本地直接执行 (内商/外商/城邦都直接建立)
-                        val cdTurn = gameInfo.tradeRouteCooldowns[city.id]
-                        if (cdTurn != null && gameInfo.turns - cdTurn < 3) return@onClick
-                        val list = gameInfo.tradeRoutes.getOrPut(city.id) { ArrayList() }
-                        if (!list.contains(other.id)) list.add(other.id)
-                        gameInfo.invalidateTradeRoutes()
-                        try { city.cityStats.update() } catch (ignored: Exception) {}
+            // 断开冷却 (2026-08-26 用户要求): 冷却中按钮变红 + ⏳图标 + 剩余回合, 不可发起
+            val cdTurn = gameInfo.tradeRouteCooldowns[city.id]
+            val cdRemaining = if (cdTurn != null) 3 - (gameInfo.turns - cdTurn) else 0
+            if (cdRemaining > 0) {
+                val cdBtn = (Fonts.turn.toString() + cdRemaining).toTextButton()
+                cdBtn.label.color = Color.RED
+                opCell.add(cdBtn).pad(2f)
+            } else {
+                opCell.add("建立".toTextButton().apply {
+                    onClick {
+                        // 单机冷却检查 (联机由服务器判) — 冷却中直接不响应
+                        if (!FrameSync.isFsMode(gameInfo)) {
+                            val cd = gameInfo.tradeRouteCooldowns[city.id]
+                            if (cd != null && gameInfo.turns - cd < 3) return@onClick
+                        }
+                        // 发起条件 (2026-08-26 用户要求): 无已开发地块资源不能发起
+                        if (!TradeRoutes.canInitiate(city)) return@onClick
+                        // 确认弹窗 (2026-08-26 用户要求): 防误触; 确认前先禁用按钮防重复弹窗
+                        isDisabled = true
+                        ConfirmPopup(stageToShowOn, "确定与 ${other.name.tr()} 建立商路？", "建立", isConfirmPositive = true, restoreDefault = { isDisabled = false }) {
+                            if (FrameSync.isFsMode(gameInfo)) {
+                                FrameSync.sendTradeRouteOffer(city.id, other.id)
+                            } else {
+                                // 单机: 本地直接执行 (内商/外商/城邦都直接建立)
+                                val list = gameInfo.tradeRoutes.getOrPut(city.id) { ArrayList() }
+                                if (!list.contains(other.id)) list.add(other.id)
+                                gameInfo.invalidateTradeRoutes()
+                                try { city.cityStats.update() } catch (ignored: Exception) {}
+                            }
+                        }.open(force = true)
                     }
-                    isDisabled = true
-                }
-            }).pad(2f)
+                }).pad(2f)
+            }
             contentTable.add(opCell).minWidth(columnWidths[6]).pad(6f, 8f)
             contentTable.row()
         }
