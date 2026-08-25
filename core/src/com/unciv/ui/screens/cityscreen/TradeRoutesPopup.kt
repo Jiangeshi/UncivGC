@@ -68,7 +68,7 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
 
         val capLabel = "容量：$used / $cap".toLabel()
         capLabel.setAlignment(Align.center)
-        contentTable.add(capLabel).colspan(6).growX().padTop(6f).padBottom(2f).row()
+        contentTable.add(capLabel).colspan(6).growX().padTop(6f).padBottom(2f).center().row()
         contentTable.addSeparator(colSpan = 6)
 
         // 我的路线 (本城发起)
@@ -149,6 +149,8 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
                         if (revList != null && revList.remove(city.id) && revList.isEmpty())
                             gameInfo.tradeRoutes.remove(other.id)
                         gameInfo.invalidateTradeRoutes()
+                        // 断开冷却 (2026-08-26 用户要求): 本城 3 回合内不能发起新商路
+                        gameInfo.tradeRouteCooldowns[city.id] = gameInfo.turns
                         try { city.cityStats.update() } catch (ignored: Exception) {}
                     }
                     isDisabled = true
@@ -200,6 +202,8 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
                         FrameSync.sendTradeRouteOffer(city.id, other.id)
                     } else {
                         // 单机: 本地直接执行 (内商/外商/城邦都直接建立)
+                        val cdTurn = gameInfo.tradeRouteCooldowns[city.id]
+                        if (cdTurn != null && gameInfo.turns - cdTurn < 3) return@onClick
                         val list = gameInfo.tradeRoutes.getOrPut(city.id) { ArrayList() }
                         if (!list.contains(other.id)) list.add(other.id)
                         gameInfo.invalidateTradeRoutes()

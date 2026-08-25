@@ -136,6 +136,8 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
     var tradeRoutes = HashMap<String, ArrayList<String>>()
     /** 待接受的国外商路邀请 — 发起方城市ID → 接收方城市ID列表 (回合内有效, 结算作废, 同贸易提议) */
     var tradeRouteOffers = HashMap<String, ArrayList<String>>()
+    /** 商路断开冷却 (2026-08-26): 城市ID → 断开时的回合号; 3 回合内该城市不能发起新商路 (防反复横跳) */
+    var tradeRouteCooldowns = HashMap<String, Int>()
     //endregion
 
     /** The turn the replay history started recording.
@@ -242,6 +244,7 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
         )
         toReturn.tradeRoutes.putAll(tradeRoutes.mapValues { ArrayList(it.value) })
         toReturn.tradeRouteOffers.putAll(tradeRouteOffers.mapValues { ArrayList(it.value) })
+        toReturn.tradeRouteCooldowns.putAll(tradeRouteCooldowns)
         toReturn.oneMoreTurnMode = oneMoreTurnMode
         toReturn.customSaveLocation = customSaveLocation
         toReturn.victoryData = victoryData?.copy()
