@@ -119,6 +119,7 @@ class AlertPopup(
             AlertType.RejectingDemand -> shouldOpen = addRejectingDemand()
             
             AlertType.DeclarationOfFriendship -> shouldOpen = addDeclarationOfFriendship()
+            AlertType.TradeRouteOffer -> shouldOpen = addTradeRouteOffer()
             AlertType.BulliedProtectedMinor, AlertType.AttackedProtectedMinor, AlertType.AttackedAllyMinor -> 
                 shouldOpen = addBulliedOrAttackedProtectedOrAlliedMinor()
             AlertType.Defeated -> addDefeated()
@@ -287,6 +288,37 @@ class AlertPopup(
             addSeparator()
         }
         addCloseButton("Keep it").row()
+    }
+
+    /** UncivGC 2026-08-26 商路 v2: 国外商路邀请 — value = "fromCityId|toCityId"
+     *  "【文明】的【城市】向我们的【城市】发起了贸易邀请，我们将获得【stat】" */
+    private fun addTradeRouteOffer(): Boolean {
+        val parts = popupAlert.value.split("|")
+        if (parts.size < 2) return false
+        val fromCity = gameInfo.getCities().firstOrNull { it.id == parts[0] } ?: return false
+        val toCity = gameInfo.getCities().firstOrNull { it.id == parts[1] } ?: return false
+        val fromCiv = fromCity.civ
+        addLeaderName(fromCiv)
+        addTopicHeader("贸易邀请", com.badlogic.gdx.graphics.Color.GOLD)
+        val stats = com.unciv.logic.trade.TradeRoutes.receiverStats(fromCity,
+            com.unciv.logic.trade.TradeRouteNetwork.Route(toCity, 0, false, false))
+        val statText = com.unciv.models.stats.Stat.entries
+            .filter { stats[it] != 0f }
+            .joinToString(" ") { "${stats[it]} ${it.name.tr()}" }
+        addGoodSizedLabel("【${fromCiv.civName}】的【${fromCity.name}】向我们的城市【${toCity.name}】发起了贸易邀请，我们将获得【$statText】").row()
+        addCloseButton("接受", KeyboardBinding.Confirm) {
+            if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                FrameSync.sendTradeRouteAcceptOffer(fromCity.id)
+                viewingCiv.popupAlerts.remove(popupAlert)
+            }
+        }.row()
+        addCloseButton("拒绝", KeyboardBinding.Cancel) {
+            if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                FrameSync.sendTradeRouteRejectOffer(fromCity.id)
+                viewingCiv.popupAlerts.remove(popupAlert)
+            }
+        }.row()
+        return true
     }
 
     private fun addDeclarationOfFriendship(): Boolean {

@@ -311,7 +311,7 @@ class CivInfoTransientCache(val civInfo: Civilization) {
                 // UncivGC 商路 (2026-08-24): 通知改为城市-城市 (原版是首都连接; 用户要求
                 // "你的城市x与城市x建立连接")
                 val otherName = try {
-                    civInfo.gameInfo.getTradeRouteNetwork().getRoutes(city)
+                    civInfo.gameInfo.getTradeRouteNetwork().getEstablishedRoutes(city)
                         .firstOrNull()?.otherCity?.name?.tr() ?: civInfo.getCapital()?.name?.tr()
                 } catch (e: Exception) {
                     civInfo.getCapital()?.name?.tr()

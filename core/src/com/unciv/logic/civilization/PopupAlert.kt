@@ -39,7 +39,9 @@ enum class AlertType : IsPartOfGameInfoSerialization {
     GameHasBeenWon,
     Event,
     
-    Denounced
+    Denounced,
+
+    TradeRouteOffer  // UncivGC 2026-08-26 商路 v2: 国外商路邀请 (value = "fromCityId|toCityId")
 }
 
 class PopupAlert : IsPartOfGameInfoSerialization {

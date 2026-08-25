@@ -451,6 +451,23 @@ object FrameSync {
         sendOp("trade.reject", mapOf("requestingCiv" to requestingCivId))
     }
 
+    // ---- 商路 v2 (2026-08-26 设计稿 v2): 单向手动连接 ----
+    fun sendTradeRouteOffer(cityId: String, targetCityId: String) {
+        sendOp("tradeRoute.offer", mapOf("cityId" to cityId, "targetCityId" to targetCityId))
+    }
+
+    fun sendTradeRouteAcceptOffer(fromCityId: String) {
+        sendOp("tradeRoute.acceptOffer", mapOf("fromCityId" to fromCityId))
+    }
+
+    fun sendTradeRouteRejectOffer(fromCityId: String) {
+        sendOp("tradeRoute.rejectOffer", mapOf("fromCityId" to fromCityId))
+    }
+
+    fun sendTradeRouteDisconnect(cityId: String, targetCityId: String) {
+        sendOp("tradeRoute.disconnect", mapOf("cityId" to cityId, "targetCityId" to targetCityId))
+    }
+
     fun sendDenounce(otherCivId: String) {
         sendOp("civ.denounce", mapOf("otherCivId" to otherCivId))
     }
@@ -822,6 +839,11 @@ object FrameSync {
             "tradeRetracted" -> handleTradeRetracted(msg)
             "tradeAccepted" -> handleTradeAccepted(msg)
             "tradeRejected" -> handleTradeRejected(msg)
+            "tradeRouteOffer" -> handleTradeRouteOffer(msg)
+            "tradeRouteAccepted" -> handleTradeRouteAccepted(msg)
+            "tradeRouteRejected" -> handleTradeRouteRejected(msg)
+            "tradeRouteDisconnected" -> handleTradeRouteDisconnected(msg)
+            "tradeRouteBroken" -> handleTradeRouteBroken(msg)
             "friendshipOffer" -> handleFriendshipOffer(msg)
             "demandOffer" -> handleDemandOffer(msg)
             "denounced" -> handleDenounced(msg)
@@ -1285,6 +1307,118 @@ object FrameSync {
         }
     }
 
+    /** 商路邀请 (2026-08-26 商路 v2): 国外商路 → 弹窗 (接受/拒绝) */
+    private fun handleTradeRouteOffer(msg: JsonObject) {
+        val targetPlayerId = msg["playerId"]?.jsonPrimitive?.contentOrNull
+        if (targetPlayerId != null && targetPlayerId != playerId) return
+        val fromCityId = msg["fromCityId"]?.jsonPrimitive?.contentOrNull ?: return
+        val toCityId = msg["toCityId"]?.jsonPrimitive?.contentOrNull ?: return
+        Concurrency.runOnGLThread {
+            val worldScreen = currentWorldScreenOrNull() ?: return@runOnGLThread
+            val gameInfo = worldScreen.gameInfo ?: return@runOnGLThread
+            if (gameInfo.gameId != gameId) return@runOnGLThread
+            try {
+                val alerts = worldScreen.viewingCiv.popupAlerts
+                alerts.removeAll { it.type == com.unciv.logic.civilization.AlertType.TradeRouteOffer && it.value == "$fromCityId|$toCityId" }
+                alerts.add(com.unciv.logic.civilization.PopupAlert(
+                    com.unciv.logic.civilization.AlertType.TradeRouteOffer, "$fromCityId|$toCityId"))
+                worldScreen.shouldUpdate = true
+            } catch (e: Exception) {
+            }
+        }
+    }
+
+    /** 商路邀请被接受 (通知发起方) */
+    private fun handleTradeRouteAccepted(msg: JsonObject) {
+        val targetPlayerId = msg["playerId"]?.jsonPrimitive?.contentOrNull
+        if (targetPlayerId != null && targetPlayerId != playerId) return
+        Concurrency.runOnGLThread {
+            val worldScreen = currentWorldScreenOrNull() ?: return@runOnGLThread
+            val gameInfo = worldScreen.gameInfo ?: return@runOnGLThread
+            if (gameInfo.gameId != gameId) return@runOnGLThread
+            try {
+                val myCiv = worldScreen.viewingCiv
+                if (myCiv != null && !myCiv.isSpectator()) {
+                    val fromCityId = msg["fromCityId"]?.jsonPrimitive?.contentOrNull ?: ""
+                    val toCityId = msg["toCityId"]?.jsonPrimitive?.contentOrNull ?: ""
+                    val otherCity = gameInfo.getCities().firstOrNull { it.id == toCityId }
+                    myCiv.addNotification("Your trade route to [${otherCity?.name ?: toCityId}] has been accepted",
+                        com.unciv.logic.civilization.NotificationCategory.Trade, "",
+                        com.unciv.logic.civilization.NotificationIcon.Trade)
+                }
+                worldScreen.shouldUpdate = true
+            } catch (e: Exception) {
+            }
+        }
+    }
+
+    /** 商路邀请被拒绝 (通知发起方) */
+    private fun handleTradeRouteRejected(msg: JsonObject) {
+        val targetPlayerId = msg["playerId"]?.jsonPrimitive?.contentOrNull
+        if (targetPlayerId != null && targetPlayerId != playerId) return
+        Concurrency.runOnGLThread {
+            val worldScreen = currentWorldScreenOrNull() ?: return@runOnGLThread
+            val gameInfo = worldScreen.gameInfo ?: return@runOnGLThread
+            if (gameInfo.gameId != gameId) return@runOnGLThread
+            try {
+                val myCiv = worldScreen.viewingCiv
+                if (myCiv != null && !myCiv.isSpectator()) {
+                    val fromCityId = msg["fromCityId"]?.jsonPrimitive?.contentOrNull ?: ""
+                    val otherCity = gameInfo.getCities().firstOrNull { it.id == fromCityId }
+                    myCiv.addNotification("Your trade route offer to [${otherCity?.name ?: fromCityId}] was declined",
+                        com.unciv.logic.civilization.NotificationCategory.Trade, "",
+                        com.unciv.logic.civilization.NotificationIcon.Trade)
+                }
+                worldScreen.shouldUpdate = true
+            } catch (e: Exception) {
+            }
+        }
+    }
+
+    /** 商路被对方断开 (通知) */
+    private fun handleTradeRouteDisconnected(msg: JsonObject) {
+        val targetPlayerId = msg["playerId"]?.jsonPrimitive?.contentOrNull
+        if (targetPlayerId != null && targetPlayerId != playerId) return
+        Concurrency.runOnGLThread {
+            val worldScreen = currentWorldScreenOrNull() ?: return@runOnGLThread
+            val gameInfo = worldScreen.gameInfo ?: return@runOnGLThread
+            if (gameInfo.gameId != gameId) return@runOnGLThread
+            try {
+                val myCiv = worldScreen.viewingCiv
+                if (myCiv != null && !myCiv.isSpectator()) {
+                    val otherCityId = msg["otherCityId"]?.jsonPrimitive?.contentOrNull ?: ""
+                    val otherCity = gameInfo.getCities().firstOrNull { it.id == otherCityId }
+                    myCiv.addNotification("The trade route with [${otherCity?.name ?: otherCityId}] has been discontinued",
+                        com.unciv.logic.civilization.NotificationCategory.Trade, "",
+                        com.unciv.logic.civilization.NotificationIcon.Trade)
+                }
+                worldScreen.shouldUpdate = true
+            } catch (e: Exception) {
+            }
+        }
+    }
+
+    /** 商路失效断开 (宣战/距离失效, 结算时服务器断开) */
+    private fun handleTradeRouteBroken(msg: JsonObject) {
+        val targetPlayerId = msg["playerId"]?.jsonPrimitive?.contentOrNull
+        if (targetPlayerId != null && targetPlayerId != playerId) return
+        Concurrency.runOnGLThread {
+            val worldScreen = currentWorldScreenOrNull() ?: return@runOnGLThread
+            val gameInfo = worldScreen.gameInfo ?: return@runOnGLThread
+            if (gameInfo.gameId != gameId) return@runOnGLThread
+            try {
+                val myCiv = worldScreen.viewingCiv
+                if (myCiv != null && !myCiv.isSpectator()) {
+                    myCiv.addNotification("A trade route has been discontinued",
+                        com.unciv.logic.civilization.NotificationCategory.Trade, "",
+                        com.unciv.logic.civilization.NotificationIcon.Trade)
+                }
+                worldScreen.shouldUpdate = true
+            } catch (e: Exception) {
+            }
+        }
+    }
+
     private fun handleTradeRequest(msg: JsonObject) {
         val requestingCiv = msg["requestingCiv"]?.jsonPrimitive?.contentOrNull ?: return
         val tradeJson = msg["trade"]?.jsonObject ?: return
@@ -1648,28 +1782,39 @@ object FrameSync {
         } catch (e: Exception) {}
         // UncivGC 商路 (2026-08-24, 设计稿 §5.2): 屏蔽状态 + 恢复请求同步 → 本地连接网络失效重算
         // (blocked/restore 数据量极小, 服务器每帧全量携带)
+        // 商路连接同步 (2026-08-26 设计稿 v2): 已建立连接 + 邀请 — 服务器权威全量替换 (旧屏蔽字段废弃)
         try {
-            val tr = state["tradeRoutes"]?.jsonObject
-            if (tr != null) {
-                val newBlocked = HashSet<String>()
-                tr["blocked"]?.jsonArray?.forEach { it.jsonPrimitive.contentOrNull?.let { b -> newBlocked.add(b) } }
-                val newRestore = HashMap<String, HashSet<String>>()
-                tr["restore"]?.jsonArray?.forEach { arr ->
-                    val a = arr.jsonArray ?: return@forEach
-                    if (a.size < 2) return@forEach
-                    val pair = a[0].jsonPrimitive.contentOrNull ?: return@forEach
-                    val civId = a[1].jsonPrimitive.contentOrNull ?: return@forEach
-                    newRestore.getOrPut(pair) { HashSet() }.add(civId)
+            val gi = worldScreen.gameInfo
+            var changed = false
+            state["tradeRoutes"]?.jsonArray?.let { routesArr ->
+                val newRoutes = HashMap<String, ArrayList<String>>()
+                for (pair in routesArr) {
+                    val arr = pair.jsonArray ?: continue
+                    val from = arr.getOrNull(0)?.jsonPrimitive?.contentOrNull ?: continue
+                    val to = arr.getOrNull(1)?.jsonPrimitive?.contentOrNull ?: continue
+                    newRoutes.getOrPut(from) { ArrayList() }.add(to)
                 }
-                val gi = worldScreen.gameInfo
-                if (newBlocked != gi.tradeRouteBlocked || newRestore != gi.tradeRouteRestoreRequests) {
-                    gi.tradeRouteBlocked.clear()
-                    gi.tradeRouteBlocked.addAll(newBlocked)
-                    gi.tradeRouteRestoreRequests.clear()
-                    gi.tradeRouteRestoreRequests.putAll(newRestore)
-                    gi.invalidateTradeRoutes()
-                    worldScreen.shouldUpdate = true
+                if (newRoutes != gi.tradeRoutes) {
+                    gi.tradeRoutes = newRoutes
+                    changed = true
                 }
+            }
+            state["tradeRouteOffers"]?.jsonArray?.let { offersArr ->
+                val newOffers = HashMap<String, ArrayList<String>>()
+                for (pair in offersArr) {
+                    val arr = pair.jsonArray ?: continue
+                    val from = arr.getOrNull(0)?.jsonPrimitive?.contentOrNull ?: continue
+                    val to = arr.getOrNull(1)?.jsonPrimitive?.contentOrNull ?: continue
+                    newOffers.getOrPut(from) { ArrayList() }.add(to)
+                }
+                if (newOffers != gi.tradeRouteOffers) {
+                    gi.tradeRouteOffers = newOffers
+                    changed = true
+                }
+            }
+            if (changed) {
+                gi.invalidateTradeRoutes()
+                worldScreen.shouldUpdate = true
             }
         } catch (e: Exception) {}
         // 防御: 增量状态但回合已变 → 丢弃并请求全量 (回合变化应全量, 此为网络乱序/服务器防御漏网)

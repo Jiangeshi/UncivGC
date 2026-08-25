@@ -43,6 +43,8 @@ object NextTurnAutomation {
 
         respondToPopupAlerts(civInfo)
         TradeAutomation.respondToTradeRequests(civInfo, tradeAndChangeState)
+        // UncivGC 2026-08-26 商路 v2: AI 商路管理 (接受邀请 + 贪心发起) — 帧同步模拟器与单机 AI 统一生效
+        TradeAutomation.manageTradeRoutes(civInfo)
 
         if (tradeAndChangeState && civInfo.isMajorCiv()) {
             if (!civInfo.gameInfo.ruleset.modOptions.hasUnique(UniqueType.DiplomaticRelationshipsCannotChange)) {

@@ -98,21 +98,9 @@ class CityStats(val city: City) {
     //region Pure Functions
 
     private fun getStatsFromTradeRoute(): Stats {
-        // UncivGC 2026-08-24: 商路重写 — 城市-城市等价连接, 双方各自全额 (设计稿 §1)
-        // 每城连接按本城视角 base 排名 (陆/海分开): 基础收益 ×1/rank, unique 每路加成 ×1/(rank+1), 海商 ×0.9
-        // 百分比加成 (StatPercentFromTradeRoutes) 由 getStatPercentBonusList 的 uniques 统一处理
-        val stats = Stats()
-        val routes = city.civ.gameInfo.getTradeRouteNetwork().getRoutes(city)
-        if (routes.isEmpty()) return stats
-        val landRoutes = routes.filter { !it.isSea }
-            .sortedByDescending { com.unciv.logic.trade.TradeRoutes.baseFor(city, it) }
-        val seaRoutes = routes.filter { it.isSea }
-            .sortedByDescending { com.unciv.logic.trade.TradeRoutes.baseFor(city, it) }
-        for ((index, route) in landRoutes.withIndex())
-            stats.add(com.unciv.logic.trade.TradeRoutes.actualStats(city, route, index + 1))
-        for ((index, route) in seaRoutes.withIndex())
-            stats.add(com.unciv.logic.trade.TradeRoutes.actualStats(city, route, index + 1))
-        // 百分比加成 (如马丘比丘 +25% 金币) 乘在衰减后的实际收益上 (原版同款处理)
+        // UncivGC 2026-08-26 设计稿 v2: 单向商路 — 本城发起方 → 金币(资源数+0.5×距离); 本城接收方 → 文产食(发起方已改良资源)
+        val stats = com.unciv.logic.trade.TradeRoutes.cityTradeRouteStats(city)
+        // 百分比加成 (如马丘比丘 +25% 金币) 乘在收益上 (原版同款处理)
         val percentageStats = Stats()
         for (unique in city.getMatchingUniques(UniqueType.StatPercentFromTradeRoutes))
             percentageStats[Stat.valueOf(unique.params[1])] += unique.params[0].toFloat()

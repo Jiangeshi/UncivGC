@@ -1,86 +1,83 @@
 package com.unciv.logic.trade
 
 import com.unciv.logic.city.City
+import com.unciv.logic.civilization.Civilization
 import com.unciv.models.ruleset.tile.ResourceType
 import com.unciv.models.ruleset.tile.TileResource
 import com.unciv.models.ruleset.unique.UniqueType
 import com.unciv.models.stats.Stats
-import kotlin.math.min
 
 /**
- * UncivGC 2026-08-24: 商路收益计算 (设计稿 §1)。
+ * 商路收益计算 (UncivGC 2026-08-26 设计稿 v2 重写): 单向商路, 双方不同类型收益。
  *
- * base = (对方人口×0.4 + 本城人口×0.3) × min(1.5, 0.9 + 距离×0.05) + 资源差
- * 资源差: 我方有对方没有 — 奢侈 +1 / 战略 +0.5 / 奖金 +0.5 (每种)
- * 衰减: 基础收益 1/rank (陆/海分开排名), unique 每路加成 1/(rank+1), 海商 ×0.7 (2026-08-25)
- * 城邦影响力 +5/条 (不吃衰减) — 服务器结算
+ * 发起方 (卖货): 金币 = 已改良地块资源数 + 0.5 × 收益距离
+ * 接收方 (进货): 文化 +1×奢侈数, 产能 +1×战略数, 食物 +0.5×奖金数 (发起方已改良地块资源)
+ * 容量: 时代序号 (远古1...未来9) + Provides [X] Trade Routes unique
+ * 城邦: 只接收; 发起方连城邦 影响力 +10/条 (服务器结算)
+ * 传教: 每回合接收方城市 + 基础压力一半 (最低1) 发起方主流宗教压力 (服务器结算)
  */
 object TradeRoutes {
 
-    fun distFactor(distance: Int): Float = min(1.5f, 0.9f + distance * 0.05f)
-
-    fun baseFor(city: City, route: TradeRouteNetwork.Route): Float {
-        val otherPop = route.otherCity.population.population
-        val ownPop = city.population.population
-        // 人口系数 0.2/0.2 (2026-08-25 用户削弱: 0.3→0.2)
-        var gold = (otherPop * 0.2f + ownPop * 0.2f) * distFactor(route.distance)
-        gold += resourceBonus(city, route.otherCity)
-        return gold
-    }
-
-    /** 我方城市有、对方城市没有的资源差奖励 (奢侈+0.3/战略+0.15/奖金+0.15, 每种资源).
-     *  只算归属本城的地块资源 (tile.getCity()==city — 重叠地块只算归属城市, 2026-08-24 用户要求)
-     *  且已改良 (或城市中心自动供应); 排除建筑/文明级 uniques 全局资源
-     *  2026-08-25 用户削弱: 奢侈 0.5→0.3 / 战略 0.25→0.15 / 奖金 0.25→0.15 */
-    fun resourceBonus(city: City, otherCity: City): Float {
-        var bonus = 0f
-        val ruleset = city.civ.gameInfo.ruleset
-        fun mapResources(c: City): Set<TileResource> {
-            val set = HashSet<TileResource>()
-            for (tile in c.getTiles()) {
-                if (tile.getCity() != c) continue
-                val res = tile.tileResource ?: continue
-                if (tile.getUnpillagedImprovement() == null && tile != c.getCenterTileOrNull()) continue
-                set.add(res)
-            }
-            return set
-        }
-        val myResources = mapResources(city)
-        val otherResources = mapResources(otherCity)
-        for (resource in myResources) {
-            if (resource in otherResources) continue
-            bonus += when (resource.resourceType) {
-                ResourceType.Luxury -> 0.3f
-                ResourceType.Strategic -> 0.15f
-                ResourceType.Bonus -> 0.15f
-            }
-        }
-        return bonus
-    }
-
-    /** 本城商路集合内排名 (陆/海分开, 按 base 从高到低; 第 1 名 = 1) */
-    fun rankOf(city: City, route: TradeRouteNetwork.Route): Int {
-        val routes = city.civ.gameInfo.getTradeRouteNetwork().getRoutes(city)
-        val peers = routes.filter { it.isSea == route.isSea }
-            .sortedByDescending { baseFor(city, it) }
-        val idx = peers.indexOfFirst { it.otherCity == route.otherCity && it.distance == route.distance }
-        return if (idx < 0) 1 else idx + 1
-    }
-
-    /** 单条商路实际收益:
-     *  [ (对方人口×0.5 + 本城人口×0.3) × 距离系数 ÷ rank + 资源差 ] × 海商系数(海路0.9)
-     *  资源差不吃排名衰减, 吃海商系数 (2026-08-24 用户确认)
-     *  2026-08-25 用户削弱: 人口系数 0.3→0.2, 衰减统一 1/rank → 1/(rank+1) */
-    fun actualStats(city: City, route: TradeRouteNetwork.Route, rank: Int): Stats {
+    /** 发起方收益: 金币 = 已改良地块资源数 + 0.5×距离 */
+    fun initiatorStats(city: City, route: TradeRouteNetwork.Route): Stats {
         val stats = Stats()
-        val seaFactor = if (route.isSea) 0.7f else 1f  // 海商系数 0.7 (2026-08-25 用户调整)
-        val popGold = ((route.otherCity.population.population * 0.2f + city.population.population * 0.2f)
-                * distFactor(route.distance))
-        // 衰减统一 1/(rank+1) (2026-08-25 用户削弱: 之前基础 1/rank, 加成 1/(rank+1))
-        stats.gold = (popGold / (rank + 1) + resourceBonus(city, route.otherCity)) * seaFactor
-        // 加成类也吃海商系数 (2026-08-25 用户要求)
-        for (unique in city.getMatchingUniques(UniqueType.StatsFromTradeRoute))
-            stats.add(unique.stats * (1f / (rank + 1)) * seaFactor)
+        stats.gold = improvedResourceCount(city) + 0.5f * route.distance
+        return stats
+    }
+
+    /** 接收方收益: 奢侈×1文化 + 战略×1产能 + 奖金×0.5食物 (发起方已改良地块资源) */
+    fun receiverStats(city: City, route: TradeRouteNetwork.Route): Stats {
+        val stats = Stats()
+        val resources = improvedResourceTypes(city)
+        stats.culture = resources[ResourceType.Luxury]?.toFloat() ?: 0f
+        stats.production = resources[ResourceType.Strategic]?.toFloat() ?: 0f
+        stats.food = (resources[ResourceType.Bonus] ?: 0) * 0.5f
+        return stats
+    }
+
+    /** 已改良的地块资源数 (归属本城地块且已改良, 或城市中心自动供应; 排除建筑/文明级全局资源)
+     *  — 设计稿 v2: 必须是"地块资源且被改良" */
+    fun improvedResourceCount(city: City): Int {
+        return improvedResourceTypes(city).values.sum()
+    }
+
+    /** 已改良的地块资源分类统计 (ResourceType -> 数量) */
+    fun improvedResourceTypes(city: City): Map<ResourceType, Int> {
+        val result = HashMap<ResourceType, Int>()
+        for (tile in city.getTiles()) {
+            if (tile.getCity() != city) continue
+            val res = tile.tileResource ?: continue
+            if (tile.getUnpillagedImprovement() == null && tile != city.getCenterTileOrNull()) continue
+            result[res.resourceType] = (result[res.resourceType] ?: 0) + 1
+        }
+        return result
+    }
+
+    /** 文明商路容量: 时代序号 (远古=1, 古典=2, ...) + Provides [X] Trade Routes unique 加成 */
+    fun capacity(civ: Civilization): Int {
+        var cap = civ.getEraNumber() + 1
+        for (unique in civ.getMatchingUniques(UniqueType.ProvidesTradeRoutes)) {
+            cap += unique.params[0].toInt()
+        }
+        return cap
+    }
+
+    /** 文明已用商路数 (发起方视角: 本文明城市发起的连接数) */
+    fun usedByCiv(civ: Civilization): Int {
+        val myCityIds = civ.cities.map { it.id }.toSet()
+        return civ.gameInfo.tradeRoutes.entries
+            .filter { (fromId, _) -> fromId in myCityIds }
+            .sumOf { (_, toIds) -> toIds.size }
+    }
+
+    /** 本城商路收益汇总 (发起方金币 + 接收方文产食) — CityStats 用 */
+    fun cityTradeRouteStats(city: City): Stats {
+        val stats = Stats()
+        val network = city.civ.gameInfo.getTradeRouteNetwork()
+        for (route in network.getEstablishedRoutes(city)) {
+            if (network.isInitiator(city, route.otherCity)) stats.add(initiatorStats(city, route))
+            else stats.add(receiverStats(city, route))
+        }
         return stats
     }
 }

@@ -236,6 +236,7 @@ enum class UniqueType(
     /// Resource production & consumption
     ConsumesResources("Consumes [amount] [resource]", UniqueTarget.Improvement, UniqueTarget.Building, UniqueTarget.Unit),
     ProvidesResources("Provides [amount] [resource]", UniqueTarget.Global, UniqueTarget.Improvement, UniqueTarget.FollowerBelief),
+    ProvidesTradeRoutes("Provides [amount] Trade Routes", UniqueTarget.Global, UniqueTarget.Building),
     //todo should these two be merged to avoid the confusion?
     /** @see UnitActionStockpileCost */
     CostsResources("Costs [amount] [stockpiledResource]", UniqueTarget.Improvement, UniqueTarget.Building, UniqueTarget.Unit,

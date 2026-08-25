@@ -11,10 +11,57 @@ import com.unciv.logic.trade.TradeLogic
 import com.unciv.logic.trade.TradeOffer
 import com.unciv.logic.trade.TradeRequest
 import com.unciv.logic.trade.TradeOfferType
+import com.unciv.logic.trade.TradeRoutes
+import com.unciv.logic.trade.TradeRouteNetwork
+import com.unciv.logic.city.City
 import kotlin.math.min
 
 object TradeAutomation {
 
+    /** UncivGC 2026-08-26 商路 v2: AI 商路管理 — ①接受国外邀请 (默认接受) ②容量有空 → 贪心发起 (收益最高可达目标).
+     *  城邦不发起; 帧同步模拟器 (automateTurn) 与单机 AI 统一生效 */
+    fun manageTradeRoutes(civInfo: Civilization) {
+        if (civInfo.isCityState || civInfo.isBarbarian || civInfo.isSpectator()) return
+        val gameInfo = civInfo.gameInfo
+        try {
+            // ① 接受邀请: offers 里接收方属于本文明 → 直接建立
+            val myCityIds = civInfo.cities.map { it.id }.toSet()
+            val offers = gameInfo.tradeRouteOffers
+            for ((fromId, tos) in offers.entries.toList()) {
+                val toId = tos.firstOrNull { it in myCityIds } ?: continue
+                tos.remove(toId)
+                if (tos.isEmpty()) offers.remove(fromId)
+                val list = gameInfo.tradeRoutes.getOrPut(fromId) { ArrayList() }
+                if (!list.contains(toId)) list.add(toId)
+            }
+            // ② 贪心发起
+            val cap = TradeRoutes.capacity(civInfo)
+            var used = TradeRoutes.usedByCiv(civInfo)
+            while (used < cap) {
+                var bestCity: City? = null
+                var bestRoute: TradeRouteNetwork.Route? = null
+                var bestGold = -1f
+                for (city in civInfo.cities) {
+                    for (route in gameInfo.getTradeRouteNetwork().getReachable(city)) {
+                        val t = route.otherCity
+                        if (t.civ.isBarbarian) continue
+                        val connected = gameInfo.tradeRoutes[city.id]?.contains(t.id) == true
+                        val offered = gameInfo.tradeRouteOffers[city.id]?.contains(t.id) == true
+                        if (connected || offered) continue
+                        val gold = TradeRoutes.initiatorStats(city, route).gold
+                        if (gold > bestGold) { bestGold = gold; bestCity = city; bestRoute = route }
+                    }
+                }
+                val city = bestCity ?: break
+                val route = bestRoute!!
+                val list = gameInfo.tradeRoutes.getOrPut(city.id) { ArrayList() }
+                if (!list.contains(route.otherCity.id)) list.add(route.otherCity.id)
+                used++
+            }
+            gameInfo.invalidateTradeRoutes()
+        } catch (e: Exception) {
+        }
+    }
 
     fun respondToTradeRequests(civInfo: Civilization, tradeAndChangeState: Boolean) {
         for (tradeRequest in civInfo.tradeRequests.toList()) {

@@ -131,6 +131,11 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
     /** 已请求恢复的城市对 → 请求方 civId 集合; 双方都请求 → 移除屏蔽并恢复连接
      *  (必须具体类型 HashSet — 序列化框架无法实例化接口类型, 见 CivConstructions.freeBuildings 注释) */
     var tradeRouteRestoreRequests = HashMap<String, HashSet<String>>()
+    /** 商路 v2 (2026-08-26 设计稿 v2): 已建立的商路连接 — 发起方城市ID → 接收方城市ID列表 (单向, 一城可发起多条)
+     *  国内自动建立; 国外需接收方接受; 任一方可断开; 旧存档无此字段 = 空 (手动建立) */
+    var tradeRoutes = HashMap<String, ArrayList<String>>()
+    /** 待接受的国外商路邀请 — 发起方城市ID → 接收方城市ID列表 (回合内有效, 结算作废, 同贸易提议) */
+    var tradeRouteOffers = HashMap<String, ArrayList<String>>()
     //endregion
 
     /** The turn the replay history started recording.
@@ -235,6 +240,8 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
         toReturn.tradeRouteRestoreRequests.putAll(
             tradeRouteRestoreRequests.mapValues { HashSet(it.value) }
         )
+        toReturn.tradeRoutes.putAll(tradeRoutes.mapValues { ArrayList(it.value) })
+        toReturn.tradeRouteOffers.putAll(tradeRouteOffers.mapValues { ArrayList(it.value) })
         toReturn.oneMoreTurnMode = oneMoreTurnMode
         toReturn.customSaveLocation = customSaveLocation
         toReturn.victoryData = victoryData?.copy()

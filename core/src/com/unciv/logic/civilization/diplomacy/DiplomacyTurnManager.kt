@@ -155,11 +155,11 @@ object DiplomacyTurnManager {
         val network = civInfo.gameInfo.getTradeRouteNetwork()
         var count = 0
         for (city in civInfo.cities) {
-            for (route in network.getRoutes(city)) {
-                if (route.otherCity.civ == otherCiv) count++
+            for (route in network.getEstablishedRoutes(city)) {
+                if (route.otherCity.civ == otherCiv && network.isInitiator(city, route.otherCity)) count++
             }
         }
-        return count * 5f
+        return count * 10f  // 2026-08-26 设计稿 v2: +10/条 (商路变少)
     }
 
     private fun DiplomacyManager.nextTurnFlags() {
