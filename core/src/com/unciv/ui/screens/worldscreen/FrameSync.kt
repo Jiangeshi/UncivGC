@@ -1944,9 +1944,7 @@ object FrameSync {
                         if (target.isCityCenter()) target.getCity()?.let { affected.add(it) }
                         if (affected.isNotEmpty()) {
                             // 后台重算 (CityStats.update 整体赋值, 线程安全) + 完成后再刷新界面 — 不卡 GL
-                            for (c in affected) {
-                                if (c.civ.civID == worldScreen.viewingCiv.civID) scheduleFsStatsRefresh(c.civ)
-                            }
+                            for (c in affected) scheduleFsStatsRefresh(c.civ)
                             refreshOpenCityScreen()
                         }
                     } catch (ignored: Exception) {}
@@ -3040,10 +3038,9 @@ object FrameSync {
                                         this.turnsLeft = turns
                                     })
                             }
-                            // 2026-08-25: 重算移后台线程 + 只算查看中的文明 + 去抖 —
-                            // 之前 GL 线程同步全城重算 (LM2 大规则集后期可卡数秒 → 过回合后界面冻结"卡住")
-                            // CityStats.update 整体赋值 currentCityStats (防并发异常设计), 后台线程安全
-                            if (civ.civID == viewingCivId) scheduleFsStatsRefresh(civ)
+                            // 2026-08-25: 重算后台化 (临时加成/驻军变化触发) — 所有变化的文明都重算
+                            // (排行面板读其他文明 statsForNextTurn), 但全部在后台线程 → GL 不卡
+                            scheduleFsStatsRefresh(civ)
                             changed = true
                         }
                     } catch (e: Exception) {
@@ -3721,22 +3718,38 @@ object FrameSync {
         }
     }
 
-    /** 2026-08-25: 统计重算后台化 (临时加成/驻军变化触发) — 后台线程重算 + 去抖 + 完成后 GL 刷新.
+    /** 2026-08-25: 统计重算后台化 (临时加成/驻军变化触发) — 后台线程批量重算 + 去抖 + 完成后 GL 刷新.
      *  CityStats.update 整体赋值 currentCityStats (防并发异常设计) → 后台线程安全;
-     *  GL 渲染读 currentCityStats 引用, 新旧整体替换无中间态. 去抖: 合并窗口内多次触发只算一次. */
-    @Volatile private var fsStatsRefreshPending = false
+     *  GL 渲染读 currentCityStats 引用, 新旧整体替换无中间态.
+     *  重算**所有变化的文明** (排行面板读其他文明 statsForNextTurn 的 science/culture/production),
+     *  但全部在后台 → GL 线程不卡. 去抖: 计算期间的触发合并到下一批. */
+    @Volatile private var fsStatsRefreshRunning = false
+    private val fsStatsRefreshCivs = java.util.Collections.synchronizedSet(HashSet<com.unciv.logic.civilization.Civilization>())
     private fun scheduleFsStatsRefresh(civ: com.unciv.logic.civilization.Civilization) {
-        if (fsStatsRefreshPending) return
-        fsStatsRefreshPending = true
+        fsStatsRefreshCivs.add(civ)
+        if (fsStatsRefreshRunning) return
+        fsStatsRefreshRunning = true
         Concurrency.run("FsStatsRefresh") {
-            try {
-                // 先城市后文明 (civ.updateStatsForNextTurn 汇总依赖城市新 stats)
-                for (c in civ.cities) c.cityStats.update()
-                civ.updateStatsForNextTurn()
-            } catch (ignored: Exception) {
+            while (true) {
+                val batch: List<com.unciv.logic.civilization.Civilization>
+                synchronized(fsStatsRefreshCivs) {
+                    if (fsStatsRefreshCivs.isEmpty()) {
+                        fsStatsRefreshRunning = false
+                        break
+                    }
+                    batch = ArrayList(fsStatsRefreshCivs)
+                    fsStatsRefreshCivs.clear()
+                }
+                for (civ in batch) {
+                    try {
+                        // 先城市后文明 (civ.updateStatsForNextTurn 汇总依赖城市新 stats)
+                        for (c in civ.cities) c.cityStats.update()
+                        civ.updateStatsForNextTurn()
+                    } catch (ignored: Exception) {
+                    }
+                }
             }
             launchOnGLThread {
-                fsStatsRefreshPending = false
                 try {
                     worldScreenRef?.get()?.shouldUpdate = true
                     refreshOpenCityScreen()
