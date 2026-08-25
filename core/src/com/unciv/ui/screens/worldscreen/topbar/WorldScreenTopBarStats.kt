@@ -56,7 +56,7 @@ internal class WorldScreenTopBarStats(topbar: WorldScreenTopBar) : ScalingTableW
     // UncivGC 2026-08-26 商路 v2: 顶栏商路 已用/总量 (快乐后, 两种 UI 都显示; 点击打开选中城市商路管理)
     private val tradeRouteLabel = Label("", BaseScreen.skin)
     private val tradeRouteContainer = Table().apply {
-        val icon = ImageGetter.getStatIcon("Gold")
+        val icon = ImageGetter.getImage("StatIcons/Acquire")  // 贸易路线图标 (NotificationIcon.Trade)
         val invokeTradeRoute = {
             val selected = worldScreen.selectedCiv
             val city = selected?.cities?.firstOrNull()
