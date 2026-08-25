@@ -161,6 +161,8 @@ object FrameSync {
 
     /** 存档重载进行中 (防重入) */
     @Volatile private var reloading = false
+    /** 2026-08-25 结算就绪: 重载完成后待发送的 turnReady 标记 (新连接建立时发送) */
+    @Volatile private var pendingTurnReady = false
     /** 已重载到的服务器回合 (saveUpdated 幂等: 只重载更新的存档) */
     @Volatile private var lastReloadedTurn = -1
     /** 本次状态广播中城市状态是否有变化 (hp/人口/地块) → 打开的城市界面需要刷新 */
@@ -226,6 +228,7 @@ object FrameSync {
         nickname = UncivGameHelper.getNickname()
         // 跨局状态重置 (跳海/换房后新局: 完成回合/倒计时/重载幂等必须清零, 否则新局失效)
         lastReloadedTurn = -1
+        pendingTurnReady = false  // 新局/新连接: 不发送就绪 (仅结算重载后发送)
         myTurnFinished = false
         turnDeadline = 0
         turnReadyPlayers = emptyList()
@@ -339,6 +342,8 @@ object FrameSync {
                 teamExploredMerged = false  // 重载后重新全量合并队友探索历史
                 com.unciv.UncivGame.Current.loadGame(gi)
                 if (turn >= 0) lastReloadedTurn = turn  // 成功才记录
+                // 2026-08-25 结算就绪: 重载完成 → 新连接建立后通知服务器 (全员就绪才广播新回合)
+                pendingTurnReady = true
             } catch (e: Exception) {
                 println("FrameSync reload failed: " + e)
                 // 下载/重载失败: 旧屏幕可能还在 → 恢复连接 (否则连接/UI 全丢)
@@ -730,6 +735,14 @@ object FrameSync {
         lastErrorShown = ""
         lastPongAt = System.currentTimeMillis()
         updateStatusLabel()
+        // 2026-08-25 结算就绪: 存档重载完成后的新连接 → 通知服务器 (全员就绪才广播新回合)
+        if (pendingTurnReady) {
+            pendingTurnReady = false
+            try {
+                ws.send("""{"type":"turnReady"}""")
+            } catch (ignored: Exception) {
+            }
+        }
         // 连接后立即向模拟器要一次全量状态 (服务器 join 已自动发, 这里兜底)
         // 心跳: 5s 一次; 超过 15s (3 周期) 无 pong → 连接判死, 主动断开触发重连
         val pingJob = GlobalScope.launch {
@@ -1908,10 +1921,8 @@ object FrameSync {
         syncCities(worldScreen, cities, isFull, removedCities)
         val civChanged = syncCivInfo(gameInfo, civs, worldScreen.viewingCiv.civID)
         var unitsChanged = false
-        syncEncampments(gameInfo, encampments)
-        syncImprovements(gameInfo, improvements)
-        syncImprovementsDone(gameInfo, improvementsDone)
-        syncRoads(gameInfo, roads)
+        // 2026-08-25: 地图四类状态合并同步 (一次全图遍历替代 4 次 — 后期掉帧优化)
+        syncMapLayers(gameInfo, improvements, improvementsDone, roads, encampments)
         syncReligions(gameInfo, religions, worldScreen)
         val stateIds = HashSet<Int>()
         // 本次广播中服务器驱动了 due 变化的单位 (跳过回合切换) — 重应用“已查看”标记时跳过, 防止取消跳过被回滚
@@ -2210,8 +2221,19 @@ object FrameSync {
     }
 
     /** 改良状态同步: 服务器全量列表覆盖本地 (建造/维修/取消立即显示; 服务器权威) */
-    private fun syncImprovements(gameInfo: GameInfo, improvements: List<JsonElement>) {
+
+    /** 2026-08-25: 地图四类状态合并同步 — improvements/improvementsDone/roads/encampments
+     *  原本各自遍历全图 40000 格 (每次广播 ×4 遍全图遍历, 后期掉帧主因之一), 合并为一次遍历.
+     *  各段对比逻辑与副作用与原函数完全一致 (shouldUpdate/affectedCities/道路商路失效). */
+    private fun syncMapLayers(
+        gameInfo: GameInfo,
+        improvements: List<JsonElement>,
+        improvementsDone: List<JsonElement>,
+        roads: List<JsonElement>,
+        encampments: List<JsonElement>,
+    ) {
         try {
+            // ---- 构建 4 个服务器数据 (不遍历 tileMap) ----
             val serverImps = HashMap<Pair<Int, Int>, Pair<String, Int>>()
             for (imp in improvements) {
                 val a = imp.jsonArray ?: continue
@@ -2222,23 +2244,135 @@ object FrameSync {
                 val turns = a[3].jsonPrimitive.intOrNull ?: continue
                 serverImps[x to y] = name to turns
             }
+            val serverDone = HashSet<Pair<Int, Int>>()
+            val serverDoneNames = HashMap<Pair<Int, Int>, String>()
+            val serverDonePillaged = HashMap<Pair<Int, Int>, Boolean>()
+            for (imp in improvementsDone) {
+                val a = imp.jsonArray ?: continue
+                if (a.size < 3) continue
+                val x = a[0].jsonPrimitive.intOrNull ?: continue
+                val y = a[1].jsonPrimitive.intOrNull ?: continue
+                val name = a[2].jsonPrimitive.contentOrNull ?: continue
+                serverDone.add(x to y)
+                serverDoneNames[x to y] = name
+                serverDonePillaged[x to y] = a[3]?.jsonPrimitive?.contentOrNull == "true"
+            }
+            val serverRoads = HashMap<Pair<Int, Int>, Pair<String, Boolean>>()
+            for (r in roads) {
+                val a = r.jsonArray ?: continue
+                if (a.size < 4) continue
+                val x = a[0].jsonPrimitive.intOrNull ?: continue
+                val y = a[1].jsonPrimitive.intOrNull ?: continue
+                serverRoads[x to y] = (a[2].jsonPrimitive.contentOrNull ?: "") to (a[3].jsonPrimitive.contentOrNull == "true")
+            }
+            val serverCamps = encampments.mapNotNull { e ->
+                val arr = e.jsonArray
+                val x = arr.getOrNull(0)?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
+                val y = arr.getOrNull(1)?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
+                com.unciv.logic.map.HexCoord(x, y)
+            }.toSet()
+
+            // ---- 单次全图遍历, 四类对比 ----
             var changed = false
+            var roadsChanged = false
+            val affectedCities = HashSet<com.unciv.logic.city.City>()
             for (tile in gameInfo.tileMap.values) {
                 val key = (tile.position.x ?: continue) to (tile.position.y ?: continue)
-                val server = serverImps[key]
+                // improvements (建造中改良)
+                val sImp = serverImps[key]
                 val localName = tile.improvementInProgress
-                if (server == null) {
+                if (sImp == null) {
                     if (localName != null) {
                         tile.improvementQueue.clear()
                         changed = true
                     }
-                } else if (localName != server.first || tile.turnsToImprovement != server.second) {
+                } else if (localName != sImp.first || tile.turnsToImprovement != sImp.second) {
                     tile.improvementQueue.clear()
-                    tile.improvementQueue.add(com.unciv.logic.map.tile.Tile.ImprovementQueueEntry(server.first, server.second))
+                    tile.improvementQueue.add(com.unciv.logic.map.tile.Tile.ImprovementQueueEntry(sImp.first, sImp.second))
                     changed = true
                 }
+                // improvementsDone (已建成改良 + 劫掠)
+                var tileChanged = false
+                val localDone = tile.improvement
+                if (key in serverDone) {
+                    val want = serverDoneNames[key]
+                    if (localDone != want) {
+                        tile.improvement = want
+                        tileChanged = true
+                    }
+                    val wantPillaged = serverDonePillaged[key] ?: false
+                    if (tile.improvementIsPillaged != wantPillaged) {
+                        tile.improvementIsPillaged = wantPillaged
+                        tileChanged = true
+                    }
+                } else if (localDone != null && localDone.isNotEmpty()) {
+                    tile.improvement = null
+                    tile.improvementIsPillaged = false
+                    tileChanged = true
+                }
+                if (tileChanged) {
+                    changed = true
+                    if (tile.owningCity != null) affectedCities.add(tile.owningCity!!)
+                    for (adj in tile.neighbors) {
+                        if (adj.owningCity != null) affectedCities.add(adj.owningCity!!)
+                    }
+                }
+                // roads (道路/铁路 + 劫掠)
+                val sRoad = serverRoads[key]
+                val localStatus = tile.roadStatus.name
+                val localPillaged = tile.roadIsPillaged
+                if (sRoad == null) {
+                    if (localStatus != "None" || localPillaged) {
+                        tile.roadStatus = com.unciv.logic.map.tile.RoadStatus.None
+                        tile.roadIsPillaged = false
+                        roadsChanged = true
+                    }
+                } else {
+                    val wantStatus = sRoad.first
+                    val wantPillaged = sRoad.second
+                    if (localStatus != wantStatus || localPillaged != wantPillaged) {
+                        try {
+                            tile.roadStatus = com.unciv.logic.map.tile.RoadStatus.valueOf(wantStatus)
+                        } catch (ignored: Exception) {
+                            continue
+                        }
+                        tile.roadIsPillaged = wantPillaged
+                        roadsChanged = true
+                    }
+                }
+                // encampments (蛮族营地移除 — 本地残留对齐)
+                if (tile.isBarbarianEncampment() && tile.position !in serverCamps) {
+                    try {
+                        tile.removeImprovement()
+                    } catch (e: Exception) {
+                    }
+                }
             }
+            // encampments 新增 (服务器有本地没有 → 新刷营地; server 列表小)
+            for (pos in serverCamps) {
+                val x = pos.x ?: continue
+                val y = pos.y ?: continue
+                val tile = gameInfo.tileMap.get(x, y) ?: continue
+                if (!tile.isBarbarianEncampment()) {
+                    try {
+                        tile.improvement = com.unciv.Constants.barbarianEncampment
+                    } catch (e: Exception) {
+                    }
+                }
+            }
+            // ---- 副作用 (与原 4 函数一致) ----
             if (changed) {
+                for (city in affectedCities) {
+                    try {
+                        city.cityStats.update()
+                    } catch (e: Exception) {
+                    }
+                }
+                worldScreenRef?.get()?.let { it.shouldUpdate = true }
+                refreshOpenCityScreen()
+            }
+            if (roadsChanged) {
+                gameInfo.invalidateTradeRoutes()
                 worldScreenRef?.get()?.let { it.shouldUpdate = true }
             }
         } catch (e: Exception) {
@@ -2247,49 +2381,6 @@ object FrameSync {
 
     /** 道路状态同步 (含劫掠; 2026-08-21): 服务器权威 [x,y,roadStatus,pillaged] —
      *  纯道路地块劫掠后客户端看不到 → “道路无法劫掠”; 只有 roadStatus != None 的格子输出 */
-    private fun syncRoads(gameInfo: GameInfo, roads: List<JsonElement>) {
-        try {
-            val server = HashMap<Pair<Int, Int>, Pair<String, Boolean>>()
-            for (r in roads) {
-                val a = r.jsonArray ?: continue
-                if (a.size < 4) continue
-                val x = a[0].jsonPrimitive.intOrNull ?: continue
-                val y = a[1].jsonPrimitive.intOrNull ?: continue
-                server[x to y] = (a[2].jsonPrimitive.contentOrNull ?: "") to (a[3].jsonPrimitive.contentOrNull == "true")
-            }
-            var changed = false
-            for (tile in gameInfo.tileMap.values) {
-                val key = (tile.position.x ?: continue) to (tile.position.y ?: continue)
-                val s = server[key]
-                val localStatus = tile.roadStatus.name
-                val localPillaged = tile.roadIsPillaged
-                if (s == null) {
-                    if (localStatus != "None" || localPillaged) {
-                        tile.roadStatus = com.unciv.logic.map.tile.RoadStatus.None
-                        tile.roadIsPillaged = false
-                        changed = true
-                    }
-                } else {
-                    val wantStatus = s.first
-                    val wantPillaged = s.second
-                    if (localStatus != wantStatus || localPillaged != wantPillaged) {
-                        try {
-                            tile.roadStatus = com.unciv.logic.map.tile.RoadStatus.valueOf(wantStatus)
-                        } catch (ignored: Exception) {
-                            continue
-                        }
-                        tile.roadIsPillaged = wantPillaged
-                        changed = true
-                    }
-                }
-            }
-            if (changed) {
-                gameInfo.invalidateTradeRoutes()  // UncivGC 商路: 道路状态变化 → 连接缓存失效 (直接写字段不走 setter)
-                worldScreenRef?.get()?.let { it.shouldUpdate = true }
-            }
-        } catch (ignored: Exception) {
-        }
-    }
 
     /** 战败检测: 由 WorldScreen.update 的 isDefeated 分支弹失败界面 (VictoryScreen, 帧同步防重),
      *  界面按钮为“回到大厅” — 玩家自己点回大厅, 不自动踢出 (用户 2026-08-20 确认) */
@@ -2497,104 +2588,8 @@ object FrameSync {
     }
 
     /** 已完成改良同步: 服务器全量列表覆盖本地 (改良建好后立即显示图标; 服务器权威) */
-    private fun syncImprovementsDone(gameInfo: GameInfo, improvementsDone: List<JsonElement>) {
-        try {
-            val server = HashSet<Pair<Int, Int>>()
-            val serverNames = HashMap<Pair<Int, Int>, String>()
-            val serverPillaged = HashMap<Pair<Int, Int>, Boolean>()
-            for (imp in improvementsDone) {
-                val a = imp.jsonArray ?: continue
-                if (a.size < 3) continue
-                val x = a[0].jsonPrimitive.intOrNull ?: continue
-                val y = a[1].jsonPrimitive.intOrNull ?: continue
-                val name = a[2].jsonPrimitive.contentOrNull ?: continue
-                server.add(x to y)
-                serverNames[x to y] = name
-                serverPillaged[x to y] = a[3]?.jsonPrimitive?.contentOrNull == "true"
-            }
-            var changed = false
-            val affectedCities = HashSet<City>()
-            for (tile in gameInfo.tileMap.values) {
-                var tileChanged = false
-                val key = (tile.position.x ?: continue) to (tile.position.y ?: continue)
-                val localName = tile.improvement
-                if (key in server) {
-                    val want = serverNames[key]
-                    if (localName != want) {
-                        tile.improvement = want
-                        tileChanged = true
-                    }
-                    // 劫掠状态同步 (劫掠后立即显示; 服务器权威)
-                    val wantPillaged = serverPillaged[key] ?: false
-                    if (tile.improvementIsPillaged != wantPillaged) {
-                        tile.improvementIsPillaged = wantPillaged
-                        tileChanged = true
-                    }
-                } else if (localName != null && localName.isNotEmpty()) {
-                    tile.improvement = null
-                    tile.improvementIsPillaged = false
-                    tileChanged = true
-                }
-                if (tileChanged) {
-                    changed = true
-                    // 变化 tile 自身城市 + 相邻 1 格城市 (Colony 的 +50% 奇观产量作用于相邻格子,
-                    // 奇观被哪个城工作就影响哪个城的统计)
-                    if (tile.owningCity != null) affectedCities.add(tile.owningCity!!)
-                    for (adj in tile.neighbors) {
-                        if (adj.owningCity != null) affectedCities.add(adj.owningCity!!)
-                    }
-                }
-            }
-            if (changed) {
-                // 产量缓存失效: 原版 setImprovement 会 cityStats.update() — 直接改字段不走该路径,
-                // 否则 Colony 瞬间建造/劫掠修复后产量显示不刷新 (西班牙 +50% 奇观产量“下回合才生效”的根因)
-                for (city in affectedCities) {
-                    try {
-                        city.cityStats.update()
-                    } catch (e: Exception) {
-                    }
-                }
-                worldScreenRef?.get()?.let { it.shouldUpdate = true }
-                refreshOpenCityScreen()
-            }
-        } catch (e: Exception) {
-        }
-    }
 
     /** 蛮族营地同步: 服务器全量列表覆盖本地 (攻下营地后双方立即看到营地消失) */
-    private fun syncEncampments(gameInfo: GameInfo, encampments: List<JsonElement>) {
-        try {
-            val serverCamps = encampments.mapNotNull { e ->
-                val arr = e.jsonArray
-                val x = arr.getOrNull(0)?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
-                val y = arr.getOrNull(1)?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
-                com.unciv.logic.map.HexCoord(x, y)
-            }.toSet()
-            for (tile in gameInfo.tileMap.values) {
-                if (!tile.isBarbarianEncampment()) continue
-                if (tile.position !in serverCamps) {
-                    try {
-                        tile.removeImprovement()
-                    } catch (e: Exception) {
-                    }
-                }
-            }
-            // 服务器有但本地没有 → 新刷的蛮族营地 (守卫单位由 units 同步创建; 全量对齐)
-            for (pos in serverCamps) {
-                val x = pos.x ?: continue
-                val y = pos.y ?: continue
-                val tile = gameInfo.tileMap.get(x, y) ?: continue
-                if (!tile.isBarbarianEncampment()) {
-                    try {
-                        tile.improvement = com.unciv.Constants.barbarianEncampment
-                    } catch (e: Exception) {
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            // 营地同步失败绝不能中断 applyState (否则后续 hp 等同步全被跳过)
-        }
-    }
 
     /** 其他文明信息同步 (概览界面): 已采用政策 + 时代 — 对方回合中选政策/进时代立即可见 */
     /** 外交关系变化 (新见面/战争/友谊/谴责) → 实时刷新打开的外交界面: 左侧关系圆圈变色/新文明出现 + 右侧菜单更新.
