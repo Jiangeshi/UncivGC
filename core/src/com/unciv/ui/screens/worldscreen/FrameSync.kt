@@ -1943,9 +1943,9 @@ object FrameSync {
                         if (oldTile != null && oldTile.isCityCenter()) oldTile.getCity()?.let { affected.add(it) }
                         if (target.isCityCenter()) target.getCity()?.let { affected.add(it) }
                         if (affected.isNotEmpty()) {
+                            // 后台重算 (CityStats.update 整体赋值, 线程安全) + 完成后再刷新界面 — 不卡 GL
                             for (c in affected) {
-                                c.cityStats.update()
-                                try { c.civ.updateStatsForNextTurn() } catch (ignored2: Exception) {}
+                                if (c.civ.civID == worldScreen.viewingCiv.civID) scheduleFsStatsRefresh(c.civ)
                             }
                             refreshOpenCityScreen()
                         }
@@ -3040,8 +3040,10 @@ object FrameSync {
                                         this.turnsLeft = turns
                                     })
                             }
-                            try { civ.updateStatsForNextTurn() } catch (ignored: Exception) {}
-                            try { for (c in civ.cities) c.cityStats.update() } catch (ignored: Exception) {}
+                            // 2026-08-25: 重算移后台线程 + 只算查看中的文明 + 去抖 —
+                            // 之前 GL 线程同步全城重算 (LM2 大规则集后期可卡数秒 → 过回合后界面冻结"卡住")
+                            // CityStats.update 整体赋值 currentCityStats (防并发异常设计), 后台线程安全
+                            if (civ.civID == viewingCivId) scheduleFsStatsRefresh(civ)
                             changed = true
                         }
                     } catch (e: Exception) {
@@ -3716,6 +3718,31 @@ object FrameSync {
                 current.update()
             }
         } catch (e: Exception) {
+        }
+    }
+
+    /** 2026-08-25: 统计重算后台化 (临时加成/驻军变化触发) — 后台线程重算 + 去抖 + 完成后 GL 刷新.
+     *  CityStats.update 整体赋值 currentCityStats (防并发异常设计) → 后台线程安全;
+     *  GL 渲染读 currentCityStats 引用, 新旧整体替换无中间态. 去抖: 合并窗口内多次触发只算一次. */
+    @Volatile private var fsStatsRefreshPending = false
+    private fun scheduleFsStatsRefresh(civ: com.unciv.logic.civilization.Civilization) {
+        if (fsStatsRefreshPending) return
+        fsStatsRefreshPending = true
+        Concurrency.run("FsStatsRefresh") {
+            try {
+                // 先城市后文明 (civ.updateStatsForNextTurn 汇总依赖城市新 stats)
+                for (c in civ.cities) c.cityStats.update()
+                civ.updateStatsForNextTurn()
+            } catch (ignored: Exception) {
+            }
+            launchOnGLThread {
+                fsStatsRefreshPending = false
+                try {
+                    worldScreenRef?.get()?.shouldUpdate = true
+                    refreshOpenCityScreen()
+                } catch (ignored: Exception) {
+                }
+            }
         }
     }
 
