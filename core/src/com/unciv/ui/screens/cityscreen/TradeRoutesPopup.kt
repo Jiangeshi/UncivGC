@@ -239,8 +239,16 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
                         ConfirmPopup(stageToShowOn, "确定与 ${other.name.tr()} 建立商路？", "建立", isConfirmPositive = true, restoreDefault = { isDisabled = false }) {
                             if (FrameSync.isFsMode(gameInfo)) {
                                 FrameSync.sendTradeRouteOffer(city.id, other.id)
+                            } else if (other.civ != city.civ && other.civ.isHuman()) {
+                                // 单机热座双玩家之间: 需要请求 (2026-08-26 用户要求) — 写邀请 + 接收方弹窗接受/拒绝
+                                val off = gameInfo.tradeRouteOffers.getOrPut(city.id) { ArrayList() }
+                                if (!off.contains(other.id)) off.add(other.id)
+                                other.civ.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
+                                    com.unciv.logic.civilization.AlertType.TradeRouteOffer, "${city.id}|${other.id}"))
+                                gameInfo.invalidateTradeRoutes()
+                                try { city.cityStats.update() } catch (ignored: Exception) {}
                             } else {
-                                // 单机: 本地直接执行 (内商/外商/城邦都直接建立)
+                                // 单机: 内商 / AI接收方(默认接受) / 城邦: 直接建立
                                 val list = gameInfo.tradeRoutes.getOrPut(city.id) { ArrayList() }
                                 if (!list.contains(other.id)) list.add(other.id)
                                 gameInfo.invalidateTradeRoutes()
