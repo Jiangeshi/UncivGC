@@ -148,15 +148,17 @@ object DiplomacyTurnManager {
     }
 
 
-    /** UncivGC 2026-08-24: 城邦商路静止点加成 — 到该文明 (otherCiv) 的每条连接 +5.
-     * 只能在非 @Readonly 上下文调用 (网络查询带缓存失效) */
+    /** UncivGC 2026-08-24: 城邦商路静止点加成 — 到该城邦 (civInfo) 的每条连接 +10.
+     * 只能在非 @Readonly 上下文调用 (网络查询带缓存失效)
+     * 2026-08-26 修复: 此函数挂在城邦的 DiplomacyManager 上 (civInfo=城邦, otherCiv=玩家),
+     * 必须遍历玩家城市数「玩家发起→城邦」的连接 (城邦只接收不发起, 原实现数 civInfo.cities 永远为 0) */
     private fun DiplomacyManager.getCityStateTradeRouteInfluenceBonus(): Float {
         if (civInfo.isBarbarian) return 0f
         val network = civInfo.gameInfo.getTradeRouteNetwork()
         var count = 0
-        for (city in civInfo.cities) {
+        for (city in otherCiv.cities) {
             for (route in network.getEstablishedRoutes(city)) {
-                if (route.otherCity.civ == otherCiv && network.isInitiator(city, route.otherCity)) count++
+                if (route.otherCity.civ == civInfo && network.isInitiator(city, route.otherCity)) count++
             }
         }
         return count * 10f  // 2026-08-26 设计稿 v2: +10/条 (商路变少)
