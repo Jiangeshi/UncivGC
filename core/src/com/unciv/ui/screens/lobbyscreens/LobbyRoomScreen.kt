@@ -715,7 +715,9 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             val label = "[$namePart]: ${m.text}".toLabel(fontSize = 18)
             label.color = if (isMe) Color.GREEN else Color.WHITE
             label.setAlignment(com.badlogic.gdx.utils.Align.left)
-            messagesTable.add(label).left().expandX().pad(2f).row()
+            // wrap 需要固定宽度才生效 (ScrollPane 内容默认无限宽 → 长消息不换行, 2026-08-25 用户反馈)
+            label.wrap = true
+            messagesTable.add(label).left().expandX().pad(2f).width(440f).row()  // 460 视口 - 滚动条/padding 余量
         }
         // 滚到底部 (最新消息)
         chatPopupScroll?.let { scroll ->

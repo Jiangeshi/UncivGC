@@ -54,7 +54,7 @@ internal object UnitSupplyTable {
             it.addLabeledValue("Population", stats.getUnitSupplyFromPop())
             it.addSeparator()
             it.addLabeledValue("Total Supply", stats.getUnitSupply())
-            it.addLabeledValue("In Use", viewingPlayer.units.getCivUnitsSize())
+            it.addLabeledValue("In Use", stats.getUnitSupplyUsed())
             it.addSeparator()
             it.addLabeledValue("Supply Deficit", deficit)
             it.addLabeledValue("Production Penalty", "${stats.getUnitSupplyProductionPenalty().toInt()}%")

@@ -376,13 +376,17 @@ class MapUnit : IsPartOfGameInfoSerialization {
     fun canSplitFormation(): Boolean {
         if (formation == UnitFormation.Single) return false
         if (currentMovement <= 0f) return false
-        // 需要足够的相邻空格
+        // 需要足够的相邻空格 (舰队/无敌舰队与军团/集团军同规则 — 2026-08-25 修复: 之前漏写水军分支 → 舰队拆分不需空格)
         val neededSlots = when (formation) {
-            UnitFormation.Corps -> 1
-            UnitFormation.Army -> 2
+            UnitFormation.Corps, UnitFormation.Fleet -> 1
+            UnitFormation.Army, UnitFormation.Armada -> 2
             else -> 0
         }
-        val emptyNeighbors = getTile().neighbors.count { it.isLand && !it.isImpassible() && it.militaryUnit == null }
+        // 空格按单位实际可通行判定 (canMoveTo 含水陆/海洋限制/城市中心/占领判定 — 2026-08-25 修复:
+        // 之前 isLand 写死 → 海上舰队永远拆不了; isWater 粗判会误算 Galley 进不了的 Ocean 格)
+        val emptyNeighbors = getTile().neighbors.count {
+            it.militaryUnit == null && movement.canMoveTo(it)
+        }
         return emptyNeighbors >= neededSlots
     }
 
@@ -391,8 +395,8 @@ class MapUnit : IsPartOfGameInfoSerialization {
         if (formation == UnitFormation.Single) return emptyList()
 
         val totalParts = when (formation) {
-            UnitFormation.Corps -> 2
-            UnitFormation.Army -> 3
+            UnitFormation.Corps, UnitFormation.Fleet -> 2
+            UnitFormation.Army, UnitFormation.Armada -> 3
             else -> 1
         }
         val avgHp = health / totalParts
@@ -406,8 +410,12 @@ class MapUnit : IsPartOfGameInfoSerialization {
                 ?: continue
             val newUnit = civ.units.placeUnitNearTile(getTile().position, unitBase)
             if (newUnit != null) {
-                // 恢复副单位合并前的实例名 (2026-08-22 用户要求)
-                if (snapshot.name.isNotEmpty()) newUnit.name = snapshot.name
+                // 恢复副单位合并前的名字: 自定义名 (非 baseUnit 默认名) 始终保留;
+                // 默认名只在主单位未升级时恢复 — 主单位升级后 baseUnit 已变,
+                // 副单位跟随新类型用新默认名, 不再显示合并时的旧单位名 (2026-08-25 用户反馈)
+                if (snapshot.name.isNotEmpty()
+                    && (snapshot.name != snapshot.unitName || baseUnit.name == snapshot.unitName))
+                    newUnit.name = snapshot.name
                 newUnit.health = avgHp
                 newUnit.promotions.numberOfPromotions = snapshot.level
                 newUnit.promotions.XP = snapshot.xp

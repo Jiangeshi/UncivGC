@@ -82,6 +82,10 @@ object FrameSync {
     /** fs_server 端口 (生产 30125; 测试服 30127; 本地联调 -Duncivgc.fsPort=30125) */
     private val FS_PORT: Int
         get() = System.getProperty("uncivgc.fsPort")?.toIntOrNull() ?: 30127
+
+    /** fs_server 主机 (2026-08-25 对局分离架构: 打包时改新机 IP; null = 与 lobby 同主机, 兼容旧部署;
+     *  运行时 -Duncivgc.fsHost 覆盖 — 仅对局(模拟器/广播)走新机, 大厅/存档仍走 lobby 主机) */
+    private val FS_HOST: String? = "118.25.42.214"
     private const val RECONNECT_BASE_MS = 2000L
     private const val RECONNECT_MAX_MS = 15000L
     /** 心跳间隔: 5s 一次 (断线检测提速 — 网络切换/服务器关闭时收不到 pong 快速判死) */
@@ -676,8 +680,9 @@ object FrameSync {
     // ---------- 连接 ----------
 
     private fun fsUrl(): String {
-        val base = LobbyApi.SERVER_URL
-        val host = base.substringAfter("://").substringBefore(':')
+        val configuredHost = System.getProperty("uncivgc.fsHost") ?: FS_HOST
+        val host = configuredHost
+            ?: LobbyApi.SERVER_URL.substringAfter("://").substringBefore(':')
         val spec = if (isSpectating) "&spectator=true" else ""
         // v=2: 声明支持状态广播 gzip 压缩 (fs_server 按连接能力分发, 旧客户端不受影响)
         return "ws://$host:$FS_PORT/ws?gameId=$gameId&playerId=$playerId&nickname=${java.net.URLEncoder.encode(nickname, "UTF-8")}$spec&v=2"
@@ -1926,10 +1931,25 @@ object FrameSync {
                 if (!unit.hasTile()) continue
                 val target = gameInfo.tileMap.get(x, y) ?: continue
                 if (unit.getTile() != target) {
+                    val oldTile = unit.getTile()
                     worldScreen.mapHolder.animateServerUnitMove(unit, target)
                     // 服务器移动后刷新单位 uniques 缓存 — 否则地块条件类 uniques
                     // (行商 "in [{improved} {resource}] tiles" 进货 / 城市中心售货) 仍按旧地块判断 → 当回合不可用
                     try { unit.updateUniques() } catch (ignored: Exception) {}
+                    // 2026-08-25: 驻军条件效果实时刷新 — 单位进出城市中心后 isGarrisoned() 变化,
+                    // 城市 stats 缓存不失效则 "in all cities with a garrison" 类加成 (产能/快乐/维护费) 不生效
+                    try {
+                        val affected = HashSet<com.unciv.logic.city.City>()
+                        if (oldTile != null && oldTile.isCityCenter()) oldTile.getCity()?.let { affected.add(it) }
+                        if (target.isCityCenter()) target.getCity()?.let { affected.add(it) }
+                        if (affected.isNotEmpty()) {
+                            for (c in affected) {
+                                c.cityStats.update()
+                                try { c.civ.updateStatsForNextTurn() } catch (ignored2: Exception) {}
+                            }
+                            refreshOpenCityScreen()
+                        }
+                    } catch (ignored: Exception) {}
                 }
                 obj["actions"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull()?.let {
                     if (unit.currentMovement != it) unit.currentMovement = it
@@ -2996,6 +3016,35 @@ object FrameSync {
                     if (civ.policies.storedCulture != it) {
                         civ.policies.storedCulture = it
                         changed = true
+                    }
+                }
+                // 2026-08-25: 临时加成同步 (事件/政策等 "for [N] turns" 加成; temporaryUniques 不进存档,
+                // 之前不广播 → 加成效果不显示) — 服务器列表变化才重建 + 重算产出
+                obj["tempUniques"]?.jsonArray?.let { tuArr ->
+                    try {
+                        val server = HashMap<String, Int>()
+                        for (e in tuArr) {
+                            val arr = e.jsonArray ?: continue
+                            if (arr.size < 2) continue
+                            val text = arr[0].jsonPrimitive.contentOrNull ?: continue
+                            server[text] = arr[1].jsonPrimitive.intOrNull ?: 0
+                        }
+                        val changedTu = civ.temporaryUniques.size != server.size ||
+                            civ.temporaryUniques.any { server[it.unique] != it.turnsLeft }
+                        if (changedTu) {
+                            civ.temporaryUniques.clear()
+                            for ((text, turns) in server) {
+                                civ.temporaryUniques.add(
+                                    com.unciv.models.ruleset.unique.TemporaryUnique().apply {
+                                        this.unique = text
+                                        this.turnsLeft = turns
+                                    })
+                            }
+                            try { civ.updateStatsForNextTurn() } catch (ignored: Exception) {}
+                            try { for (c in civ.cities) c.cityStats.update() } catch (ignored: Exception) {}
+                            changed = true
+                        }
+                    } catch (e: Exception) {
                     }
                 }
                 obj["freePolicies"]?.jsonPrimitive?.intOrNull?.let {

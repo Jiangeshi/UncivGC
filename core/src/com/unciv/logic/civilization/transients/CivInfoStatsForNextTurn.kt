@@ -167,7 +167,10 @@ class CivInfoStatsForNextTurn(val civInfo: Civilization) {
         }
         return totalSupply.toInt()
     }
-    @Readonly fun getUnitSupplyDeficit(): Int = max(0, civInfo.units.getCivUnits().sumOf { it.formation.tier + 1 } - getUnitSupply())
+    /** 已用补给 = 各单位按编队等效数 (军团/舰队=2, 集团军/无敌舰队=3) 求和 — 2026-08-25 修复: 概览页 "In Use" 之前显示单位数量 (编队算 1), 与赤字/惩罚不一致 */
+    @Readonly fun getUnitSupplyUsed(): Int = civInfo.units.getCivUnits().sumOf { it.formation.tier + 1 }
+
+    @Readonly fun getUnitSupplyDeficit(): Int = max(0, getUnitSupplyUsed() - getUnitSupply())
 
     /** Per each supply missing, a player gets -10% production. Capped at -70%. */
     @Readonly fun getUnitSupplyProductionPenalty(): Float = -min(getUnitSupplyDeficit() * 10f, 70f)

@@ -257,7 +257,10 @@ class ChatPopup(
                 val label = "[$namePart]: ${m.text}".toLabel(fontSize = 18)
                 label.color = if (m.playerId == myId) Color.GREEN else Color.WHITE
                 label.setAlignment(Align.left)
-                msgTable.add(label).growX().left().pad(2f).row()
+                // wrap 需要固定宽度才生效 (ScrollPane 内容默认无限宽 → 长消息不换行被截断, 2026-08-25 用户反馈)
+                label.wrap = true
+                val msgWidth = 0.36f * worldScreen.stage.width - 20f  // 视口宽 - 滚动条/padding 余量
+                msgTable.add(label).growX().left().pad(2f).width(msgWidth).row()
             }
             msgTable.pack()
             msgScroll.layout()
@@ -402,9 +405,11 @@ class ChatPopup(
         suffix: String? = null,
         scroll: Boolean = true
     ) {
+        // wrap 需要固定宽度才生效: 原版聊天 scrollPane 宽 = 0.5*stage.width (2026-08-25 修复: 长消息不换行)
+        val msgWidth = 0.5f * worldScreen.stage.width - 20f
         chatTable.add(
             createChatMessageLine(worldScreen.gameInfo, senderCivName, message, suffix)
-        ).growX().left().row()
+        ).growX().left().width(msgWidth).row()
         if (scroll) scrollToBottom()
     }
 

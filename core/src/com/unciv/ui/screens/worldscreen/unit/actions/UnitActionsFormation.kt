@@ -15,11 +15,11 @@ object UnitActionsFormation {
 
     /** 获取"组成军团/集团军"按钮 */
     fun getFormCorpsActions(unit: MapUnit, tile: Tile) = sequence {
-        // 已是集团军 → 不显示
-        if (unit.formation == UnitFormation.Army) return@sequence
+        // 已是集团军/无敌舰队 → 不显示 (tier>=2 下方同样拦截)
+        if (unit.formation == UnitFormation.Army || unit.formation == UnitFormation.Armada) return@sequence
         // 不是军事单位 / 有禁止 unique → 不显示
         if (!unit.isMilitary() || unit.isCivilian()) return@sequence
-        if (unit.baseUnit.isWaterUnit || unit.baseUnit.isAirUnit()) return@sequence
+        if (unit.baseUnit.isAirUnit()) return@sequence  // 空军不能合并; 水军可合并为舰队/无敌舰队 (2026-08-25 修复: 之前误排除水军 → 海军编队按钮永不显示)
         if (unit.hasUnique(UniqueType.CannotFormCorps)) return@sequence
 
         val worldScreen = GUI.getWorldScreen()
