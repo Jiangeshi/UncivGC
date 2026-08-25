@@ -318,6 +318,8 @@ class AlertPopup(
                     viewingCiv.gameInfo.tradeRouteOffers.remove(fromCity.id)
                 }
                 viewingCiv.gameInfo.invalidateTradeRoutes()
+                try { toCity.cityStats.update() } catch (ignored: Exception) {}
+                try { fromCity.cityStats.update() } catch (ignored: Exception) {}
             }
             viewingCiv.popupAlerts.remove(popupAlert)
         }.row()
@@ -330,6 +332,8 @@ class AlertPopup(
                     viewingCiv.gameInfo.tradeRouteOffers.remove(fromCity.id)
                 }
                 viewingCiv.gameInfo.invalidateTradeRoutes()
+                try { toCity.cityStats.update() } catch (ignored: Exception) {}
+                try { fromCity.cityStats.update() } catch (ignored: Exception) {}
             }
             viewingCiv.popupAlerts.remove(popupAlert)
         }.row()

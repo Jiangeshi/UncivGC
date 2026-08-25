@@ -123,10 +123,12 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
                 route.hasRailroad -> "铁路"
                 else -> "道路"
             }
-            val myStats = if (isInitiatorGroup) TradeRoutes.initiatorStats(city, route)
-                          else TradeRoutes.receiverStats(city, route)
-            val theirStats = if (isInitiatorGroup) TradeRoutes.receiverStats(city, route)
-                             else TradeRoutes.initiatorStats(city, route)
+            // 收益函数第一参数必须是发起方城市: 本城发起 → city; 本城接收 → route.otherCity (2026-08-26 修复)
+            val fromCity = if (isInitiatorGroup) city else route.otherCity
+            val myStats = if (isInitiatorGroup) TradeRoutes.initiatorStats(fromCity, route)
+                          else TradeRoutes.receiverStats(fromCity, route)
+            val theirStats = if (isInitiatorGroup) TradeRoutes.receiverStats(fromCity, route)
+                             else TradeRoutes.initiatorStats(fromCity, route)
             contentTable.add(makeLabel(type)).minWidth(columnWidths[0]).pad(6f, 8f)
             contentTable.add(makeLabel(other.name.tr())).minWidth(columnWidths[1]).pad(6f, 8f)
             contentTable.add(makeLabel(route.distance.toString())).minWidth(columnWidths[2]).pad(6f, 8f)
@@ -147,6 +149,7 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
                         if (revList != null && revList.remove(city.id) && revList.isEmpty())
                             gameInfo.tradeRoutes.remove(other.id)
                         gameInfo.invalidateTradeRoutes()
+                        try { city.cityStats.update() } catch (ignored: Exception) {}
                     }
                     isDisabled = true
                 }
@@ -200,6 +203,7 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
                         val list = gameInfo.tradeRoutes.getOrPut(city.id) { ArrayList() }
                         if (!list.contains(other.id)) list.add(other.id)
                         gameInfo.invalidateTradeRoutes()
+                        try { city.cityStats.update() } catch (ignored: Exception) {}
                     }
                     isDisabled = true
                 }

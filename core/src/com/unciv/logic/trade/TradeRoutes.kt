@@ -71,13 +71,14 @@ object TradeRoutes {
             .sumOf { (_, toIds) -> toIds.size }
     }
 
-    /** 本城商路收益汇总 (发起方金币 + 接收方文产食) — CityStats 用 */
+    /** 本城商路收益汇总 (发起方金币 + 接收方文产食) — CityStats 用
+     *  receiverStats/initiatorStats 第一参数必须是发起方城市 — 接收方分支传 route.otherCity (2026-08-26 修复) */
     fun cityTradeRouteStats(city: City): Stats {
         val stats = Stats()
         val network = city.civ.gameInfo.getTradeRouteNetwork()
         for (route in network.getEstablishedRoutes(city)) {
             if (network.isInitiator(city, route.otherCity)) stats.add(initiatorStats(city, route))
-            else stats.add(receiverStats(city, route))
+            else stats.add(receiverStats(route.otherCity, route))
         }
         return stats
     }

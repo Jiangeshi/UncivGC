@@ -68,7 +68,7 @@ internal class WorldScreenTopBarStats(topbar: WorldScreenTopBar) : ScalingTableW
         }
         icon.onClick(invokeTradeRoute)
         tradeRouteLabel.onClick(invokeTradeRoute)
-        add(icon).padBottom(defaultImageBottomPad + 2f).size(defaultImageSize - 1f)  // 贸易图标视觉重心偏高, 微调下移
+        add(icon).padBottom(defaultImageBottomPad + 5f).size(defaultImageSize - 1f)  // 贸易图标视觉重心偏高, 微调下移
         add(tradeRouteLabel).padRight(padRightBetweenStats)
     }
 
@@ -193,7 +193,7 @@ internal class WorldScreenTopBarStats(topbar: WorldScreenTopBar) : ScalingTableW
         faithPerTurnLabel.setText(rateLabel(nextTurnStats.faith))
 
         // UncivGC 2026-08-26 商路 v2: 顶栏商路 已用/总量 (文明级容量)
-        tradeRouteLabel.setText("${com.unciv.logic.trade.TradeRoutes.usedByCiv(civInfo)}/${com.unciv.logic.trade.TradeRoutes.capacity(civInfo)}")
+        tradeRouteLabel.setText("(${com.unciv.logic.trade.TradeRoutes.usedByCiv(civInfo)}/${com.unciv.logic.trade.TradeRoutes.capacity(civInfo)})")
 
         // UncivGC 实验性 UI: 领土/人口 (信仰后) — 开关控制显示
         val expUi = GUI.getSettings().experimentalUi
