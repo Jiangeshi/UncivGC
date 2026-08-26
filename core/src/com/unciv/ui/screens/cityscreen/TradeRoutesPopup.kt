@@ -79,14 +79,17 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
         contentTable.add(capLabel).colspan(6).growX().padTop(6f).padBottom(2f).center().row()
         contentTable.addSeparator(colSpan = 6)
 
-        // 我的路线 (本城发起)
-        val initiatorRoutes = network.getEstablishedRoutes(city).filter { network.isInitiator(city, it.otherCity) }
-            .sortedByDescending { TradeRoutes.initiatorStats(city, it).gold }
-        addGroup("我的路线", initiatorRoutes, isInitiatorGroup = true, showEmpty = true)
+        // 我的路线 (本城发起) — 2026-08-26 修复: 按 tradeRoutes 精确方向分组, 不用 isInitiator 过滤
+        // (双向时 A→B 的接收方向条目也会被 isInitiator 误判 → 两条都进「我的路线」)
+        val initiatorCities = (gameInfo.tradeRoutes[city.id] ?: emptyList())
+            .mapNotNull { id -> gameInfo.getCities().firstOrNull { c -> c.id == id } }
+        addGroup("我的路线", initiatorCities, isInitiatorGroup = true, showEmpty = true)
 
-        // 我的接收 (本城接收)
-        val receiverRoutes = network.getEstablishedRoutes(city).filter { !network.isInitiator(city, it.otherCity) }
-        addGroup("我的接收", receiverRoutes, isInitiatorGroup = false, showEmpty = true)
+        // 我的接收 (对方发起 → 本城)
+        val receiverCities = gameInfo.tradeRoutes.entries
+            .filter { (fromId, toIds) -> fromId != city.id && city.id in toIds }
+            .mapNotNull { (fromId, _) -> gameInfo.getCities().firstOrNull { c -> c.id == fromId } }
+        addGroup("我的接收", receiverCities, isInitiatorGroup = false, showEmpty = true)
 
         // 可建立 (可达且未连接, 容量未满)
         // 2026-08-26 用户要求: 允许双向 — A→B 已存在时 B 也能连 A (各自方向一次);
@@ -106,15 +109,16 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
         contentTable.packIfNeeded()
     }
 
-    private fun addGroup(title: String, routes: List<TradeRouteNetwork.Route>, isInitiatorGroup: Boolean, showEmpty: Boolean) {
+    private fun addGroup(title: String, otherCities: List<City>, isInitiatorGroup: Boolean, showEmpty: Boolean) {
         val gameInfo = city.civ.gameInfo
+        val network = gameInfo.getTradeRouteNetwork()
         val groupLabel = title.toLabel()
         groupLabel.setAlignment(Align.center)
         contentTable.add(groupLabel).colspan(6).growX().padTop(10f).padBottom(2f).row()
         contentTable.addSeparator(colSpan = 6)
         addHeaderRow()
 
-        if (routes.isEmpty()) {
+        if (otherCities.isEmpty()) {
             if (showEmpty) {
                 val empty = "暂无".toLabel()
                 empty.setAlignment(Align.center)
@@ -124,7 +128,10 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
             return
         }
 
-        for (route in routes) {
+        val reachable = network.getReachable(city)
+        val routes = otherCities.mapNotNull { other -> reachable.firstOrNull { it.otherCity.id == other.id } }
+        val ordered = if (isInitiatorGroup) routes.sortedByDescending { TradeRoutes.initiatorStats(city, it).gold } else routes
+        for (route in ordered) {
             val other = route.otherCity
             val type = if (other.civ == city.civ) "内商" else "外商"
             val way = when {
@@ -139,9 +146,7 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
             val theirStats = if (isInitiatorGroup) TradeRoutes.receiverStats(fromCity, route)
                              else TradeRoutes.initiatorStats(fromCity, route)
             contentTable.add(makeLabel(type)).minWidth(columnWidths[0]).pad(6f, 8f)
-            // 2026-08-26 用户要求: 接收行显示「来自 X」区分方向 (双向时避免两条看起来一样)
-            val destText = if (isInitiatorGroup) other.name.tr() else "来自 ${other.name.tr()}"
-            contentTable.add(makeCityLabel(destText)).minWidth(columnWidths[1]).maxWidth(columnWidths[1]).pad(6f, 8f)
+            contentTable.add(makeCityLabel(other.name.tr())).minWidth(columnWidths[1]).maxWidth(columnWidths[1]).pad(6f, 8f)
             contentTable.add(makeLabel(route.distance.toString())).minWidth(columnWidths[2]).pad(6f, 8f)
             contentTable.add(makeLabel(way)).minWidth(columnWidths[3]).pad(6f, 8f)
             contentTable.add(makeLabel(formatStats(myStats))).minWidth(columnWidths[4]).pad(6f, 8f)
