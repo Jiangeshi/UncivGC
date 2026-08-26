@@ -16,7 +16,11 @@ class Alliance(
     val civB: String,
     var level: Int = 1,    // 1 = 结盟, 续约 +1, 最高 MAX_LEVEL
     var turnsLeft: Int = DURATION
-) {
+) : com.unciv.logic.IsPartOfGameInfoSerialization {
+    /** JSON 反序列化必需 (Unciv json 通过无参构造 + 反射设字段; 没有它读档报"无法加载") */
+    @Suppress("unused")
+    internal constructor() : this("", "", 1, DURATION)
+
     @Readonly
     fun contains(civId: String) = civId == civA || civId == civB
 

@@ -75,6 +75,13 @@ class GlobalPoliticsDiagramGroup(
             override val color: Color = Color.PURPLE
             override val zOrder = 99
         }
+        /** UncivGC 同盟 (2026-08-26 设计稿 v1.0): 金色 — 与好感(绿)/城邦盟友(青)不冲突 */
+        object Alliance : Relation() {
+            override val ordinal = 98
+            override val label = "Alliance"
+            override val color: Color = Color.GOLD
+            override val zOrder = 98
+        }
 
         companion object {
             private val relationshipLevels: Array<Relation> = RelationshipLevel.entries.map { Wrapped(it) }.toTypedArray()
@@ -85,6 +92,7 @@ class GlobalPoliticsDiagramGroup(
                 War,
                 *relationshipLevels,
                 DefensivePact,
+                Alliance,
             )
 
             private fun getZOrder(level: RelationshipLevel) = when(level) {
@@ -180,6 +188,10 @@ class GlobalPoliticsDiagramGroup(
                 Relation.War
             diplomaticStatus == DiplomaticStatus.DefensivePact && !(civInfo.isCityState || otherCiv.isCityState) ->
                 Relation.DefensivePact
+            // UncivGC 同盟 (2026-08-26): 同盟连线 (金色, 仅主要文明之间)
+            civInfo.gameInfo.alliances.any { it.contains(civInfo.civID) && it.contains(otherCiv.civID) }
+                    && !(civInfo.isCityState || otherCiv.isCityState) ->
+                Relation.Alliance
             civInfo.isHuman() && otherCiv.isHuman() && hasModifier(DiplomaticModifiers.DeclarationOfFriendship) ->
                 Relation[RelationshipLevel.Friend]
             (civInfo.isCityState && civInfo.allyCiv == otherCiv) || (otherCiv.isCityState && otherCiv.allyCiv == civInfo) ->

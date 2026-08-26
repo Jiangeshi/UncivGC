@@ -328,6 +328,13 @@ class DiplomacyScreen(
     ): TextButton {
         val declareWarButton = "Declare war".toTextButton(skin.get("negative", TextButton.TextButtonStyle::class.java))
         val turnsToPeaceTreaty = diplomacyManager.turnsToPeaceTreaty()
+        // UncivGC 同盟 (2026-08-26): 不能向盟友宣战 (服务器也校验, 客户端禁用防误触)
+        val isAllied = viewingCiv.gameInfo.alliances.any {
+            it.contains(viewingCiv.civID) && it.contains(otherCiv.civID)
+        }
+        if (isAllied) {
+            declareWarButton.disable()
+        }
         if (turnsToPeaceTreaty > 0) {
             declareWarButton.disable()
             declareWarButton.setText(declareWarButton.text.toString() + " (${turnsToPeaceTreaty.tr()}${Fonts.turn})")

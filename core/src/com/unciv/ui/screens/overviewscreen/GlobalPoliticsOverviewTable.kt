@@ -222,6 +222,13 @@ class GlobalPoliticsOverviewTable(
                 val turnsLeftText = " (${civ.getDiplomacyManager(otherCiv)?.getFlag(DiplomacyFlags.DeclarationOfFriendship)} ${Fonts.turn})".toLabel()
                 politicsTable.add(friendText)
                 politicsTable.add(turnsLeftText).row()
+            } else if (gameInfo.alliances.any { it.contains(civ.civID) && it.contains(otherCiv.civID) }) {
+                // UncivGC 同盟 (2026-08-26): 显示同盟等级 + 剩余回合 (参考友谊宣言)
+                val al = gameInfo.alliances.first { it.contains(civ.civID) && it.contains(otherCiv.civID) }
+                val allianceText = ColorMarkupLabel("Allied with [${getCivName(otherCiv)}]", Color.GOLD)
+                val turnsLeftText = " (Lv${al.level} · ${al.turnsLeft} ${Fonts.turn})".toLabel()
+                politicsTable.add(allianceText)
+                politicsTable.add(turnsLeftText).row()
             }
         }
         politicsTable.row()
