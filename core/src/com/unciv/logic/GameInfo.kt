@@ -444,6 +444,9 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
                 turns++
                 if (DebugUtils.SIMULATE_UNTIL_TURN != 0)
                     debug("Starting simulation of turn %s", turns)
+                // UncivGC 同盟 (2026-08-26 设计稿 v1.0): 单机/热座回合结算
+                // (到期未续约结束 + 期限-1 + 到期弹窗 + 提议过期; 帧同步由服务器 settleAlliances 处理)
+                if (!gameParameters.isOnlineMultiplayer) settleAlliancesLocal()
             }
             player = civilizations[playerIndex]
         }
@@ -538,6 +541,48 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
 
         // This would belong at the end of TurnManager.startTurn, but needs to come after notifyOfCloseEnemyUnits
         player.notificationCountAtStartTurn = player.notifications.size
+    }
+
+    /** 单机/热座同盟回合结算 (2026-08-26 设计稿 v1.0, 每游戏回合一次; 帧同步由服务器 settleAlliances 处理)
+     *  1. 上回合到期未续约 → 自动拒绝结束 + 双方冷却
+     *  2. 期限-1, 到 0 → 双方续约弹窗 (本回合不响应 = 下回合结算自动结束)
+     *  3. 同盟提议过期 (回合内有效, 结算作废) */
+    private fun settleAlliancesLocal() {
+        try {
+            // 1. 到期未续约 → 结束
+            val it = alliances.iterator()
+            while (it.hasNext()) {
+                val al = it.next()
+                if (al.turnsLeft == 0) {
+                    it.remove()
+                    allianceCooldowns[al.civA] = turns
+                    allianceCooldowns[al.civB] = turns
+                    val a = getCivilization(al.civA)
+                    val b = getCivilization(al.civB)
+                    a.addNotification("你与 ${b.civName.tr()} 的同盟结束了（到期未续约）",
+                        com.unciv.logic.civilization.NotificationCategory.Diplomacy,
+                        com.unciv.logic.civilization.NotificationIcon.Diplomacy)
+                    b.addNotification("你与 ${a.civName.tr()} 的同盟结束了（到期未续约）",
+                        com.unciv.logic.civilization.NotificationCategory.Diplomacy,
+                        com.unciv.logic.civilization.NotificationIcon.Diplomacy)
+                }
+            }
+            // 2. 期限-1, 到 0 → 续约弹窗
+            for (al in alliances) {
+                if (al.turnsLeft <= 0) continue
+                al.turnsLeft--
+                if (al.turnsLeft == 0) {
+                    val a = getCivilization(al.civA)
+                    val b = getCivilization(al.civB)
+                    a.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
+                        com.unciv.logic.civilization.AlertType.AllianceRenew, b.civID))
+                    b.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
+                        com.unciv.logic.civilization.AlertType.AllianceRenew, a.civID))
+                }
+            }
+            // 3. 提议过期 (回合内有效)
+            allianceOffers.clear()
+        } catch (ignored: Exception) {}
     }
     
     private fun updateMinutesBeforeForceResign(player: Civilization, shouldGainTime: Boolean) {
