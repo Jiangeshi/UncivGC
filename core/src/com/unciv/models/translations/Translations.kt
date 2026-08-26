@@ -259,6 +259,11 @@ val digitsRegex = Regex("""\d""")
 object TranslationActiveModsCache {
     private var cachedHash = Int.MIN_VALUE
 
+    /** 模组编辑器注入: 正在编辑的模组也参与翻译查询 — 2026-08-27 修复
+     *  "编辑器显示原版翻译": 玩过任意一局后 gameInfo 永不为 null → activeMods 只含 gameInfo 的 mods,
+     *  编辑器 loadModTranslations 注入的 translationActiveMods 被忽略; 这里开额外通道合并 */
+    val extraMods = LinkedHashSet<String>()
+
     var activeMods: HashSet<String> = hashSetOf()
         get() {
             val hash = getCurrentHash()
@@ -273,9 +278,10 @@ object TranslationActiveModsCache {
     private fun getCurrentHash(): Int {
         val gameInfo = UncivGame.Current.gameInfo
         return if (gameInfo != null) {
-            hashOf(gameInfo.gameParameters.mods.hashCode(), gameInfo.gameParameters.baseRuleset.hashCode())
+            hashOf(gameInfo.gameParameters.mods.hashCode(), gameInfo.gameParameters.baseRuleset.hashCode(),
+                extraMods.hashCode())
         } else {
-            UncivGame.Current.translations.translationActiveMods.hashCode()
+            UncivGame.Current.translations.translationActiveMods.hashCode() * 31 + extraMods.hashCode()
         }
     }
 
@@ -284,12 +290,16 @@ object TranslationActiveModsCache {
         return if (gameInfo != null) {
             val par = gameInfo.gameParameters
             // This is equivalent to (par.mods + par.baseRuleset) without the cast down to `Set`
-            LinkedHashSet<String>(par.mods.size + 1).apply {
+            LinkedHashSet<String>(par.mods.size + 1 + extraMods.size).apply {
                 addAll(par.mods)
                 add(par.baseRuleset)
+                addAll(extraMods)
             }
         } else {
-            UncivGame.Current.translations.translationActiveMods
+            LinkedHashSet<String>(UncivGame.Current.translations.translationActiveMods.size + extraMods.size).apply {
+                addAll(UncivGame.Current.translations.translationActiveMods)
+                addAll(extraMods)
+            }
         }
     }
 }

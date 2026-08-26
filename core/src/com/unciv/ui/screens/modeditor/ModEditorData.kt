@@ -2232,6 +2232,9 @@ object ModEditorData {
             val translations = UncivGame.Current.translations
             val modName = modFolder.name()
             translations.translationActiveMods.add(modName)
+            // 2026-08-27: 额外通道 — gameInfo 非空时 TranslationActiveModsCache 只认 gameInfo.mods,
+            // 编辑器打开的模组必须显式注入才能参与 tr() 查询 (否则显示原版翻译)
+            com.unciv.models.translations.TranslationActiveModsCache.extraMods.add(modName)
             // 扩展 mod：先加载其基础规则集的翻译（内置规则集用全局翻译；已安装 base mod 用该 mod 的翻译）
             val baseName = readBaseRulesetChoice(modFolder)
             if (baseName.isNotBlank() && baseName !in ModEditorData.getBuiltInRulesetNames()) {

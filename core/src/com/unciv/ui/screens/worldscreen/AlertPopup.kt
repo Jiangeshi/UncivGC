@@ -345,9 +345,12 @@ class AlertPopup(
         addLeaderName(otherCiv)
         addTopicHeader("续约同盟", com.badlogic.gdx.graphics.Color.GOLD)
         addGoodSizedLabel("与 ${otherCiv.civName.tr()} 的同盟即将到期，是否续约？\n（双方都同意才续约，本回合不响应视为拒绝）").row()
-        addCloseButton("续约", KeyboardBinding.Confirm) {
+        addButton("续约", KeyboardBinding.Confirm) {
             if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
-                FrameSync.sendOp("alliance.renew", mapOf("otherCivId" to otherId))
+                // 2026-08-27 修复: 结算/暂停中 op 被吞 → 不关弹窗不标记已处理,
+                // 否则"两个号都点续约"但有一个点在结算窗口 → 服务器没收到 → 到期自动结束 (用户反馈)
+                val sent = FrameSync.sendOpChecked("alliance.renew", mapOf("otherCivId" to otherId))
+                if (!sent) return@addButton
             } else {
                 // 单机热座: 双方都同意才续约 (记录在 Alliance 上随存档, 热座切玩家/重载不丢)
                 val gi = viewingCiv.gameInfo
@@ -368,10 +371,13 @@ class AlertPopup(
                 }
             }
             viewingCiv.popupAlerts.remove(popupAlert)
+            close()
         }.row()
-        addCloseButton("不续约", KeyboardBinding.Cancel) {
+        addButton("不续约", KeyboardBinding.Cancel) {
             if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
-                FrameSync.sendOp("alliance.renewReject", mapOf("otherCivId" to otherId))
+                // 同上: 被吞不关弹窗 (等结算结束后再决定)
+                val sent = FrameSync.sendOpChecked("alliance.renewReject", mapOf("otherCivId" to otherId))
+                if (!sent) return@addButton
             } else {
                 // 单机热座: 结束同盟 + 双方冷却
                 val gi = viewingCiv.gameInfo
@@ -389,6 +395,7 @@ class AlertPopup(
                 }
             }
             viewingCiv.popupAlerts.remove(popupAlert)
+            close()
         }.row()
         return true
     }

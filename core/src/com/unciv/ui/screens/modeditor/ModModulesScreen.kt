@@ -55,6 +55,8 @@ class ModModulesScreen(private val modFolder: FileHandle) : BaseScreen() {
 
     init {
         // 加载当前 mod 的翻译（游戏规则集未加载该 mod，需手动注入，供列表/表单双语显示）
+        // 2026-08-27: 先清上次编辑的模组 (防止旧模组翻译残留影响新模组显示)
+        com.unciv.models.translations.TranslationActiveModsCache.extraMods.clear()
         ModEditorData.loadModTranslations(modFolder)
 
         val root = Table(BaseScreen.skin)
