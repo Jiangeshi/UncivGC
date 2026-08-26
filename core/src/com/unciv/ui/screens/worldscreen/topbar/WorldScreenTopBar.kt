@@ -280,6 +280,13 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
             table.clear()
             val online = fs.onlinePlayers.toSet()
             val ready = fs.turnReadyPlayers.toSet()
+            // 队伍信息 (2026-08-26 用户要求): 开组队时显示队伍列 + 按队伍排序 (无队伍的最后)
+            val teams = worldScreen.gameInfo.gameParameters.fsTeams
+            fun teamOf(pid: String?): Int {
+                if (pid.isNullOrEmpty()) return 0
+                teams.forEachIndexed { i, t -> if (t.contains(pid)) return i + 1 }
+                return 0
+            }
             // 我方文明排最前 (城邦不显示)
             val myCiv = worldScreen.viewingCiv
             val civs = if (myCiv.isSpectator())
@@ -288,18 +295,29 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
                 listOf(myCiv) + worldScreen.gameInfo.civilizations.filter {
                     !it.isBarbarian && !it.isSpectator() && !it.isCityState && it.civID != myCiv.civID
                 }
-            // 表头: 头像 | 昵称 | 文明 | 状态 | 回合
+            // 排序: 队伍号升序 (0=无队伍最后), 同队保持原顺序
+            val sortedCivs = civs.sortedWith(
+                compareBy<com.unciv.logic.civilization.Civilization> { teamOf(it.playerId) }.thenBy { civs.indexOf(it) })
+            // 表头: 队伍 | 头像 | 昵称 | 文明 | 状态 | 回合
+            val hasTeams = teams.any { it.isNotEmpty() }
+            if (hasTeams) table.add("Team".tr().toLabel(fontSize = 12)).padRight(8f)
             table.add("".toLabel(fontSize = 12)).padRight(8f)
             table.add("Nickname".tr().toLabel(fontSize = 12)).padRight(12f)
             table.add("Civilization".tr().toLabel(fontSize = 12)).padRight(12f)
             table.add("Status".tr().toLabel(fontSize = 12)).padRight(12f)
             table.add("Turn".tr().toLabel(fontSize = 12)).row()
-            for (civ in civs) {
+            for (civ in sortedCivs) {
                 val pid = civ.playerId
                 val nick = if (pid.isNullOrEmpty()) null else fs.playerNicknames[pid]
                 val isOnline = pid != null && pid in online
                 val isReady = pid != null && pid in ready
                 val isMe = civ.civID == myCiv.civID && !myCiv.isSpectator()
+                if (hasTeams) {
+                    val t = teamOf(pid)
+                    val teamLabel = (if (t == 0) "-" else "#${t}").toLabel(fontSize = 14)
+                    if (t != 0) teamLabel.setColor(com.badlogic.gdx.graphics.Color.CYAN)
+                    table.add(teamLabel).padRight(8f)
+                }
                 // 文明头像
                 val portrait = com.unciv.ui.images.ImageGetter.getNationPortrait(civ.nation, 32f)
                 table.add(portrait).padRight(8f)
