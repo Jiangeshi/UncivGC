@@ -292,7 +292,9 @@ object FrameSync {
         if (settlingPersist) {
             serverSettling = true
             dbg("start() 检测到结算中 → 恢复提示条")
-            showSettlingHint()
+            // 2026-08-27 修复: 传 worldScreen 参数 — 新屏 init 时 GUI.getWorldScreen() 还是 null,
+            // 旧版 currentWorldScreenOrNull() 直接 return → 提示条/拦截层挂不上 → 新屏第一帧无提示条"闪"
+            showSettlingHint(worldScreen)
         }
         // 重载/开局立即恢复视野 (不等首条 state — 否则 reload 后新 gameInfo 的 viewableTiles 为空,
         // 整屏黑几百 ms 直到广播回来, 2026-08-23 用户反馈 "过回合视野黑一下")
@@ -1089,8 +1091,8 @@ object FrameSync {
 
     /** 回合结算提示条: settling=true 期间常驻 (全程锁定), 结算结束 (settling=false) 由 hideSettlingHint 移除 — 2026-08-22
      *  2026-08-27 全屏输入锁定: 同时挂全屏触摸拦截层 — 结算期间"点都点不了" (用户要求, 而不是点了报错/静默无效) */
-    private fun showSettlingHint() {
-        val worldScreen = currentWorldScreenOrNull() ?: return
+    private fun showSettlingHint(worldScreenParam: WorldScreen? = null) {
+        val worldScreen = worldScreenParam ?: currentWorldScreenOrNull() ?: return
         val gameInfo = worldScreen.gameInfo ?: return
         if (gameInfo.gameId != gameId) return
         Concurrency.runOnGLThread {
@@ -1103,7 +1105,7 @@ object FrameSync {
                     settleBlocker = stage.root.findActor(SETTLING_BLOCKER_NAME)
                     return@runOnGLThread
                 }
-                dbg("showSettlingHint 显示提示条")  // 2026-08-27 定位"1秒没"
+                dbg("showSettlingHint 显示提示条 (source=${if (worldScreenParam != null) "start" else "turnStatus/reload"})")  // 2026-08-27 定位"1秒没"
                 // 全屏输入拦截: 挡掉所有点击/滚轮 (含顶栏) — 结算期间完全不可操作
                 // 纯 Actor + touchable.enabled 即可拦截 — stage hit() 只命中顶层 actor, 下面的地图/按钮收不到事件
                 val blocker = com.badlogic.gdx.scenes.scene2d.Actor()
@@ -1296,8 +1298,11 @@ object FrameSync {
             try {
                 val myCiv = worldScreen.viewingCiv ?: return@runOnGLThread
                 if (myCiv.isSpectator()) return@runOnGLThread
-                // 2026-08-27: 补推防御 — 服务器 offers 里已无此邀请 (已处理/过期) → 忽略, 防重载重连后弹窗反复出现
-                if (gameInfo.allianceOffers[fromCivId] != myCiv.civID) return@runOnGLThread
+                // 2026-08-27 修复: 原检查 (offers[fromCivId] != myCiv.civID) 在广播先于 stateJson 到达时
+                // (op 响应 state 有 100ms 合并延迟) 误吞正常弹窗 → "提议同盟点了没用了对方收不到";
+                // 改为: 仅当 offers 里已有该邀请且目标不是自己才忽略 (真·过期残留, 理论上服务器已清缓存不会发生)
+                val existingOffer = gameInfo.allianceOffers[fromCivId]
+                if (existingOffer != null && existingOffer != myCiv.civID) return@runOnGLThread
                 if (myCiv.popupAlerts.none { it.type == com.unciv.logic.civilization.AlertType.AllianceOffer && it.value == fromCivId })
                     myCiv.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
                         com.unciv.logic.civilization.AlertType.AllianceOffer, fromCivId))
@@ -2005,6 +2010,7 @@ object FrameSync {
             // 2026-08-27: 重载中 (reloading) 跳过重置 — 下载存档期间收到结算后 state (turn>旧lastTurn) 会
             // 误重置锁定 → 重载后 start() 恢复提示条失败 → “提示条秒没”根因
             if (!reloading) {
+                dbg("handleSimMessage 新回合 state → 解锁 (turn=" + newTurn + ")")
                 serverSettling = false
                 settlingPersist = false
                 hideSettlingHint()

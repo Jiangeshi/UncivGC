@@ -30,7 +30,7 @@ import kotlin.math.min
 class TradeRoutesPopup(private val screen: com.unciv.ui.screens.basescreen.BaseScreen, private val city: City) :
     Popup(screen, Scrollability.None) {
     private val decimal = DecimalFormat("0.#")
-    private val columnWidths = listOf(60f, 120f, 60f, 60f, 110f, 110f, 110f)
+    private val columnWidths = listOf(60f, 120f, 60f, 60f, 190f, 190f, 110f)
     private val contentTable = Table()
     /** 广播到达后自动刷新 (纯拦截: 建立/断开后等服务器 state 同步) */
     private var lastRoutesSig = ""
@@ -308,7 +308,10 @@ class TradeRoutesPopup(private val screen: com.unciv.ui.screens.basescreen.BaseS
         contentTable.addSeparator(colSpan = 6)
     }
 
-    private fun makeLabel(text: String) = text.toLabel().apply { setAlignment(Align.center) }
+    private fun makeLabel(text: String) = text.toLabel().apply {
+        setAlignment(Align.center)
+        wrap = true  // 2026-08-27: 收益多 stat 换行 (每行 3 个), 防超宽溢出
+    }
 
     /** 城市名: 超长用省略号截断 (2026-08-26 用户要求) */
     private fun makeCityLabel(text: String) = text.toLabel().apply {
@@ -321,12 +324,15 @@ class TradeRoutesPopup(private val screen: com.unciv.ui.screens.basescreen.BaseS
         if (screen is CityScreen) screen.update()
     }
 
+    /** 收益格式化: 每行 3 个 stat, 图标+数字+名称, 多行显示 — 2026-08-27 用户要求
+     *  (5 种收益同行会超列宽溢出盖住操作列, 每行 3 个 + wrap 后任意数量都不撑爆) */
     private fun formatStats(stats: Stats): String {
         val parts = mutableListOf<String>()
         for (stat in Stat.entries) {
             val value = stats[stat]
-            if (value != 0f) parts.add("${decimal.format(value)} ${stat.name.tr()}")
+            if (value != 0f) parts.add("${stat.character}${decimal.format(value)} ${stat.name.tr()}")
         }
-        return if (parts.isEmpty()) "—" else parts.joinToString(" ")
+        if (parts.isEmpty()) return "—"
+        return parts.chunked(3).joinToString("\n") { it.joinToString("  ") }
     }
 }
