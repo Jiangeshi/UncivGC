@@ -82,10 +82,16 @@ object TradeRoutes {
         val gameInfo = city.civ.gameInfo
         val network = gameInfo.getTradeRouteNetwork()
         val reachable = network.getReachable(city)
+        // StatsFromTradeRoute (2026-08-26 用户确认补上): 每条商路加固定 stats (发起+接收都算, 词条如「每条商路 +2 金币」)
+        val perRouteStats = Stats()
+        for (unique in city.getMatchingUniques(UniqueType.StatsFromTradeRoute)) {
+            perRouteStats.add(unique.stats)
+        }
         // 本城发起 (我的路线)
         for (otherId in gameInfo.tradeRoutes[city.id] ?: emptyList()) {
             val route = reachable.firstOrNull { it.otherCity.id == otherId } ?: continue
             stats.add(initiatorStats(city, route))
+            stats.add(perRouteStats)
         }
         // 本城接收 (对方发起 → 本城)
         for ((fromId, toIds) in gameInfo.tradeRoutes) {
@@ -93,6 +99,7 @@ object TradeRoutes {
             val otherCity = gameInfo.getCities().firstOrNull { it.id == fromId } ?: continue
             val route = reachable.firstOrNull { it.otherCity.id == otherCity.id } ?: continue
             stats.add(receiverStats(otherCity, route))
+            stats.add(perRouteStats)
         }
         return stats
     }
