@@ -574,10 +574,15 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
                 if (al.turnsLeft == 1) {
                     val a = getCivilization(al.civA)
                     val b = getCivilization(al.civB)
-                    a.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
-                        com.unciv.logic.civilization.AlertType.AllianceRenew, b.civID))
-                    b.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
-                        com.unciv.logic.civilization.AlertType.AllianceRenew, a.civID))
+                    // 2026-08-26 用户要求: 续约弹窗只弹一次 (已存在不重复 add)
+                    if (a.popupAlerts.none { it.type == com.unciv.logic.civilization.AlertType.AllianceRenew && it.value == b.civID }) {
+                        a.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
+                            com.unciv.logic.civilization.AlertType.AllianceRenew, b.civID))
+                    }
+                    if (b.popupAlerts.none { it.type == com.unciv.logic.civilization.AlertType.AllianceRenew && it.value == a.civID }) {
+                        b.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
+                            com.unciv.logic.civilization.AlertType.AllianceRenew, a.civID))
+                    }
                 }
             }
             // 3. 提议过期 (回合内有效)
