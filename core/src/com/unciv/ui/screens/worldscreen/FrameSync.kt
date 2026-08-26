@@ -131,7 +131,11 @@ object FrameSync {
     private var pauseBlocker: com.badlogic.gdx.scenes.scene2d.Actor? = null
     /** 回合结算提示条 (整个 Table — 存 Label 会导致移除时只删文字、背景框残留, 2026-08-21 观战者反馈) */
     private var settlingHint: com.badlogic.gdx.scenes.scene2d.ui.Table? = null  // 回合结算提示 (2 秒)
+    private var settleBlocker: com.badlogic.gdx.scenes.scene2d.Actor? = null  // 结算全屏输入拦截层 (2026-08-27 用户要求"点都点不了")
     @Volatile private var serverSettling = false  // 服务器结算中 (turnStatus settling): 全程锁定 — 切换前停留由服务器端延迟广播实现 (2026-08-22)
+    /** 2026-08-27: 结算状态持久标志 — 不受 stop()/dispose 影响 (loadGame 会 dispose 旧 WorldScreen → stop() 重置
+     *  serverSettling, 导致重载后 start() 恢复提示条失败 → “提示条秒没”根因); 由 turnStatus 更新 */
+    @Volatile private var settlingPersist = false
     /** 暂停发起者昵称 (弹窗被盖住后返回世界屏时补弹用) */
     @Volatile private var pauseNickname: String? = null
     private var lastErrorShown = ""
@@ -230,6 +234,11 @@ object FrameSync {
         gameId = newGameId
         playerId = UncivGameHelper.getUserId()
         nickname = UncivGameHelper.getNickname()
+        // 2026-08-27: 跨局 (新房间/跳海) 重置结算锁定 — 同局重载保留 (服务器可能仍在结算停留)
+        if (isNewGame) {
+            serverSettling = false
+            settlingPersist = false
+        }
         // 跨局状态重置 (跳海/换房后新局: 完成回合/倒计时/重载幂等必须清零, 否则新局失效)
         lastReloadedTurn = -1
         pendingTurnReady = false  // 新局/新连接: 不发送就绪 (仅结算重载后发送)
@@ -278,6 +287,13 @@ object FrameSync {
         } catch (e: Exception) {
         }
         updateStatusLabel()
+        // 2026-08-27: 重载/重连后若服务器仍在结算中 → 立即恢复提示条+锁定 (不依赖补推/saveUpdated 时序 —
+        // 用户反馈"结算提示 1 秒没": 重载时 stop()/dispose 移除提示条并重置锁定, 提示条再也没出现)
+        if (settlingPersist) {
+            serverSettling = true
+            dbg("start() 检测到结算中 → 恢复提示条")
+            showSettlingHint()
+        }
         // 重载/开局立即恢复视野 (不等首条 state — 否则 reload 后新 gameInfo 的 viewableTiles 为空,
         // 整屏黑几百 ms 直到广播回来, 2026-08-23 用户反馈 "过回合视野黑一下")
         // doMeetCheck=false: 连接未建立, 相遇 sendOp 会静默失败但 shownMeets 已标记 → 该文明永不 meet (外交缺失)
@@ -306,11 +322,10 @@ object FrameSync {
         Concurrency.runOnGLThread {
             // fsPauseButton 不置 null — 重载时新顶栏会重新注册覆盖; 置 null 会和注册产生竞态 (按钮文本不更新)
             hidePauseBar()
-            try {
-                settlingHint?.remove()
-            } catch (ignored: Exception) {
-            }
+            // 结算提示条/拦截层: 重载窗口保留在旧屏上 (不 remove) — 消除"有-无-恢复"空窗
+            // (旧屏销毁时随 stage 一起消失; 新屏 start() 按 settlingPersist 重建, 名字防重复)
             settlingHint = null
+            settleBlocker = null
         }
         worldScreenRef = null
     }
@@ -331,7 +346,12 @@ object FrameSync {
             try {
                 // 先停旧连接/UI — 否则 loadGame 后新 WorldScreen init 的 start 被 running=true 挡住
                 // (statusLabel/暂停按钮不重建, 旧连接残留) — 新 start 会重建全部
+                // 2026-08-27: 重载≠断线 — 服务器可能仍在结算停留 (保底未过), stop() 会重置锁定状态,
+                // 重载窗口期 (stop→补推 turnStatus 到达前) 玩家可操作 + 提示条消失 (用户反馈"弹窗1秒就没/保底没过能操作")
+                val wasSettling = serverSettling
                 stop()
+                serverSettling = wasSettling
+                settlingPersist = wasSettling || settlingPersist  // 2026-08-27: 持久标志不受后续 dispose stop() 影响
                 // 不走 onlineMultiplayer.downloadGame: 它会更新 preview 触发 MultiplayerGameUpdated
                 // 事件 → WorldScreen 处理器再触发一次重载 (双刷根因)。直接下载+loadGame。
                 val gi = com.unciv.UncivGame.Current.onlineMultiplayer.multiplayerServer.downloadGame(gameId)
@@ -347,6 +367,16 @@ object FrameSync {
                 teamExploredMerged = false  // 重载后重新全量合并队友探索历史
                 com.unciv.UncivGame.Current.loadGame(gi)
                 if (turn >= 0) lastReloadedTurn = turn  // 成功才记录
+                // 2026-08-27: 重载完成且服务器仍在结算中 → 恢复提示条 (锁定已由 serverSettling 恢复),
+                // 直到 settle_finish 广播 settling=false 才解锁
+                if (wasSettling) {
+                    Concurrency.runOnGLThread {
+                        try {
+                            if (serverSettling) showSettlingHint()
+                        } catch (ignored: Exception) {
+                        }
+                    }
+                }
                 // 2026-08-26 重载重连标记: 必须在 loadGame 之后设置 — loadGame 同步触发新 WorldScreen →
                 // start() (单例 object) 会无条件重置标记, loadGame 前设置会被清掉 → reload=1 失效;
                 // 设在成功后还能保证 loadGame 异常 (catch 恢复旧连接) 时不残留 → 旧连接正常拉全量
@@ -379,22 +409,29 @@ object FrameSync {
         "civ.chooseTech", "civ.choosePolicy", "civ.chooseBeliefs", "civ.eventChoice"
     )
 
+    /** 发送操作到服务器 (被暂停/结算锁定吞掉时静默无效) */
     fun sendOp(op: String, data: Map<String, Any?>) {
+        sendOpChecked(op, data)
+    }
+
+    /** 发送操作到服务器; 返回是否真正发出 (false = 被暂停/结算锁定吞掉) —
+     *  2026-08-27: 弹窗类操作 (事件选择等) 需知道是否被吞, 被吞不关弹窗不标记已处理 */
+    fun sendOpChecked(op: String, data: Map<String, Any?>): Boolean {
         // 暂停期间: 游戏内操作全部静默无效 (不报错; 顶栏按钮仍可点) — 2026-08-21 用户要求
         if (lastPaused) {
-            return
+            return false
         }
         // 回合结算中 (服务器 settling=true): 全程锁定 — 切换前停留由服务器延迟广播实现 (2026-08-22)
         if (serverSettling) {
             dbg("sendOp 被结算锁定吞掉: op=$op")
-            return
+            return false
         }
         // 完成回合后 (myTurnFinished) 锁定城市配置/科技/政策/信仰类 op —
         // 结算已按旧配置入账, 再改 → 服务器状态变但本回合产出已入账 → 显示与入账不符;
         // 单位操作 (move/attack 等) 保留 — 完成回合后仍可操作闲置单位 (NextUnit 例外)
         if (myTurnFinished && op in TURN_LOCKED_OPS) {
             showToast("Turn finished - city changes apply next turn".tr())
-            return
+            return false
         }
         if (!connected) {
             val now = System.currentTimeMillis()
@@ -407,7 +444,7 @@ object FrameSync {
                     }
                 }
             }
-            return
+            return false
         }
         sendJson(buildJson {
             put("type", "op")
@@ -415,6 +452,7 @@ object FrameSync {
             put("op", op)
             put("data", data)
         })
+        return true
     }
 
     // ---- 外交 ----
@@ -913,6 +951,7 @@ object FrameSync {
         val wasSettling = serverSettling
         dbg("turnStatus turn=$tsTurn lastTurn=$lastTurn settling=$settling wasSettling=$wasSettling settleLockSec=" + (worldScreenRef?.get()?.gameInfo?.gameParameters?.fsSettleLockSeconds ?: -1))
         serverSettling = settling
+        settlingPersist = settling  // 2026-08-27: turnStatus 权威更新持久标志 (锁定/解锁都同步)
         if (settling) {
             dbg("settling=true → 锁定 + 提示条")
             showSettlingHint()  // 显示提示条 + 全程锁定 (serverSettling 控制实际锁定)
@@ -1044,32 +1083,55 @@ object FrameSync {
         pauseBlocker = null
     }
 
-    /** 回合结算提示条: settling=true 期间常驻 (全程锁定), 结算结束 (settling=false) 由 hideSettlingHint 移除 — 2026-08-22 */
+    /** 结算提示条/拦截层 actor 标记名: 跨重载/失败重连防重复 (旧屏残留 + 新屏新建) — 2026-08-27 */
+    private val SETTLING_HINT_NAME = "UgcSettlingHint"
+    private val SETTLING_BLOCKER_NAME = "UgcSettlingBlocker"
+
+    /** 回合结算提示条: settling=true 期间常驻 (全程锁定), 结算结束 (settling=false) 由 hideSettlingHint 移除 — 2026-08-22
+     *  2026-08-27 全屏输入锁定: 同时挂全屏触摸拦截层 — 结算期间"点都点不了" (用户要求, 而不是点了报错/静默无效) */
     private fun showSettlingHint() {
         val worldScreen = currentWorldScreenOrNull() ?: return
         val gameInfo = worldScreen.gameInfo ?: return
         if (gameInfo.gameId != gameId) return
         Concurrency.runOnGLThread {
             try {
-                if (settlingHint != null) return@runOnGLThread  // 已显示
+                val stage = worldScreen.stage
+                // 防重复: 旧屏残留 (重载失败未销毁) 或重复广播时, 按名字查找已存在的直接复用
+                val existingHint = stage.root.findActor<com.badlogic.gdx.scenes.scene2d.Actor>(SETTLING_HINT_NAME)
+                if (existingHint != null) {
+                    settlingHint = existingHint as? Table
+                    settleBlocker = stage.root.findActor(SETTLING_BLOCKER_NAME)
+                    return@runOnGLThread
+                }
+                dbg("showSettlingHint 显示提示条")  // 2026-08-27 定位"1秒没"
+                // 全屏输入拦截: 挡掉所有点击/滚轮 (含顶栏) — 结算期间完全不可操作
+                // 纯 Actor + touchable.enabled 即可拦截 — stage hit() 只命中顶层 actor, 下面的地图/按钮收不到事件
+                val blocker = com.badlogic.gdx.scenes.scene2d.Actor()
+                blocker.name = SETTLING_BLOCKER_NAME
+                blocker.touchable = com.badlogic.gdx.scenes.scene2d.Touchable.enabled
+                blocker.setBounds(0f, 0f, stage.width, stage.height)
+                stage.addActor(blocker)
+                settleBlocker = blocker
+
                 val hint = "Settling turn...".tr().toLabel(fontSize = 22)
                 hint.setColor(com.badlogic.gdx.graphics.Color.WHITE)
                 val table = Table()
+                table.name = SETTLING_HINT_NAME
                 table.background = com.unciv.ui.screens.basescreen.BaseScreen.skinStrings.getUiBackground(
                     "SettlingHint",
                     com.unciv.ui.screens.basescreen.BaseScreen.skinStrings.roundedEdgeRectangleShape,
                     com.badlogic.gdx.graphics.Color(0f, 0f, 0f, 0.6f))
                 table.add(hint).pad(12f, 20f, 12f, 20f)
                 table.pack()
-                table.setPosition((worldScreen.stage.width - table.width) / 2f, worldScreen.stage.height * 0.42f)
-                worldScreen.stage.addActor(table)
+                table.setPosition((stage.width - table.width) / 2f, stage.height * 0.42f)
+                stage.addActor(table)
                 settlingHint = table  // 存整个框 — remove() 时背景和文字一起移除
             } catch (e: Exception) {
             }
         }
     }
 
-    /** 结算结束: 移除提示条 (GL 线程) */
+    /** 结算结束: 移除提示条 + 拦截层 (GL 线程) */
     private fun hideSettlingHint() {
         Concurrency.runOnGLThread {
             try {
@@ -1077,6 +1139,20 @@ object FrameSync {
             } catch (ignored: Exception) {
             }
             settlingHint = null
+            try {
+                settleBlocker?.remove()
+            } catch (ignored: Exception) {
+            }
+            settleBlocker = null
+            // 兜底: 旧屏残留 (重载失败路径) 按名字清
+            try {
+                val worldScreen = currentWorldScreenOrNull()
+                if (worldScreen != null) {
+                    worldScreen.stage.root.findActor<com.badlogic.gdx.scenes.scene2d.Actor>(SETTLING_BLOCKER_NAME)?.remove()
+                    worldScreen.stage.root.findActor<com.badlogic.gdx.scenes.scene2d.Actor>(SETTLING_HINT_NAME)?.remove()
+                }
+            } catch (ignored: Exception) {
+            }
         }
     }
 
@@ -1220,6 +1296,8 @@ object FrameSync {
             try {
                 val myCiv = worldScreen.viewingCiv ?: return@runOnGLThread
                 if (myCiv.isSpectator()) return@runOnGLThread
+                // 2026-08-27: 补推防御 — 服务器 offers 里已无此邀请 (已处理/过期) → 忽略, 防重载重连后弹窗反复出现
+                if (gameInfo.allianceOffers[fromCivId] != myCiv.civID) return@runOnGLThread
                 if (myCiv.popupAlerts.none { it.type == com.unciv.logic.civilization.AlertType.AllianceOffer && it.value == fromCivId })
                     myCiv.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
                         com.unciv.logic.civilization.AlertType.AllianceOffer, fromCivId))
@@ -1245,6 +1323,7 @@ object FrameSync {
                         com.unciv.logic.civilization.NotificationCategory.Diplomacy,
                         com.unciv.logic.civilization.NotificationIcon.Diplomacy)
                 }
+                refreshOpenDiplomacyScreen()  // 2026-08-27: 同盟成立后打开的外交界面立即刷新 (不用退出重进)
                 worldScreen.shouldUpdate = true
             } catch (e: Exception) {}
         }
@@ -1283,6 +1362,9 @@ object FrameSync {
             try {
                 val myCiv = worldScreen.viewingCiv ?: return@runOnGLThread
                 if (myCiv.isSpectator()) return@runOnGLThread
+                // 2026-08-27: 补推防御 — 已无同盟 (结束/已续约) → 忽略, 防重载重连后续约弹窗反复出现
+                val al = gameInfo.alliances.firstOrNull { it.contains(myCiv.civID) && it.contains(otherCivId) }
+                if (al == null || al.turnsLeft > 1) return@runOnGLThread
                 if (myCiv.popupAlerts.none { it.type == com.unciv.logic.civilization.AlertType.AllianceRenew && it.value == otherCivId })
                     myCiv.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
                         com.unciv.logic.civilization.AlertType.AllianceRenew, otherCivId))
@@ -1308,6 +1390,7 @@ object FrameSync {
                         com.unciv.logic.civilization.NotificationCategory.Diplomacy,
                         com.unciv.logic.civilization.NotificationIcon.Diplomacy)
                 }
+                refreshOpenDiplomacyScreen()  // 2026-08-27: 续约后外交界面实时刷新
                 worldScreen.shouldUpdate = true
             } catch (e: Exception) {}
         }
@@ -1335,6 +1418,7 @@ object FrameSync {
                         com.unciv.logic.civilization.NotificationCategory.Diplomacy,
                         com.unciv.logic.civilization.NotificationIcon.Diplomacy)
                 }
+                refreshOpenDiplomacyScreen()  // 2026-08-27: 同盟结束后外交界面实时刷新
                 worldScreen.shouldUpdate = true
             } catch (e: Exception) {}
         }
@@ -1507,6 +1591,9 @@ object FrameSync {
                         com.unciv.logic.civilization.NotificationCategory.Trade, "",
                         com.unciv.logic.civilization.NotificationIcon.Trade)
                 }
+                // 2026-08-27: 商路成立 → 城市 stats 重算 + 打开的城市界面立即刷新 (用户反馈"发起商路后城市统计不更新")
+                if (myCiv != null) scheduleFsStatsRefresh(myCiv)
+                refreshOpenCityScreen()
                 worldScreen.shouldUpdate = true
             } catch (e: Exception) {
             }
@@ -1534,6 +1621,9 @@ object FrameSync {
                         com.unciv.logic.civilization.NotificationCategory.Trade,
                         com.unciv.logic.civilization.NotificationIcon.Trade)
                 }
+                // 2026-08-27: 商路变化 → 城市 stats 重算 + 打开的城市界面立即刷新
+                if (myCiv != null) scheduleFsStatsRefresh(myCiv)
+                refreshOpenCityScreen()
                 worldScreen.shouldUpdate = true
             } catch (e: Exception) {
             }
@@ -1561,6 +1651,9 @@ object FrameSync {
                         com.unciv.logic.civilization.NotificationCategory.Trade,
                         com.unciv.logic.civilization.NotificationIcon.Trade)
                 }
+                // 2026-08-27: 商路变化 → 城市 stats 重算 + 打开的城市界面立即刷新
+                if (myCiv != null) scheduleFsStatsRefresh(myCiv)
+                refreshOpenCityScreen()
                 worldScreen.shouldUpdate = true
             } catch (e: Exception) {
             }
@@ -1582,6 +1675,9 @@ object FrameSync {
                         com.unciv.logic.civilization.NotificationCategory.Trade, "",
                         com.unciv.logic.civilization.NotificationIcon.Trade)
                 }
+                // 2026-08-27: 商路变化 → 城市 stats 重算 + 打开的城市界面立即刷新
+                if (myCiv != null) scheduleFsStatsRefresh(myCiv)
+                refreshOpenCityScreen()
                 worldScreen.shouldUpdate = true
             } catch (e: Exception) {
             }
@@ -1906,8 +2002,13 @@ object FrameSync {
             localDueSeen.clear()
             // 新回合 state 到达 = 结算完成 (settle_finish 广播): 移除提示条/解锁 — 2026-08-22 修复“回合正在结算”残留
             // (旧逻辑这里无条件 showSettlingHint, 而 turnStatus 隐藏需 wasSettling → 状态对不上时提示条永不消失)
-            serverSettling = false
-            hideSettlingHint()
+            // 2026-08-27: 重载中 (reloading) 跳过重置 — 下载存档期间收到结算后 state (turn>旧lastTurn) 会
+            // 误重置锁定 → 重载后 start() 恢复提示条失败 → “提示条秒没”根因
+            if (!reloading) {
+                serverSettling = false
+                settlingPersist = false
+                hideSettlingHint()
+            }
         }
         lastTurn = newTurn ?: lastTurn
         lastPaused = state["paused"]?.jsonPrimitive?.contentOrNull == "true"
@@ -1966,6 +2067,13 @@ object FrameSync {
                 if (newRoutes != gi.tradeRoutes) {
                     gi.tradeRoutes = newRoutes
                     changed = true
+                    // 2026-08-27: 商路变化 → 城市 stats 后台重算 + 打开的城市界面刷新 (用户反馈"发起商路后城市统计不更新")
+                    try {
+                        val myCiv2 = gi.civilizations.firstOrNull { it.playerId == playerId }
+                        if (myCiv2 != null) scheduleFsStatsRefresh(myCiv2)
+                    } catch (ignored: Exception) {
+                    }
+                    cityStateChanged = true
                 }
             }
             state["tradeRouteOffers"]?.jsonArray?.let { offersArr ->
@@ -2009,6 +2117,9 @@ object FrameSync {
                 if (newAlliances != gi.alliances) {
                     gi.alliances = newAlliances
                     changed = true
+                    // 2026-08-27: 同盟数据变化 → 打开的外交界面立即刷新 (notifyPlayer 先到、state 后到,
+                    // handleAllianceAccepted 里刷新时数据还没更新 → 这里补刷新)
+                    refreshOpenDiplomacyScreen()
                 }
             }
             state["allianceOffers"]?.jsonArray?.let { offArr ->
@@ -2022,6 +2133,18 @@ object FrameSync {
                 if (newOffers != gi.allianceOffers) {
                     gi.allianceOffers = newOffers
                     changed = true
+                }
+                // 2026-08-27: 清理本地过期邀请弹窗 — 服务器结算清 offers 时客户端不知道,
+                // 本地 popupAlerts 残留 AllianceOffer → WorldScreen 每帧重弹 (用户反馈"弹窗一直有")
+                try {
+                    for (civ in gi.civilizations) {
+                        if (civ.isSpectator() || civ.isBarbarian) continue
+                        civ.popupAlerts.removeIf { pa ->
+                            pa.type == com.unciv.logic.civilization.AlertType.AllianceOffer
+                                    && gi.allianceOffers[pa.value] != civ.civID
+                        }
+                    }
+                } catch (ignored: Exception) {
                 }
             }
             state["allianceCooldowns"]?.jsonArray?.let { cdArr ->
@@ -3029,15 +3152,19 @@ object FrameSync {
     /** 外交关系变化 (新见面/战争/友谊/谴责) → 实时刷新打开的外交界面: 左侧关系圆圈变色/新文明出现 + 右侧菜单更新.
      *  贸易页打开时不重建右侧 (防止清空编辑中的报价), 只刷左侧圆圈. (2026-08-22 用户反馈"友谊同意后圆圈不实时变色") */
     private fun refreshOpenDiplomacyScreen() {
-        try {
-            val cur = com.unciv.UncivGame.Current.screen
-            if (cur is com.unciv.ui.screens.diplomacyscreen.DiplomacyScreen) {
-                cur.updateLeftSideTable(cur.selectedCivForRightSide)
-                if (!cur.showingTradeTable) {
-                    cur.selectedCivForRightSide?.let { cur.updateRightSide(it) }
+        // 2026-08-27: 必须在 GL 线程执行 — applyState 在 ws 消息线程调用此函数,
+        // 直接操作 UI 会线程违规 SIGABRT (用户接受同盟后崩溃实锤)
+        Concurrency.runOnGLThread {
+            try {
+                val cur = com.unciv.UncivGame.Current.screen
+                if (cur is com.unciv.ui.screens.diplomacyscreen.DiplomacyScreen) {
+                    cur.updateLeftSideTable(cur.selectedCivForRightSide)
+                    if (!cur.showingTradeTable) {
+                        cur.selectedCivForRightSide?.let { cur.updateRightSide(it) }
+                    }
                 }
+            } catch (e: Exception) {
             }
-        } catch (e: Exception) {
         }
     }
 

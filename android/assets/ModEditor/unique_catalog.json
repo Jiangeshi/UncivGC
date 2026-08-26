@@ -10487,6 +10487,36 @@
         }
       ],
       "conditions": []
+    },
+    {
+      "key": "Provides [amount] Trade Routes",
+      "category": "Global uniques",
+      "display": "提供 [amount] 条贸易路线",
+      "desc": "商路系统: 该文明额外获得 [amount] 条贸易路线",
+      "params": [
+        {
+          "id": "amount",
+          "type": "number",
+          "label": "数量",
+          "default": "1"
+        }
+      ],
+      "conditions": []
+    },
+    {
+      "key": "Provides [amount] Trade Routes",
+      "category": "Building uniques",
+      "display": "提供 [amount] 条贸易路线",
+      "desc": "商路系统: 该文明额外获得 [amount] 条贸易路线",
+      "params": [
+        {
+          "id": "amount",
+          "type": "number",
+          "label": "数量",
+          "default": "1"
+        }
+      ],
+      "conditions": []
     }
   ],
   "conditions": [
