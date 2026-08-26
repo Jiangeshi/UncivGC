@@ -590,7 +590,7 @@ class GameStarter private constructor(
     ): HashMap<Civilization, Tile> {
 
         val civsOrderedByAvailableLocations = getCivsOrderedByAvailableLocations(civs)
-        // UncivGC 组队 (2026-08-23): 同队出生在同一半图 — 按候选陆地 x 坐标均分队伍数段, 每队只用自己段
+        // UncivGC 组队: 同队出生在同一 Voronoi 区域 — 贪心种子 + 最近距离归属, 队友均匀分布
         val teamAllowedTiles = computeTeamAllowedTiles(civs, landTilesInBigEnoughGroup.keys)
 
         for (minimumDistanceBetweenStartingLocations in tileMap.tileMatrix.size / 6 downTo 0) {
@@ -602,7 +602,9 @@ class GameStarter private constructor(
         throw Exception("Didn't manage to get starting tiles even with distance of 1?")
     }
 
-    /** UncivGC 组队 (2026-08-23): 每队的允许出生半区 (civ -> 候选格集合; 不在 map = 不限)。
+    /** UncivGC 组队 (2026-08-23→08-27): 每队的允许出生区域 (civ -> 候选格集合; 不在 map = 不限)。
+     *  均分块: 候选陆地格按 x 排序, 按格子数均分成 teamCount 块 (每队一块, 格子数均衡, 防某段全是海);
+     *  块内再按队员数均分子块 — 队友均匀散布在队区内, 不挤在一起。
      *  fsTeams 按 playerId 分组; AI/无队真人轮流分配段 (各段均衡); 未组队/候选格空 → 不限 (原逻辑)。 */
     private fun computeTeamAllowedTiles(civs: List<Civilization>, candidateTiles: Collection<Tile>): Map<Civilization, Set<Tile>> {
         val fsTeams = gameSetupInfo.gameParameters.fsTeams
@@ -615,14 +617,24 @@ class GameStarter private constructor(
             val idx = if (pid.isNotEmpty()) fsTeams.indexOfFirst { pid in it } else -1
             civTeam[civ] = if (idx >= 0) idx else (next++ % teamCount)
         }
-        // 按候选陆地格数量均分 (不是 x 宽度): 陆地分布不均时每队仍拿到等量陆地, 防某段全是海
+        // 第一层: 地图候选陆地格按格子数均分给各队 (每队一块, 等量陆地)
         val sortedTiles = candidateTiles.sortedBy { it.position.x }
         val perTeam = (sortedTiles.size + teamCount - 1) / teamCount
+        val teamMembers = HashMap<Int, MutableList<Civilization>>()
+        for ((civ, idx) in civTeam) teamMembers.getOrPut(idx) { mutableListOf() }.add(civ)
         val allowed = HashMap<Civilization, Set<Tile>>()
-        for ((civ, idx) in civTeam) {
+        for ((idx, members) in teamMembers) {
             val from = (idx * perTeam).coerceAtMost(sortedTiles.size)
             val to = ((idx + 1) * perTeam).coerceAtMost(sortedTiles.size)
-            if (from < to) allowed[civ] = sortedTiles.subList(from, to).toSet()
+            if (from >= to) continue  // 该队无候选格 → 不限 (原逻辑)
+            val teamTiles = sortedTiles.subList(from, to)
+            // 第二层: 块内按队员数均分子块 — 队友均匀分布, 不挤在一起
+            val perMember = (teamTiles.size + members.size - 1) / members.size
+            for ((i, civ) in members.withIndex()) {
+                val mFrom = (i * perMember).coerceAtMost(teamTiles.size)
+                val mTo = ((i + 1) * perMember).coerceAtMost(teamTiles.size)
+                if (mFrom < mTo) allowed[civ] = teamTiles.subList(mFrom, mTo).toSet()
+            }
         }
         return allowed
     }

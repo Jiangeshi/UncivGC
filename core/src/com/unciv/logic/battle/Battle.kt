@@ -317,16 +317,8 @@ object Battle {
             val yieldAmount = (yieldTypeSourceAmount * yieldPercent).toInt()
 
             val resource = civUnit.getCivInfo().gameInfo.ruleset.getGameResource(unique.params[3])
-            if (resource != null) {
-                civUnit.getCivInfo().addGameResource(resource, yieldAmount)
-            } else {
-                // 2026-08-26 修复: stockpile 为 Stat (Gold/Culture/Science 等) 时 getGameResource 返回 null
-                // → 原代码直接 continue 跳过 → "击杀获得敌人战斗力 X% 的 X%" 词条不生效
-                val stat = com.unciv.models.stats.Stat.safeValueOf(unique.params[3])
-                if (stat != null) {
-                    civUnit.getCivInfo().addStats(com.unciv.models.stats.Stats().add(stat, yieldAmount.toFloat()))
-                }
-            }
+                ?: continue
+            civUnit.getCivInfo().addGameResource(resource, yieldAmount)
         }
 
         // CS friendship from killing barbarians
