@@ -21,6 +21,10 @@ class Alliance(
     @Suppress("unused")
     internal constructor() : this("", "", 1, DURATION)
 
+    /** 续约同意记录 (2026-08-26): 已同意续约的 civId 集合 — 双方都同意 → 续约
+     *  存 Alliance 上随存档序列化 (热座切玩家/重载不丢; 原 GameInfo transient 字段重载即清 → 双方都点也判失败) */
+    var renewAgreedBy = HashSet<String>()
+
     @Readonly
     fun contains(civId: String) = civId == civA || civId == civB
 

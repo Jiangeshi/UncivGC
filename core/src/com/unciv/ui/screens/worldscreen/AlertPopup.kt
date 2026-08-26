@@ -349,16 +349,14 @@ class AlertPopup(
             if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
                 FrameSync.sendOp("alliance.renew", mapOf("otherCivId" to otherId))
             } else {
-                // 单机热座: 双方都同意才续约 (transient 记录)
+                // 单机热座: 双方都同意才续约 (记录在 Alliance 上随存档, 热座切玩家/重载不丢)
                 val gi = viewingCiv.gameInfo
-                val pk = com.unciv.logic.diplomacy.Alliance.pairKey(viewingCiv.civID, otherId)
-                gi.allianceRenewAgreedLocal.add("$pk|${viewingCiv.civID}")
                 val al = gi.alliances.firstOrNull { it.contains(viewingCiv.civID) && it.contains(otherId) }
-                val agreed = al != null && gi.allianceRenewAgreedLocal.contains("$pk|$otherId")
-                com.unciv.ui.screens.worldscreen.FrameSync.log("热座续约: ${viewingCiv.civName} pk=$pk other=$otherId al=${al != null} agreed=$agreed 记录=${gi.allianceRenewAgreedLocal}")
+                al?.renewAgreedBy?.add(viewingCiv.civID)
+                val agreed = al != null && al.renewAgreedBy.contains(otherId)
+                com.unciv.ui.screens.worldscreen.FrameSync.log("热座续约: ${viewingCiv.civName} other=$otherId al=${al != null} agreed=$agreed 同意=${al?.renewAgreedBy}")
                 if (al != null && agreed) {
-                    gi.allianceRenewAgreedLocal.remove("$pk|${viewingCiv.civID}")
-                    gi.allianceRenewAgreedLocal.remove("$pk|$otherId")
+                    al.renewAgreedBy.clear()
                     al.level = min(al.level + 1, com.unciv.logic.diplomacy.Alliance.MAX_LEVEL)
                     al.turnsLeft = com.unciv.logic.diplomacy.Alliance.DURATION
                     viewingCiv.addNotification("你与 ${otherCiv.civName.tr()} 的同盟续约成功（Lv${al.level}）",

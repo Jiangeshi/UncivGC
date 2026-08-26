@@ -147,9 +147,6 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
     var allianceOffers = HashMap<String, String>()
     /** 同盟冷却: civId → 回合号; 10 回合内不能再提议同盟 (防反复横跳) */
     var allianceCooldowns = HashMap<String, Int>()
-    /** 单机热座续约同意记录 (transient 不存档): "pairKey|civId" — 双方都同意才续约 (帧同步由服务器内存记录) */
-    @Transient
-    var allianceRenewAgreedLocal = HashSet<String>()
     //endregion
 
     /** The turn the replay history started recording.
@@ -554,7 +551,7 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
             while (it.hasNext()) {
                 val al = it.next()
                 if (al.turnsLeft <= 0) {
-                    com.unciv.ui.screens.worldscreen.FrameSync.log("热座同盟结算: 结束 ${al.civA}-${al.civB} turnsLeft=${al.turnsLeft} 同意=${allianceRenewAgreedLocal}")
+                    com.unciv.ui.screens.worldscreen.FrameSync.log("热座同盟结算: 结束 ${al.civA}-${al.civB} turnsLeft=${al.turnsLeft} 同意=${al.renewAgreedBy}")
                     it.remove()
                     allianceCooldowns[al.civA] = turns
                     allianceCooldowns[al.civB] = turns
