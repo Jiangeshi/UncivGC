@@ -58,6 +58,9 @@ class MajorCivDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
             if (!diplomacyManager.hasFlag(DiplomacyFlags.DeclarationOfFriendship))
                 diplomacyTable.add(getDeclareFriendshipButton(otherCiv)).row()
 
+            // UncivGC 同盟 (2026-08-26 设计稿 v1.0): 提议同盟 / 同盟状态 / 冷却 (非交战才可提议)
+            diplomacyTable.add(getAllianceButton(otherCiv)).row()
+
             if (!diplomacyManager.hasFlag(DiplomacyFlags.Denunciation)
                 && !diplomacyManager.hasFlag(DiplomacyFlags.DeclarationOfFriendship)
                 && !viewingCiv.isFsTeammate(otherCiv)  // UncivGC 组队: 不能谴责队友 (2026-08-23)
@@ -181,6 +184,49 @@ class MajorCivDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
         )
             declareFriendshipButton.disable()
         return declareFriendshipButton
+    }
+
+    /** UncivGC 同盟 (2026-08-26 设计稿 v1.0): 提议同盟 / 同盟状态 (等级+剩余回合) / 冷却 / 请求中 */
+    private fun getAllianceButton(otherCiv: Civilization): TextButton {
+        val gameInfo = viewingCiv.gameInfo
+        val alliance = gameInfo.alliances.firstOrNull {
+            it.contains(viewingCiv.civID) && it.contains(otherCiv.civID)
+        }
+        val cdTurn = gameInfo.allianceCooldowns[viewingCiv.civID]
+        val cdRemaining = if (cdTurn != null)
+            com.unciv.logic.diplomacy.Alliance.COOLDOWN - (gameInfo.turns - cdTurn) else 0
+        val pending = gameInfo.allianceOffers[viewingCiv.civID] == otherCiv.civID
+                || gameInfo.allianceOffers[otherCiv.civID] == viewingCiv.civID
+        val button = when {
+            alliance != null -> {
+                // 同盟中: 显示等级 + 剩余回合 (同盟期间无法主动退出)
+                "同盟 Lv${alliance.level}（剩 ${alliance.turnsLeft} 回合）".toTextButton().apply { disable() }
+            }
+            cdRemaining > 0 -> {
+                "同盟冷却（$cdRemaining 回合）".toTextButton().apply { disable() }
+            }
+            pending -> {
+                "同盟请求已发出".toTextButton().apply { disable() }
+            }
+            else -> {
+                "提议同盟".toTextButton().apply {
+                    onClick {
+                        if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                            FrameSync.sendOp("alliance.offer", mapOf("otherCivId" to otherCiv.civID))
+                        } else {
+                            // 单机热座: 写邀请 + 对方弹窗接受/拒绝
+                            viewingCiv.gameInfo.allianceOffers[viewingCiv.civID] = otherCiv.civID
+                            otherCiv.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
+                                com.unciv.logic.civilization.AlertType.AllianceOffer, viewingCiv.civID))
+                        }
+                        diplomacyScreen.updateLeftSideTable(otherCiv)
+                        disable()
+                    }
+                }
+            }
+        }
+        if (diplomacyScreen.isNotPlayersTurn()) button.disable()
+        return button
     }
 
     private fun getTradeButton(otherCiv: Civilization): TextButton {

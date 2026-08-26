@@ -140,6 +140,18 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
     var tradeRouteCooldowns = HashMap<String, Int>()
     //endregion
 
+    //region UncivGC 同盟系统 (2026-08-26, 设计稿: 文档/同盟系统-设计稿.md)
+    /** 同盟列表 (成对 1 对 1, 可同时多个; 旧存档无此字段 = 空) */
+    var alliances = ArrayList<com.unciv.logic.diplomacy.Alliance>()
+    /** 同盟提议 (回合内有效, 结算作废, 同贸易提议) — 发起方 civId → 目标 civId */
+    var allianceOffers = HashMap<String, String>()
+    /** 同盟冷却: civId → 回合号; 10 回合内不能再提议同盟 (防反复横跳) */
+    var allianceCooldowns = HashMap<String, Int>()
+    /** 单机热座续约同意记录 (transient 不存档): "pairKey|civId" — 双方都同意才续约 (帧同步由服务器内存记录) */
+    @Transient
+    var allianceRenewAgreedLocal = HashSet<String>()
+    //endregion
+
     /** The turn the replay history started recording.
      *
      *  *   `-1` means the game was serialized with an older version without replay
@@ -245,6 +257,9 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
         toReturn.tradeRoutes.putAll(tradeRoutes.mapValues { ArrayList(it.value) })
         toReturn.tradeRouteOffers.putAll(tradeRouteOffers.mapValues { ArrayList(it.value) })
         toReturn.tradeRouteCooldowns.putAll(tradeRouteCooldowns)
+        toReturn.alliances.addAll(alliances)
+        toReturn.allianceOffers.putAll(allianceOffers)
+        toReturn.allianceCooldowns.putAll(allianceCooldowns)
         toReturn.oneMoreTurnMode = oneMoreTurnMode
         toReturn.customSaveLocation = customSaveLocation
         toReturn.victoryData = victoryData?.copy()

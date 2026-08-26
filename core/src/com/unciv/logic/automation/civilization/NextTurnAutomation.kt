@@ -29,6 +29,7 @@ import com.unciv.models.ruleset.unit.BaseUnit
 import com.unciv.models.stats.Stat
 import com.unciv.ui.screens.victoryscreen.RankingType
 import com.unciv.utils.randomWeighted
+import kotlin.math.min
 import org.jetbrains.annotations.VisibleForTesting
 import yairm210.purity.annotations.Readonly
 
@@ -119,8 +120,86 @@ object NextTurnAutomation {
             respondToDemandAlert(civInfo, popupAlert)
             if (popupAlert.type == AlertType.DeclarationOfFriendship)
                 respondToDeclarationOfFriendship(civInfo, popupAlert)
+            if (popupAlert.type == AlertType.AllianceOffer)
+                respondToAllianceOffer(civInfo, popupAlert)
+            if (popupAlert.type == AlertType.AllianceRenew)
+                respondToAllianceRenew(civInfo, popupAlert)
+            if (popupAlert.type == AlertType.AllianceFollowUp)
+                respondToAllianceFollowUp(civInfo, popupAlert)
         }
         civInfo.popupAlerts.clear() // AIs don't care about popups.
+    }
+
+    /** UncivGC 同盟 (2026-08-26 设计稿 v1.0): AI 响应同盟提议 — 关系好感以上接受, 否则拒绝 (发起方冷却) */
+    private fun respondToAllianceOffer(civInfo: Civilization, popupAlert: PopupAlert) {
+        val requestingCiv = civInfo.gameInfo.getCivilization(popupAlert.value)
+        if (requestingCiv.isDefeated()) return
+        val gameInfo = civInfo.gameInfo
+        try {
+            val dm = civInfo.getDiplomacyManager(requestingCiv)
+            val accept = dm != null
+                && !civInfo.isAtWarWith(requestingCiv)
+                && !dm.isRelationshipLevelLT(RelationshipLevel.Favorable)
+            if (accept) {
+                // 建立同盟 (成对 1对1, 字典序) — 与服务器/客户端一致
+                val a = requestingCiv.civID.compareTo(civInfo.civID) <= 0
+                gameInfo.alliances.add(com.unciv.logic.diplomacy.Alliance(
+                    if (a) requestingCiv.civID else civInfo.civID,
+                    if (a) civInfo.civID else requestingCiv.civID))
+                gameInfo.allianceOffers.remove(requestingCiv.civID)
+                requestingCiv.addNotification("[${civInfo.civName}] has accepted our alliance proposal!",
+                    NotificationCategory.Diplomacy, NotificationIcon.Diplomacy)
+            } else {
+                gameInfo.allianceOffers.remove(requestingCiv.civID)
+                gameInfo.allianceCooldowns[requestingCiv.civID] = gameInfo.turns
+                requestingCiv.addNotification("[${civInfo.civName}] has declined our alliance proposal!",
+                    NotificationCategory.Diplomacy, NotificationIcon.Diplomacy)
+            }
+        } catch (ignored: Exception) {}
+    }
+
+    /** UncivGC 同盟: AI 响应到期续约 — 关系仍好则续约, 否则结束 (双方冷却) */
+    private fun respondToAllianceRenew(civInfo: Civilization, popupAlert: PopupAlert) {
+        val otherCiv = civInfo.gameInfo.getCivilization(popupAlert.value)
+        if (otherCiv.isDefeated()) return
+        val gameInfo = civInfo.gameInfo
+        try {
+            val al = gameInfo.alliances.firstOrNull { it.contains(civInfo.civID) && it.contains(otherCiv.civID) }
+                ?: return
+            val dm = civInfo.getDiplomacyManager(otherCiv)
+            if (dm != null && !dm.isRelationshipLevelLT(RelationshipLevel.Favorable)) {
+                al.level = min(al.level + 1, com.unciv.logic.diplomacy.Alliance.MAX_LEVEL)
+                al.turnsLeft = com.unciv.logic.diplomacy.Alliance.DURATION
+                otherCiv.addNotification("[${civInfo.civName}] has renewed the alliance! (Lv${al.level})",
+                    NotificationCategory.Diplomacy, NotificationIcon.Diplomacy)
+            } else {
+                gameInfo.alliances.remove(al)
+                gameInfo.allianceCooldowns[civInfo.civID] = gameInfo.turns
+                gameInfo.allianceCooldowns[otherCiv.civID] = gameInfo.turns
+                otherCiv.addNotification("[${civInfo.civName}] has ended the alliance!",
+                    NotificationCategory.Diplomacy, NotificationIcon.Diplomacy)
+            }
+        } catch (ignored: Exception) {}
+    }
+
+    /** UncivGC 同盟: AI 响应宣战跟进 — 关系好感以上且不处于战争则跟进宣战, 否则忽略 */
+    private fun respondToAllianceFollowUp(civInfo: Civilization, popupAlert: PopupAlert) {
+        val targetCiv = civInfo.gameInfo.getCivilization(popupAlert.value)
+        if (targetCiv.isDefeated() || civInfo.isAtWarWith(targetCiv)) return
+        val gameInfo = civInfo.gameInfo
+        try {
+            // 有盟友在打 target 才考虑 (弹窗来自此场景)
+            val hasWarringAlly = gameInfo.alliances.any { al ->
+                al.contains(civInfo.civID) && gameInfo.getCivilization(
+                    al.otherCiv(civInfo.civID) ?: "").isAtWarWith(targetCiv)
+            }
+            if (!hasWarringAlly) return
+            val dm = civInfo.getDiplomacyManager(targetCiv)
+            if (dm == null || dm.isRelationshipLevelLT(RelationshipLevel.Favorable)) return
+            civInfo.getDiplomacyManager(targetCiv)?.declareWar()
+            civInfo.addNotification("We have joined our ally in the war against [${targetCiv.civName}]!",
+                NotificationCategory.Diplomacy, NotificationIcon.Diplomacy)
+        } catch (ignored: Exception) {}
     }
 
     private fun respondToDemandAlert(civInfo: Civilization, popupAlert: PopupAlert) {

@@ -853,6 +853,13 @@ object FrameSync {
             "notification" -> handleNotification(msg)
             "eventPopup" -> handleEventPopup(msg)
             "cityConquered" -> handleCityConquered(msg)
+            "allianceOffer" -> handleAllianceOffer(msg)
+            "allianceAccepted" -> handleAllianceAccepted(msg)
+            "allianceRejected" -> handleAllianceRejected(msg)
+            "allianceRenew" -> handleAllianceRenew(msg)
+            "allianceRenewed" -> handleAllianceRenewed(msg)
+            "allianceEnded" -> handleAllianceEnded(msg)
+            "allianceFollowUp" -> handleAllianceFollowUp(msg)
             "turnStatus" -> handleTurnStatus(msg)
             "pauseNotice" -> handlePauseNotice(msg)
             "resumeNotice" -> handleResumeNotice(msg)
@@ -1197,6 +1204,160 @@ object FrameSync {
     fun markEventResolved(eventName: String) {
         // 按名字段匹配移除 — 挂起列表存完整 value (可能带 "|unitId=N" 后缀), 精确 remove 会漏 (孙武事件每回合重弹根因)
         pendingEvents.removeIf { it.split(com.unciv.Constants.stringSplitCharacter)[0] == eventName }
+    }
+
+    // ---- UncivGC 同盟 (2026-08-26 设计稿 v1.0): 提议/续约/跟进弹窗 + 通知 ----
+
+    /** 同盟提议广播: 本地加 popupAlert → 世界屏弹接受/拒绝 (服务器已写存档 popupAlerts, 这里即时触发) */
+    private fun handleAllianceOffer(msg: JsonObject) {
+        val targetPlayerId = msg["playerId"]?.jsonPrimitive?.contentOrNull
+        if (targetPlayerId != null && targetPlayerId != playerId) return
+        val fromCivId = msg["fromCivId"]?.jsonPrimitive?.contentOrNull ?: return
+        Concurrency.runOnGLThread {
+            val worldScreen = currentWorldScreenOrNull() ?: return@runOnGLThread
+            val gameInfo = worldScreen.gameInfo ?: return@runOnGLThread
+            if (gameInfo.gameId != gameId) return@runOnGLThread
+            try {
+                val myCiv = worldScreen.viewingCiv ?: return@runOnGLThread
+                if (myCiv.isSpectator()) return@runOnGLThread
+                if (myCiv.popupAlerts.none { it.type == com.unciv.logic.civilization.AlertType.AllianceOffer && it.value == fromCivId })
+                    myCiv.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
+                        com.unciv.logic.civilization.AlertType.AllianceOffer, fromCivId))
+                worldScreen.shouldUpdate = true
+            } catch (e: Exception) {}
+        }
+    }
+
+    /** 结盟成功通知 */
+    private fun handleAllianceAccepted(msg: JsonObject) {
+        val targetPlayerId = msg["playerId"]?.jsonPrimitive?.contentOrNull
+        if (targetPlayerId != null && targetPlayerId != playerId) return
+        val otherCivName = msg["otherCivName"]?.jsonPrimitive?.contentOrNull ?: ""
+        val level = msg["level"]?.jsonPrimitive?.contentOrNull ?: "1"
+        Concurrency.runOnGLThread {
+            val worldScreen = currentWorldScreenOrNull() ?: return@runOnGLThread
+            val gameInfo = worldScreen.gameInfo ?: return@runOnGLThread
+            if (gameInfo.gameId != gameId) return@runOnGLThread
+            try {
+                val myCiv = worldScreen.viewingCiv
+                if (myCiv != null && !myCiv.isSpectator()) {
+                    myCiv.addNotification("你与 ${otherCivName.tr()} 结成了同盟（Lv$level）",
+                        com.unciv.logic.civilization.NotificationCategory.Diplomacy,
+                        com.unciv.logic.civilization.NotificationIcon.Diplomacy)
+                }
+                worldScreen.shouldUpdate = true
+            } catch (e: Exception) {}
+        }
+    }
+
+    /** 拒绝同盟提议通知 */
+    private fun handleAllianceRejected(msg: JsonObject) {
+        val targetPlayerId = msg["playerId"]?.jsonPrimitive?.contentOrNull
+        if (targetPlayerId != null && targetPlayerId != playerId) return
+        val otherCivName = msg["otherCivName"]?.jsonPrimitive?.contentOrNull ?: ""
+        Concurrency.runOnGLThread {
+            val worldScreen = currentWorldScreenOrNull() ?: return@runOnGLThread
+            val gameInfo = worldScreen.gameInfo ?: return@runOnGLThread
+            if (gameInfo.gameId != gameId) return@runOnGLThread
+            try {
+                val myCiv = worldScreen.viewingCiv
+                if (myCiv != null && !myCiv.isSpectator()) {
+                    myCiv.addNotification("${otherCivName.tr()} 拒绝了你的同盟提议（10 回合内不能再次提议）",
+                        com.unciv.logic.civilization.NotificationCategory.Diplomacy,
+                        com.unciv.logic.civilization.NotificationIcon.Diplomacy)
+                }
+                worldScreen.shouldUpdate = true
+            } catch (e: Exception) {}
+        }
+    }
+
+    /** 到期续约弹窗广播 */
+    private fun handleAllianceRenew(msg: JsonObject) {
+        val targetPlayerId = msg["playerId"]?.jsonPrimitive?.contentOrNull
+        if (targetPlayerId != null && targetPlayerId != playerId) return
+        val otherCivId = msg["otherCivId"]?.jsonPrimitive?.contentOrNull ?: return
+        Concurrency.runOnGLThread {
+            val worldScreen = currentWorldScreenOrNull() ?: return@runOnGLThread
+            val gameInfo = worldScreen.gameInfo ?: return@runOnGLThread
+            if (gameInfo.gameId != gameId) return@runOnGLThread
+            try {
+                val myCiv = worldScreen.viewingCiv ?: return@runOnGLThread
+                if (myCiv.isSpectator()) return@runOnGLThread
+                if (myCiv.popupAlerts.none { it.type == com.unciv.logic.civilization.AlertType.AllianceRenew && it.value == otherCivId })
+                    myCiv.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
+                        com.unciv.logic.civilization.AlertType.AllianceRenew, otherCivId))
+                worldScreen.shouldUpdate = true
+            } catch (e: Exception) {}
+        }
+    }
+
+    /** 续约成功通知 */
+    private fun handleAllianceRenewed(msg: JsonObject) {
+        val targetPlayerId = msg["playerId"]?.jsonPrimitive?.contentOrNull
+        if (targetPlayerId != null && targetPlayerId != playerId) return
+        val otherCivName = msg["otherCivName"]?.jsonPrimitive?.contentOrNull ?: ""
+        val level = msg["level"]?.jsonPrimitive?.contentOrNull ?: "1"
+        Concurrency.runOnGLThread {
+            val worldScreen = currentWorldScreenOrNull() ?: return@runOnGLThread
+            val gameInfo = worldScreen.gameInfo ?: return@runOnGLThread
+            if (gameInfo.gameId != gameId) return@runOnGLThread
+            try {
+                val myCiv = worldScreen.viewingCiv
+                if (myCiv != null && !myCiv.isSpectator()) {
+                    myCiv.addNotification("你与 ${otherCivName.tr()} 的同盟续约成功（Lv$level）",
+                        com.unciv.logic.civilization.NotificationCategory.Diplomacy,
+                        com.unciv.logic.civilization.NotificationIcon.Diplomacy)
+                }
+                worldScreen.shouldUpdate = true
+            } catch (e: Exception) {}
+        }
+    }
+
+    /** 同盟结束通知 (rejected=对方拒绝续约 / expired=到期未续约) */
+    private fun handleAllianceEnded(msg: JsonObject) {
+        val targetPlayerId = msg["playerId"]?.jsonPrimitive?.contentOrNull
+        if (targetPlayerId != null && targetPlayerId != playerId) return
+        val otherCivName = msg["otherCivName"]?.jsonPrimitive?.contentOrNull ?: ""
+        val reason = msg["reason"]?.jsonPrimitive?.contentOrNull ?: ""
+        val reasonText = when (reason) {
+            "rejected" -> "对方拒绝续约"
+            "expired" -> "到期未续约"
+            else -> "同盟结束"
+        }
+        Concurrency.runOnGLThread {
+            val worldScreen = currentWorldScreenOrNull() ?: return@runOnGLThread
+            val gameInfo = worldScreen.gameInfo ?: return@runOnGLThread
+            if (gameInfo.gameId != gameId) return@runOnGLThread
+            try {
+                val myCiv = worldScreen.viewingCiv
+                if (myCiv != null && !myCiv.isSpectator()) {
+                    myCiv.addNotification("你与 ${otherCivName.tr()} 的同盟结束了（$reasonText）",
+                        com.unciv.logic.civilization.NotificationCategory.Diplomacy,
+                        com.unciv.logic.civilization.NotificationIcon.Diplomacy)
+                }
+                worldScreen.shouldUpdate = true
+            } catch (e: Exception) {}
+        }
+    }
+
+    /** 盟友宣战/被宣战跟进弹窗广播 */
+    private fun handleAllianceFollowUp(msg: JsonObject) {
+        val targetPlayerId = msg["playerId"]?.jsonPrimitive?.contentOrNull
+        if (targetPlayerId != null && targetPlayerId != playerId) return
+        val targetCivId = msg["targetCivId"]?.jsonPrimitive?.contentOrNull ?: return
+        Concurrency.runOnGLThread {
+            val worldScreen = currentWorldScreenOrNull() ?: return@runOnGLThread
+            val gameInfo = worldScreen.gameInfo ?: return@runOnGLThread
+            if (gameInfo.gameId != gameId) return@runOnGLThread
+            try {
+                val myCiv = worldScreen.viewingCiv ?: return@runOnGLThread
+                if (myCiv.isSpectator()) return@runOnGLThread
+                if (myCiv.popupAlerts.none { it.type == com.unciv.logic.civilization.AlertType.AllianceFollowUp && it.value == targetCivId })
+                    myCiv.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
+                        com.unciv.logic.civilization.AlertType.AllianceFollowUp, targetCivId))
+                worldScreen.shouldUpdate = true
+            } catch (e: Exception) {}
+        }
     }
 
     /** 建筑被建造 → 刷新打开的事件弹窗 (互斥选项如特殊伟人项目: 别人占了选项后立即灰掉/消失) */
@@ -1834,6 +1995,48 @@ object FrameSync {
                     changed = true
                 }
             }
+            // 同盟 (2026-08-26 设计稿 v1.0): 全量替换 [civA,civB,level,turnsLeft] + 提议 + 冷却
+            state["alliances"]?.jsonArray?.let { alArr ->
+                val newAlliances = ArrayList<com.unciv.logic.diplomacy.Alliance>()
+                for (pair in alArr) {
+                    val arr = pair.jsonArray ?: continue
+                    val a = arr.getOrNull(0)?.jsonPrimitive?.contentOrNull ?: continue
+                    val b = arr.getOrNull(1)?.jsonPrimitive?.contentOrNull ?: continue
+                    val lvl = arr.getOrNull(2)?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: 1
+                    val tl = arr.getOrNull(3)?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: com.unciv.logic.diplomacy.Alliance.DURATION
+                    newAlliances.add(com.unciv.logic.diplomacy.Alliance(a, b, lvl, tl))
+                }
+                if (newAlliances != gi.alliances) {
+                    gi.alliances = newAlliances
+                    changed = true
+                }
+            }
+            state["allianceOffers"]?.jsonArray?.let { offArr ->
+                val newOffers = HashMap<String, String>()
+                for (pair in offArr) {
+                    val arr = pair.jsonArray ?: continue
+                    val from = arr.getOrNull(0)?.jsonPrimitive?.contentOrNull ?: continue
+                    val to = arr.getOrNull(1)?.jsonPrimitive?.contentOrNull ?: continue
+                    newOffers[from] = to
+                }
+                if (newOffers != gi.allianceOffers) {
+                    gi.allianceOffers = newOffers
+                    changed = true
+                }
+            }
+            state["allianceCooldowns"]?.jsonArray?.let { cdArr ->
+                val newCd = HashMap<String, Int>()
+                for (pair in cdArr) {
+                    val arr = pair.jsonArray ?: continue
+                    val cid = arr.getOrNull(0)?.jsonPrimitive?.contentOrNull ?: continue
+                    val turn = arr.getOrNull(1)?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: continue
+                    newCd[cid] = turn
+                }
+                if (newCd != gi.allianceCooldowns) {
+                    gi.allianceCooldowns = newCd
+                    changed = true
+                }
+            }
             if (changed) {
                 gi.invalidateTradeRoutes()
                 worldScreen.shouldUpdate = true
@@ -2051,12 +2254,34 @@ object FrameSync {
                     teamExploredMerged = true
                 }
             }
+            // ---- 同盟 Lv3 (2026-08-26 设计稿 v1.0): 共享实时视野 (不含探索历史, 同盟是动态关系) ----
+            val lv3Allies = getLv3Allies(gameInfo, civ)
+            if (lv3Allies.isNotEmpty()) {
+                for (aciv in lv3Allies) {
+                    try { aciv.cache.updateOurTiles() } catch (e2: Exception) {}
+                    refreshCivUnitsVisibility(aciv, null, checkMeetTiles)
+                }
+                val mergedAllies = LinkedHashSet(civ.viewableTiles)
+                for (aciv in lv3Allies) {
+                    mergedAllies.addAll(aciv.viewableTiles)
+                    try { mergedAllies.addAll(aciv.cache.ourTilesAndNeighboringTiles) } catch (e4: Exception) {}
+                }
+                civ.viewableTiles = mergedAllies
+            }
             // 主动相遇检测 (增量版): 只查 移动单位/新城市/视野扩展 三个变化源, 不再全扫可见格
             if (doMeetCheck) checkMeetCivs(worldScreen, gameInfo, checkMeetTiles)
             worldScreen.shouldUpdate = true
         } catch (e: Exception) {
             // 视野刷新失败不影响游戏
         }
+    }
+
+    /** 同盟 Lv3 (2026-08-26): 等级 >= 3 的未灭亡盟友 (共享实时视野) */
+    private fun getLv3Allies(gameInfo: GameInfo, civ: Civilization): List<Civilization> {
+        return gameInfo.alliances
+            .filter { it.level >= 3 && it.contains(civ.civID) }
+            .mapNotNull { al -> gameInfo.getCivilization(al.otherCiv(civ.civID) ?: "") }
+            .filter { !it.isDefeated() }
     }
 
     /** 帧同步: 点过“下一个单位”的单位 id 记入本地集合 (due 广播回滚后重新应用) */

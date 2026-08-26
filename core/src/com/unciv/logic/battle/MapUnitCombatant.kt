@@ -45,7 +45,8 @@ class MapUnitCombatant(val unit: MapUnit) : ICombatant {
 
         // 军团/集团军加成 (加法，直接加在基础战斗力上)
         val formationBonus = getFormationBonus(baseStrength)
-        return baseStrength + formationBonus
+        // 同盟 Lv2 (2026-08-26): 共同对敌 +10% 战斗力
+        return ((baseStrength + formationBonus) * allyWarBonus(defender)).roundToInt()
     }
 
     override fun getDefendingStrength(attacker: ICombatant?): Int {
@@ -60,7 +61,28 @@ class MapUnitCombatant(val unit: MapUnit) : ICombatant {
 
         // 军团/集团军加成 (防御同样生效)
         val formationBonus = getFormationBonus(baseStrength)
-        return baseStrength + formationBonus
+        // 同盟 Lv2 (2026-08-26): 共同对敌 +10% 战斗力
+        return ((baseStrength + formationBonus) * allyWarBonus(attacker)).roundToInt()
+    }
+
+    /** 同盟 Lv2 (2026-08-26 同盟设计稿 v1.0): 与目标交战且任一盟友也在与其交战 → +10% 战斗力 */
+    @Readonly
+    private fun allyWarBonus(combatant: ICombatant?): Float {
+        if (combatant == null) return 1f
+        val enemyCiv = when (combatant) {
+            is MapUnitCombatant -> combatant.unit.civ
+            is CityCombatant -> combatant.city.civ
+            else -> return 1f
+        }
+        if (!unit.civ.isAtWarWith(enemyCiv)) return 1f
+        val myCivId = unit.civ.civID
+        return try {
+            val hasAlly = unit.civ.gameInfo.alliances.any { al ->
+                al.contains(myCivId) && unit.civ.gameInfo
+                    .getCivilization(al.otherCiv(myCivId) ?: "").isAtWarWith(enemyCiv)
+            }
+            if (hasAlly) 1.1f else 1f
+        } catch (ignored: Exception) { 1f }
     }
 
     /** 计算编队战斗力加成 (按 tier: 军团/舰队 +33% / 集团军/无敌舰队 +50%; 四舍五入, 与显示 getDisplayStrength 一致) */

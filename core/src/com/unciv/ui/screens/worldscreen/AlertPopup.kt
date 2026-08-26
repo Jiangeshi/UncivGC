@@ -36,6 +36,7 @@ import com.unciv.ui.screens.diplomacyscreen.LeaderIntroTable
 import com.unciv.ui.screens.victoryscreen.VictoryScreen
 import yairm210.purity.annotations.Readonly
 import java.util.EnumSet
+import kotlin.math.min
 import kotlin.text.ifEmpty
 
 /**
@@ -120,6 +121,9 @@ class AlertPopup(
             
             AlertType.DeclarationOfFriendship -> shouldOpen = addDeclarationOfFriendship()
             AlertType.TradeRouteOffer -> shouldOpen = addTradeRouteOffer()
+            AlertType.AllianceOffer -> shouldOpen = addAllianceOffer()
+            AlertType.AllianceRenew -> shouldOpen = addAllianceRenew()
+            AlertType.AllianceFollowUp -> shouldOpen = addAllianceFollowUp()
             AlertType.BulliedProtectedMinor, AlertType.AttackedProtectedMinor, AlertType.AttackedAllyMinor -> 
                 shouldOpen = addBulliedOrAttackedProtectedOrAlliedMinor()
             AlertType.Defeated -> addDefeated()
@@ -288,6 +292,142 @@ class AlertPopup(
             addSeparator()
         }
         addCloseButton("Keep it").row()
+    }
+
+    /** UncivGC 2026-08-26 同盟 v1.0: 同盟提议弹窗 — value = 发起方 civId */
+    private fun addAllianceOffer(): Boolean {
+        val fromCiv = gameInfo.getCivilization(popupAlert.value) ?: return false
+        val fromCivId = fromCiv.civID
+        addLeaderName(fromCiv)
+        addTopicHeader("同盟提议", com.badlogic.gdx.graphics.Color.GOLD)
+        addGoodSizedLabel("${fromCiv.civName.tr()} 提议与你结成同盟（Lv1：盟友已研究科技 +10% 科研，同盟间商路收益 +50%）").row()
+        addCloseButton("接受", KeyboardBinding.Confirm) {
+            if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                FrameSync.sendOp("alliance.accept", mapOf("fromCivId" to fromCivId))
+            } else {
+                // 单机热座: 本地直接建立 (成对 1对1, 字典序)
+                val gi = viewingCiv.gameInfo
+                val a = fromCivId.compareTo(viewingCiv.civID) <= 0
+                gi.alliances.add(com.unciv.logic.diplomacy.Alliance(
+                    if (a) fromCivId else viewingCiv.civID,
+                    if (a) viewingCiv.civID else fromCivId))
+                gi.allianceOffers.remove(fromCivId)
+                fromCiv.addNotification("${viewingCiv.civName.tr()} 接受了你的同盟提议",
+                    com.unciv.logic.civilization.NotificationCategory.Diplomacy,
+                    com.unciv.logic.civilization.NotificationIcon.Diplomacy)
+                viewingCiv.addNotification("你与 ${fromCiv.civName.tr()} 结成了同盟（Lv1）",
+                    com.unciv.logic.civilization.NotificationCategory.Diplomacy,
+                    com.unciv.logic.civilization.NotificationIcon.Diplomacy)
+            }
+            viewingCiv.popupAlerts.remove(popupAlert)
+        }.row()
+        addCloseButton("拒绝", KeyboardBinding.Cancel) {
+            if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                FrameSync.sendOp("alliance.reject", mapOf("fromCivId" to fromCivId))
+            } else {
+                // 单机热座: 移除邀请 + 发起方冷却
+                val gi = viewingCiv.gameInfo
+                gi.allianceOffers.remove(fromCivId)
+                gi.allianceCooldowns[fromCivId] = gi.turns
+                fromCiv.addNotification("${viewingCiv.civName.tr()} 拒绝了你的同盟提议（10 回合内不能再次提议）",
+                    com.unciv.logic.civilization.NotificationCategory.Diplomacy,
+                    com.unciv.logic.civilization.NotificationIcon.Diplomacy)
+            }
+            viewingCiv.popupAlerts.remove(popupAlert)
+        }.row()
+        return true
+    }
+
+    /** UncivGC 2026-08-26 同盟 v1.0: 到期续约弹窗 — value = 对方 civId */
+    private fun addAllianceRenew(): Boolean {
+        val otherCiv = gameInfo.getCivilization(popupAlert.value) ?: return false
+        val otherId = otherCiv.civID
+        addLeaderName(otherCiv)
+        addTopicHeader("续约同盟", com.badlogic.gdx.graphics.Color.GOLD)
+        addGoodSizedLabel("与 ${otherCiv.civName.tr()} 的同盟即将到期，是否续约？\n（双方都同意才续约，本回合不响应视为拒绝）").row()
+        addCloseButton("续约", KeyboardBinding.Confirm) {
+            if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                FrameSync.sendOp("alliance.renew", mapOf("otherCivId" to otherId))
+            } else {
+                // 单机热座: 双方都同意才续约 (transient 记录)
+                val gi = viewingCiv.gameInfo
+                val pk = com.unciv.logic.diplomacy.Alliance.pairKey(viewingCiv.civID, otherId)
+                gi.allianceRenewAgreedLocal.add("$pk|${viewingCiv.civID}")
+                val al = gi.alliances.firstOrNull { it.contains(viewingCiv.civID) && it.contains(otherId) }
+                if (al != null && gi.allianceRenewAgreedLocal.contains("$pk|$otherId")) {
+                    gi.allianceRenewAgreedLocal.remove("$pk|${viewingCiv.civID}")
+                    gi.allianceRenewAgreedLocal.remove("$pk|$otherId")
+                    al.level = min(al.level + 1, com.unciv.logic.diplomacy.Alliance.MAX_LEVEL)
+                    al.turnsLeft = com.unciv.logic.diplomacy.Alliance.DURATION
+                    viewingCiv.addNotification("你与 ${otherCiv.civName.tr()} 的同盟续约成功（Lv${al.level}）",
+                        com.unciv.logic.civilization.NotificationCategory.Diplomacy,
+                        com.unciv.logic.civilization.NotificationIcon.Diplomacy)
+                    otherCiv.addNotification("你与 ${viewingCiv.civName.tr()} 的同盟续约成功（Lv${al.level}）",
+                        com.unciv.logic.civilization.NotificationCategory.Diplomacy,
+                        com.unciv.logic.civilization.NotificationIcon.Diplomacy)
+                }
+            }
+            viewingCiv.popupAlerts.remove(popupAlert)
+        }.row()
+        addCloseButton("不续约", KeyboardBinding.Cancel) {
+            if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                FrameSync.sendOp("alliance.renewReject", mapOf("otherCivId" to otherId))
+            } else {
+                // 单机热座: 结束同盟 + 双方冷却
+                val gi = viewingCiv.gameInfo
+                val al = gi.alliances.firstOrNull { it.contains(viewingCiv.civID) && it.contains(otherId) }
+                if (al != null) {
+                    gi.alliances.remove(al)
+                    gi.allianceCooldowns[viewingCiv.civID] = gi.turns
+                    gi.allianceCooldowns[otherId] = gi.turns
+                    viewingCiv.addNotification("你与 ${otherCiv.civName.tr()} 的同盟结束了",
+                        com.unciv.logic.civilization.NotificationCategory.Diplomacy,
+                        com.unciv.logic.civilization.NotificationIcon.Diplomacy)
+                    otherCiv.addNotification("你与 ${viewingCiv.civName.tr()} 的同盟结束了",
+                        com.unciv.logic.civilization.NotificationCategory.Diplomacy,
+                        com.unciv.logic.civilization.NotificationIcon.Diplomacy)
+                }
+            }
+            viewingCiv.popupAlerts.remove(popupAlert)
+        }.row()
+        return true
+    }
+
+    /** UncivGC 2026-08-26 同盟 v1.0: 盟友宣战/被宣战跟进弹窗 — value = 目标 civId (要宣战的对象) */
+    private fun addAllianceFollowUp(): Boolean {
+        val targetCiv = gameInfo.getCivilization(popupAlert.value) ?: return false
+        val targetId = targetCiv.civID
+        // 找与目标交战的盟友 (弹窗文案用)
+        val warringAlly = viewingCiv.gameInfo.alliances
+            .firstOrNull { it.contains(viewingCiv.civID) }
+            ?.let { al -> gameInfo.getCivilization(al.otherCiv(viewingCiv.civID) ?: "") }
+            ?.takeIf { it.isAtWarWith(targetCiv) }
+        val allyName = warringAlly?.civName?.tr() ?: "你的盟友"
+        addLeaderName(targetCiv)
+        addTopicHeader("盟友战争", com.badlogic.gdx.graphics.Color.GOLD)
+        addGoodSizedLabel("$allyName 正与 ${targetCiv.civName.tr()} 交战，是否跟进对 ${targetCiv.civName.tr()} 宣战？").row()
+        addCloseButton("跟进", KeyboardBinding.Confirm) {
+            if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                FrameSync.sendOp("alliance.followUp", mapOf("targetCivId" to targetId))
+            } else {
+                // 单机热座: 本地宣战 + 连锁触发其他盟友跟进
+                if (!viewingCiv.isAtWarWith(targetCiv)) {
+                    viewingCiv.getDiplomacyManager(targetCiv)?.declareWar()
+                    for (al in viewingCiv.gameInfo.alliances) {
+                        val otherId = al.otherCiv(viewingCiv.civID) ?: continue
+                        val otherCiv = gameInfo.getCivilization(otherId)
+                        if (otherCiv != null && otherCiv != targetCiv && !otherCiv.isAtWarWith(targetCiv)) {
+                            otherCiv.popupAlerts.add(PopupAlert(AlertType.AllianceFollowUp, targetId))
+                        }
+                    }
+                }
+            }
+            viewingCiv.popupAlerts.remove(popupAlert)
+        }.row()
+        addCloseButton("不跟进", KeyboardBinding.Cancel) {
+            viewingCiv.popupAlerts.remove(popupAlert)
+        }.row()
+        return true
     }
 
     /** UncivGC 2026-08-26 商路 v2: 玩家之间商路请求 — value = "fromCityId|toCityId"

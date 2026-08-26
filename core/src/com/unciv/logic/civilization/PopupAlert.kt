@@ -41,7 +41,11 @@ enum class AlertType : IsPartOfGameInfoSerialization {
     
     Denounced,
 
-    TradeRouteOffer  // UncivGC 2026-08-26 商路 v2: 国外商路邀请 (value = "fromCityId|toCityId")
+    TradeRouteOffer,  // UncivGC 2026-08-26 商路 v2: 国外商路邀请 (value = "fromCityId|toCityId")
+
+    AllianceOffer,   // UncivGC 2026-08-26 同盟 v1.0: 同盟提议 (value = 发起方 civId)
+    AllianceRenew,   // 同盟到期续约弹窗 (value = 对方 civId)
+    AllianceFollowUp // 盟友宣战/被宣战, 询问是否跟进 (value = 目标 civId)
 }
 
 class PopupAlert : IsPartOfGameInfoSerialization {

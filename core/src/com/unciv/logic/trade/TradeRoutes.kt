@@ -18,22 +18,31 @@ import com.unciv.models.stats.Stats
  */
 object TradeRoutes {
 
-    /** 发起方收益: 金币 = 已改良地块资源数 + 距离×系数 (2026-08-26 用户调整: 陆商 1.5/格, 海商 0.5/格) */
+    /** 发起方收益: 金币 = 已改良地块资源数 + 距离×系数 (2026-08-26 用户调整: 陆商 1.5/格, 海商 0.5/格)
+     *  同盟 Lv1+: 同盟间商路收益 +50% (2026-08-26 同盟设计稿 v1.0) */
     fun initiatorStats(city: City, route: TradeRouteNetwork.Route): Stats {
         val stats = Stats()
         val distFactor = if (route.isSea) 0.5f else 1.5f  // 2026-08-26 用户调整: 陆商 1.5/格, 海商 0.5/格
-        stats.gold = improvedResourceCount(city) + distFactor * route.distance
+        stats.gold = (improvedResourceCount(city) + distFactor * route.distance) * allianceBonus(city, route.otherCity)
         return stats
     }
 
-    /** 接收方收益: 奢侈×1文化 + 战略×1产能 + 奖金×0.5食物 (发起方已改良地块资源) */
+    /** 接收方收益: 奢侈×1文化 + 战略×1产能 + 奖金×0.5食物 (发起方已改良地块资源); 同盟间 +50% */
     fun receiverStats(city: City, route: TradeRouteNetwork.Route): Stats {
         val stats = Stats()
         val resources = improvedResourceTypes(city)
-        stats.culture = resources[ResourceType.Luxury]?.toFloat() ?: 0f
-        stats.production = resources[ResourceType.Strategic]?.toFloat() ?: 0f
-        stats.food = (resources[ResourceType.Bonus] ?: 0) * 0.5f
+        val mult = allianceBonus(city, route.otherCity)
+        stats.culture = (resources[ResourceType.Luxury]?.toFloat() ?: 0f) * mult
+        stats.production = (resources[ResourceType.Strategic]?.toFloat() ?: 0f) * mult
+        stats.food = (resources[ResourceType.Bonus] ?: 0) * 0.5f * mult
         return stats
+    }
+
+    /** 同盟商路加成 (2026-08-26): 两城市文明间存在同盟 → 1.5 (Lv1 起生效) */
+    private fun allianceBonus(city: City, otherCity: City): Float {
+        return if (city.civ.gameInfo.alliances.any {
+                it.contains(city.civ.civID) && it.contains(otherCity.civ.civID)
+            }) 1.5f else 1f
     }
 
     /** 已改良的地块资源数 (归属本城地块且已改良, 或城市中心自动供应; 排除建筑/文明级全局资源)
