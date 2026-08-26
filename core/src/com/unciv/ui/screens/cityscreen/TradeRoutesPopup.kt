@@ -139,7 +139,9 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
             val theirStats = if (isInitiatorGroup) TradeRoutes.receiverStats(fromCity, route)
                              else TradeRoutes.initiatorStats(fromCity, route)
             contentTable.add(makeLabel(type)).minWidth(columnWidths[0]).pad(6f, 8f)
-            contentTable.add(makeCityLabel(other.name.tr())).minWidth(columnWidths[1]).maxWidth(columnWidths[1]).pad(6f, 8f)
+            // 2026-08-26 用户要求: 接收行显示「来自 X」区分方向 (双向时避免两条看起来一样)
+            val destText = if (isInitiatorGroup) other.name.tr() else "来自 ${other.name.tr()}"
+            contentTable.add(makeCityLabel(destText)).minWidth(columnWidths[1]).maxWidth(columnWidths[1]).pad(6f, 8f)
             contentTable.add(makeLabel(route.distance.toString())).minWidth(columnWidths[2]).pad(6f, 8f)
             contentTable.add(makeLabel(way)).minWidth(columnWidths[3]).pad(6f, 8f)
             contentTable.add(makeLabel(formatStats(myStats))).minWidth(columnWidths[4]).pad(6f, 8f)
@@ -169,6 +171,16 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
                             // 断开冷却 (2026-08-26 用户要求): 本城 3 回合内不能发起新商路
                             gameInfo.tradeRouteCooldowns[city.id] = gameInfo.turns
                             try { city.cityStats.update() } catch (ignored: Exception) {}
+                            // 2026-08-26 用户要求: 断开通知对方 (热座/单机; 内商同文明不通知)
+                            val otherCiv = other.civ
+                            if (otherCiv != city.civ) {
+                                val fromName = if (isInitiatorGroup) city.name.tr() else other.name.tr()
+                                val toName = if (isInitiatorGroup) other.name.tr() else city.name.tr()
+                                otherCiv.addNotification(
+                                    "${city.civ.civName.tr()} 断开了从 $fromName 到 $toName 的贸易路线",
+                                    com.unciv.logic.civilization.NotificationCategory.Trade,
+                                    com.unciv.logic.civilization.NotificationIcon.Trade)
+                            }
                         }
                     }.open(force = true)
                 }

@@ -305,7 +305,7 @@ class AlertPopup(
         val statText = com.unciv.models.stats.Stat.entries
             .filter { stats[it] != 0f }
             .joinToString(" ") { "${stats[it]} ${it.name.tr()}" }
-        val text = "${fromCiv.civName} 的 ${fromCity.name} 向我们的城市 ${toCity.name} 发起了贸易邀请" +
+        val text = "${fromCiv.civName.tr()} 的 ${fromCity.name.tr()} 向我们的城市 ${toCity.name.tr()} 发起了贸易邀请" +
                 (if (statText.isNotEmpty()) "，我们将获得 $statText" else "")
         addGoodSizedLabel(text).row()
         addCloseButton("接受", KeyboardBinding.Confirm) {
@@ -336,9 +336,9 @@ class AlertPopup(
                 viewingCiv.gameInfo.invalidateTradeRoutes()
                 try { toCity.cityStats.update() } catch (ignored: Exception) {}
                 try { fromCity.cityStats.update() } catch (ignored: Exception) {}
-                // 2026-08-26 用户要求: 通知发起方 (单机热座)
+                // 2026-08-26 用户要求: 通知发起方 (单机热座, 文案不带【】)
                 fromCity.civ.addNotification(
-                    "${viewingCiv.civName} 拒绝了你发起的从 ${fromCity.name} 到 ${toCity.name} 的贸易路线请求",
+                    "${viewingCiv.civName.tr()} 拒绝了你发起的从 ${fromCity.name.tr()} 到 ${toCity.name.tr()} 的贸易路线请求",
                     com.unciv.logic.civilization.NotificationCategory.Trade,
                     com.unciv.logic.civilization.NotificationIcon.Trade)
             }

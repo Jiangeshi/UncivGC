@@ -1367,8 +1367,8 @@ object FrameSync {
                     val toCityId = msg["toCityId"]?.jsonPrimitive?.contentOrNull ?: ""
                     val fromCity = gameInfo.getCities().firstOrNull { it.id == fromCityId }
                     val toCity = gameInfo.getCities().firstOrNull { it.id == toCityId }
-                    // 2026-08-26 用户要求: 拒绝通知 (不带【】)
-                    val text = "${fromCity?.civ?.civName ?: ""} 拒绝了你发起的从 ${fromCity?.name ?: fromCityId} 到 ${toCity?.name ?: toCityId} 的贸易路线请求"
+                    // 2026-08-26 用户要求: 拒绝通知 (不带【】, 文明/城市名翻译)
+                    val text = "${fromCity?.civ?.civName?.tr() ?: ""} 拒绝了你发起的从 ${fromCity?.name?.tr() ?: fromCityId} 到 ${toCity?.name?.tr() ?: toCityId} 的贸易路线请求"
                     myCiv.addNotification(text,
                         com.unciv.logic.civilization.NotificationCategory.Trade,
                         com.unciv.logic.civilization.NotificationIcon.Trade)
@@ -1390,10 +1390,14 @@ object FrameSync {
             try {
                 val myCiv = worldScreen.viewingCiv
                 if (myCiv != null && !myCiv.isSpectator()) {
-                    val otherCityId = msg["otherCityId"]?.jsonPrimitive?.contentOrNull ?: ""
-                    val otherCity = gameInfo.getCities().firstOrNull { it.id == otherCityId }
-                    myCiv.addNotification("The trade route with [${otherCity?.name ?: otherCityId}] has been discontinued",
-                        com.unciv.logic.civilization.NotificationCategory.Trade, "",
+                    val fromCityId = msg["cityId"]?.jsonPrimitive?.contentOrNull ?: ""
+                    val toCityId = msg["otherCityId"]?.jsonPrimitive?.contentOrNull ?: ""
+                    val fromCity = gameInfo.getCities().firstOrNull { it.id == fromCityId }
+                    val toCity = gameInfo.getCities().firstOrNull { it.id == toCityId }
+                    // 2026-08-26 用户要求: 断开通知 (文明/城市名翻译)
+                    val text = "${fromCity?.civ?.civName?.tr() ?: ""} 断开了从 ${fromCity?.name?.tr() ?: fromCityId} 到 ${toCity?.name?.tr() ?: toCityId} 的贸易路线"
+                    myCiv.addNotification(text,
+                        com.unciv.logic.civilization.NotificationCategory.Trade,
                         com.unciv.logic.civilization.NotificationIcon.Trade)
                 }
                 worldScreen.shouldUpdate = true
