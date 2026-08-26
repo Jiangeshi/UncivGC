@@ -66,9 +66,15 @@ class RenderEvent(
         button.onActivation {
             if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo)) {
                 // UncivGC 帧同步: 选择回传服务器执行 (triggerChoice 服务器权威, 防重载回滚)
-                com.unciv.ui.screens.worldscreen.FrameSync.sendOp("civ.eventChoice",
+                val sent = com.unciv.ui.screens.worldscreen.FrameSync.sendOpChecked("civ.eventChoice",
                     mapOf("event" to event.name, "choice" to choice.text,
                           "unitId" to (unit?.id ?: -1)))
+                if (!sent) {
+                    // 2026-08-27 修复: 结算/暂停中 op 被吞 → 不关弹窗不标记已处理,
+                    // 否则事件直接丢失 (服务器没执行, 本地已 resolved → 再也不会弹);
+                    // 弹窗保留, 结算结束后玩家可再次选择
+                    return@onActivation
+                }
                 // 已选择 → 不再重新挂起 (防存档重载后重复弹窗)
                 com.unciv.ui.screens.worldscreen.FrameSync.markEventResolved(event.name)
                 onChoice(choice)  // 关闭弹窗 + 移除本地 popupAlert

@@ -77,8 +77,9 @@ class MapUnitCombatant(val unit: MapUnit) : ICombatant {
         if (!unit.civ.isAtWarWith(enemyCiv)) return 1f
         val myCivId = unit.civ.civID
         return try {
+            // 2026-08-27 修复: 必须 Lv2+ (设计稿: 续约 1 次后才有共同对敌加成) — 之前任意等级都触发
             val hasAlly = unit.civ.gameInfo.alliances.any { al ->
-                al.contains(myCivId) && unit.civ.gameInfo
+                al.level >= 2 && al.contains(myCivId) && unit.civ.gameInfo
                     .getCivilization(al.otherCiv(myCivId) ?: "").isAtWarWith(enemyCiv)
             }
             if (hasAlly) 1.1f else 1f
