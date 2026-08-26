@@ -549,32 +549,11 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
      *  3. 同盟提议过期 (回合内有效, 结算作废) */
     private fun settleAlliancesLocal() {
         try {
-            // 1. 到期未续约处理 (2026-08-26 修复: 有任一方同意 → 等一轮, 防双方都点了续约却被结算提前结束)
-            //    turnsLeft==0: 等待响应中; 无同意 → 结束; 有同意 → 置 -1 再等一轮
-            //    turnsLeft<0: 已等一轮仍未续约 → 结束
+            // 1. 到期未续约 (turnsLeft<=0) → 自动结束 (弹窗已在剩 1 回合时提前弹出)
             val it = alliances.iterator()
             while (it.hasNext()) {
                 val al = it.next()
-                if (al.turnsLeft == 0) {
-                    val pk = com.unciv.logic.diplomacy.Alliance.pairKey(al.civA, al.civB)
-                    val anyAgreed = allianceRenewAgreedLocal.contains("$pk|${al.civA}")
-                            || allianceRenewAgreedLocal.contains("$pk|${al.civB}")
-                    if (anyAgreed) {
-                        al.turnsLeft = -1  // 等另一方 (下回合结算若仍未续约 → 结束)
-                    } else {
-                        it.remove()
-                        allianceCooldowns[al.civA] = turns
-                        allianceCooldowns[al.civB] = turns
-                        val a = getCivilization(al.civA)
-                        val b = getCivilization(al.civB)
-                        a.addNotification("你与 ${b.civName.tr()} 的同盟结束了（到期未续约）",
-                            com.unciv.logic.civilization.NotificationCategory.Diplomacy,
-                            com.unciv.logic.civilization.NotificationIcon.Diplomacy)
-                        b.addNotification("你与 ${a.civName.tr()} 的同盟结束了（到期未续约）",
-                            com.unciv.logic.civilization.NotificationCategory.Diplomacy,
-                            com.unciv.logic.civilization.NotificationIcon.Diplomacy)
-                    }
-                } else if (al.turnsLeft < 0) {
+                if (al.turnsLeft <= 0) {
                     it.remove()
                     allianceCooldowns[al.civA] = turns
                     allianceCooldowns[al.civB] = turns
@@ -588,11 +567,11 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
                         com.unciv.logic.civilization.NotificationIcon.Diplomacy)
                 }
             }
-            // 2. 期限-1, 到 0 → 续约弹窗
+            // 2. 期限-1, 到 1 → 续约弹窗 (2026-08-26 用户要求: 提前一回合弹, 到期回合结算)
             for (al in alliances) {
-                if (al.turnsLeft <= 0) continue
+                if (al.turnsLeft <= 1) continue
                 al.turnsLeft--
-                if (al.turnsLeft == 0) {
+                if (al.turnsLeft == 1) {
                     val a = getCivilization(al.civA)
                     val b = getCivilization(al.civB)
                     a.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
