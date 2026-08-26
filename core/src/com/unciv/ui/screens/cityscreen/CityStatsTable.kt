@@ -449,11 +449,11 @@ class CityStatsTable(private val cityScreen: CityScreen) : Table() {
                 val valueToDisplay = if (stat == Stat.Happiness) cityView.getHappinessList().values.sum() else amount
                 add((valueToDisplay.roundToInt()).toLabel()).padRight(5f)
                 if (stat == Stat.Happiness) {
-                    // 贸易路线 已用/总量 (设计稿 v2 — 2026-08-26 用户要求: 快乐后插入)
+                    // 贸易路线 已用/总量 (设计稿 v2 — 2026-08-26 用户要求: 快乐后插入, 图标代替文字)
                     val civ = cityView.city.civ
                     val used = com.unciv.logic.trade.TradeRoutes.usedByCiv(civ)
                     val cap = com.unciv.logic.trade.TradeRoutes.capacity(civ)
-                    add("商路".toLabel()).padRight(3f)
+                    add(ImageGetter.getImage("StatIcons/Acquire")).size(27f).padRight(3f)
                     add("$used/$cap".toLabel()).padRight(5f)
                 }
                 if (cityScreen.isCrampedPortrait() && (expanderIsOpen == null || !expanderIsOpen) && stat == Stat.Gold) {

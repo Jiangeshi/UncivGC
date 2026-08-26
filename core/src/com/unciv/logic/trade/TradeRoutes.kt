@@ -75,13 +75,24 @@ object TradeRoutes {
     fun canInitiate(city: City): Boolean = improvedResourceCount(city) > 0
 
     /** 本城商路收益汇总 (发起方金币 + 接收方文产食) — CityStats 用
-     *  receiverStats/initiatorStats 第一参数必须是发起方城市 — 接收方分支传 route.otherCity (2026-08-26 修复) */
+     *  receiverStats/initiatorStats 第一参数必须是发起方城市 — 接收方分支传 route.otherCity (2026-08-26 修复)
+     *  2026-08-26 再修复: 按 tradeRoutes 精确方向遍历 — isInitiator 在双向时会把接收方向误判为发起 (收益重复计算) */
     fun cityTradeRouteStats(city: City): Stats {
         val stats = Stats()
-        val network = city.civ.gameInfo.getTradeRouteNetwork()
-        for (route in network.getEstablishedRoutes(city)) {
-            if (network.isInitiator(city, route.otherCity)) stats.add(initiatorStats(city, route))
-            else stats.add(receiverStats(route.otherCity, route))
+        val gameInfo = city.civ.gameInfo
+        val network = gameInfo.getTradeRouteNetwork()
+        val reachable = network.getReachable(city)
+        // 本城发起 (我的路线)
+        for (otherId in gameInfo.tradeRoutes[city.id] ?: emptyList()) {
+            val route = reachable.firstOrNull { it.otherCity.id == otherId } ?: continue
+            stats.add(initiatorStats(city, route))
+        }
+        // 本城接收 (对方发起 → 本城)
+        for ((fromId, toIds) in gameInfo.tradeRoutes) {
+            if (fromId == city.id || city.id !in toIds) continue
+            val otherCity = gameInfo.getCities().firstOrNull { it.id == fromId } ?: continue
+            val route = reachable.firstOrNull { it.otherCity.id == otherCity.id } ?: continue
+            stats.add(receiverStats(otherCity, route))
         }
         return stats
     }

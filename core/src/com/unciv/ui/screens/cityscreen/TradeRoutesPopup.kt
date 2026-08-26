@@ -27,7 +27,7 @@ import kotlin.math.min
 /** 商路管理弹窗 (UncivGC 2026-08-26 设计稿 v2): 每城管理自己的 — 本城发起/本城接收/可建立。
  *  表格列: 类型(内商/外商) | 目的地 | 距离 | 方式 | 收益(stat) | 操作
  *  纯拦截: 操作发 op, 等服务器广播后刷新 */
-class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, private val city: City) :
+class TradeRoutesPopup(private val screen: com.unciv.ui.screens.basescreen.BaseScreen, private val city: City) :
     Popup(screen, Scrollability.None) {
     private val decimal = DecimalFormat("0.#")
     private val columnWidths = listOf(60f, 120f, 60f, 60f, 110f, 110f, 110f)
@@ -187,6 +187,8 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
                                     com.unciv.logic.civilization.NotificationIcon.Trade)
                             }
                         }
+                        // 2026-08-26 用户要求: 商路变化后实时刷新城市页面 (金钱等立即更新)
+                        refreshCityScreen()
                     }.open(force = true)
                 }
             }).pad(2f)
@@ -284,6 +286,8 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
                                 gameInfo.invalidateTradeRoutes()
                                 try { city.cityStats.update() } catch (ignored: Exception) {}
                             }
+                            // 2026-08-26 用户要求: 商路变化后实时刷新城市页面 (金钱等立即更新)
+                            refreshCityScreen()
                         }.open(force = true)
                     }
                 }).pad(2f)
@@ -309,6 +313,11 @@ class TradeRoutesPopup(screen: com.unciv.ui.screens.basescreen.BaseScreen, priva
     private fun makeCityLabel(text: String) = text.toLabel().apply {
         setAlignment(Align.center)
         setEllipsis(true)
+    }
+
+    /** 2026-08-26 用户要求: 商路变化后实时刷新底层城市页面 (金钱等立即更新, 不用退出重进) */
+    private fun refreshCityScreen() {
+        if (screen is CityScreen) screen.update()
     }
 
     private fun formatStats(stats: Stats): String {
