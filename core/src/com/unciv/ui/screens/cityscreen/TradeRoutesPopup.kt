@@ -140,11 +140,12 @@ class TradeRoutesPopup(private val screen: com.unciv.ui.screens.basescreen.BaseS
                 else -> "道路"
             }
             // 收益函数第一参数必须是发起方城市: 本城发起 → city; 本城接收 → route.otherCity (2026-08-26 修复)
-            val fromCity = if (isInitiatorGroup) city else route.otherCity
-            val myStats = if (isInitiatorGroup) TradeRoutes.initiatorStats(fromCity, route)
-                          else TradeRoutes.receiverStats(fromCity, route)
-            val theirStats = if (isInitiatorGroup) TradeRoutes.receiverStats(fromCity, route)
-                             else TradeRoutes.initiatorStats(fromCity, route)
+            // 2026-08-27: 显示总收益 (基础 + 词条固定 + 百分比加成, 按收益归属城市算)
+            // 我的收益: 受益者=本城; 对方收益: 受益者=对方城市
+            val myStats = if (isInitiatorGroup) TradeRoutes.totalStats(city, city, route, true)
+                          else TradeRoutes.totalStats(route.otherCity, city, route, false)
+            val theirStats = if (isInitiatorGroup) TradeRoutes.totalStats(city, route.otherCity, route, false)
+                             else TradeRoutes.totalStats(route.otherCity, route.otherCity, route, true)
             contentTable.add(makeLabel(type)).minWidth(columnWidths[0]).pad(6f, 8f)
             contentTable.add(makeCityLabel(other.name.tr())).minWidth(columnWidths[1]).maxWidth(columnWidths[1]).pad(6f, 8f)
             contentTable.add(makeLabel(route.distance.toString())).minWidth(columnWidths[2]).pad(6f, 8f)
@@ -225,9 +226,9 @@ class TradeRoutesPopup(private val screen: com.unciv.ui.screens.basescreen.BaseS
 
         for (route in candidates) {
             val other = route.otherCity
-            val myStats = TradeRoutes.initiatorStats(city, route)
-            val theirStats = if (other.civ == city.civ) TradeRoutes.receiverStats(city, route)
-                             else TradeRoutes.receiverStats(city, route)
+            // 2026-08-27: 可建立候选也显示总收益 (本城词条 + 百分比加成)
+            val myStats = TradeRoutes.totalStats(city, city, route, true)
+            val theirStats = TradeRoutes.totalStats(city, route.otherCity, route, false)
             val type = if (other.civ == city.civ) "内商" else "外商"
             val way = when {
                 route.isSea -> "海路"

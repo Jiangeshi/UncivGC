@@ -5,7 +5,9 @@ import com.unciv.logic.civilization.Civilization
 import com.unciv.models.ruleset.tile.ResourceType
 import com.unciv.models.ruleset.tile.TileResource
 import com.unciv.models.ruleset.unique.UniqueType
+import com.unciv.models.stats.Stat
 import com.unciv.models.stats.Stats
+import com.unciv.ui.components.extensions.toPercent
 
 /**
  * 商路收益计算 (UncivGC 2026-08-26 设计稿 v2 重写): 单向商路, 双方不同类型收益。
@@ -43,6 +45,23 @@ object TradeRoutes {
         return if (city.civ.gameInfo.alliances.any {
                 it.contains(city.civ.civID) && it.contains(otherCity.civ.civID)
             }) 1.5f else 1f
+    }
+
+    /** 单条商路某方总收益 = (基础收益 + 每条商路词条 StatsFromTradeRoute) × 百分比加成 StatPercentFromTradeRoutes
+     *  — 2026-08-27 用户要求: 商路页面显示总收益 (词条/百分比按收益归属城市的 uniques 算)
+     *  fromCity = 发起方城市 (基础收益函数第一参数, 资源来自发起方); beneficiary = 收益归属城市 */
+    fun totalStats(fromCity: City, beneficiary: City, route: TradeRouteNetwork.Route, isInitiator: Boolean): Stats {
+        val base = if (isInitiator) initiatorStats(fromCity, route) else receiverStats(fromCity, route)
+        // 每条商路固定词条 (如「每条商路 +2 金币」) — 收益归属城市
+        val perRoute = Stats()
+        for (unique in beneficiary.getMatchingUniques(UniqueType.StatsFromTradeRoute)) perRoute.add(unique.stats)
+        base.add(perRoute)
+        // 百分比加成 (如「+25% 金币 from Trade Routes」) — 收益归属城市
+        val percentageStats = Stats()
+        for (unique in beneficiary.getMatchingUniques(UniqueType.StatPercentFromTradeRoutes))
+            percentageStats[Stat.valueOf(unique.params[1])] += unique.params[0].toFloat()
+        for ((stat) in base) base[stat] *= percentageStats[stat].toPercent()
+        return base
     }
 
     /** 已改良的地块资源数 (归属本城地块且已改良, 或城市中心自动供应; 排除建筑/文明级全局资源)
