@@ -354,7 +354,9 @@ class AlertPopup(
                 val pk = com.unciv.logic.diplomacy.Alliance.pairKey(viewingCiv.civID, otherId)
                 gi.allianceRenewAgreedLocal.add("$pk|${viewingCiv.civID}")
                 val al = gi.alliances.firstOrNull { it.contains(viewingCiv.civID) && it.contains(otherId) }
-                if (al != null && gi.allianceRenewAgreedLocal.contains("$pk|$otherId")) {
+                val agreed = al != null && gi.allianceRenewAgreedLocal.contains("$pk|$otherId")
+                com.unciv.ui.screens.worldscreen.FrameSync.log("热座续约: ${viewingCiv.civName} pk=$pk other=$otherId al=${al != null} agreed=$agreed 记录=${gi.allianceRenewAgreedLocal}")
+                if (al != null && agreed) {
                     gi.allianceRenewAgreedLocal.remove("$pk|${viewingCiv.civID}")
                     gi.allianceRenewAgreedLocal.remove("$pk|$otherId")
                     al.level = min(al.level + 1, com.unciv.logic.diplomacy.Alliance.MAX_LEVEL)

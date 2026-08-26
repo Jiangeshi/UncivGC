@@ -554,6 +554,7 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
             while (it.hasNext()) {
                 val al = it.next()
                 if (al.turnsLeft <= 0) {
+                    com.unciv.ui.screens.worldscreen.FrameSync.log("热座同盟结算: 结束 ${al.civA}-${al.civB} turnsLeft=${al.turnsLeft} 同意=${allianceRenewAgreedLocal}")
                     it.remove()
                     allianceCooldowns[al.civA] = turns
                     allianceCooldowns[al.civB] = turns
@@ -571,6 +572,7 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
             for (al in alliances) {
                 if (al.turnsLeft <= 0) continue
                 al.turnsLeft--
+                com.unciv.ui.screens.worldscreen.FrameSync.log("热座同盟结算: ${al.civA}-${al.civB} 剩余=${al.turnsLeft}")
                 if (al.turnsLeft == 1) {
                     val a = getCivilization(al.civA)
                     val b = getCivilization(al.civB)
