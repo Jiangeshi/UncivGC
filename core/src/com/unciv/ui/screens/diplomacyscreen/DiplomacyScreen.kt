@@ -160,7 +160,9 @@ class DiplomacyScreen(
                     }
             else
                 ImageGetter.getCircle(
-                    color = if (civ.isHuman() && viewingCiv.isHuman()) getHumanRelationshipColor(diplomacy)
+                    color = if (viewingCiv.gameInfo.alliances.any { it.contains(viewingCiv.civID) && it.contains(civ.civID) })
+                            Color.GOLD  // UncivGC 同盟 (2026-08-26): 同盟关系圆圈金色
+                    else if (civ.isHuman() && viewingCiv.isHuman()) getHumanRelationshipColor(diplomacy)
                     else if (diplomacy.diplomaticStatus == DiplomaticStatus.DefensivePact) Color.PURPLE
                     else if (civ.isAtWarWith(viewingCiv)) Color.RED
                     else relationLevel.color,

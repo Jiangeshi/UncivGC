@@ -64,6 +64,7 @@ class MajorCivDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
             if (!diplomacyManager.hasFlag(DiplomacyFlags.Denunciation)
                 && !diplomacyManager.hasFlag(DiplomacyFlags.DeclarationOfFriendship)
                 && !viewingCiv.isFsTeammate(otherCiv)  // UncivGC 组队: 不能谴责队友 (2026-08-23)
+                && viewingCiv.gameInfo.alliances.none { it.contains(viewingCiv.civID) && it.contains(otherCiv.civID) }  // 同盟: 不能谴责盟友 (2026-08-26, 防谴责后宣战绕过)
             ) diplomacyTable.add(getDenounceButton(otherCiv, diplomacyManager)).row()
 
             if (diplomaticRelationshipsCanChange
