@@ -37,8 +37,9 @@ class RenderEvent(
         // UncivGC 帧同步: 同时回合模式下 currentPlayerCiv 不一定是事件目标玩家
         // (服务器回合轮转的当前玩家 vs 弹窗所属文明) → 用 viewingCiv 计算选项条件,
         // 否则 "Only available <for [Human player] Civilizations>" 等条件全错 → 时代奖励选项缺失
-        val eventCiv = if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo))
-            worldScreen.viewingCiv else gameInfo.currentPlayerCiv
+        // 2026-08-26 再修: 单机热座同样问题 — 选项条件与触发 (triggerChoice → 嵌套事件加 popupAlerts)
+        // 必须用事件所属文明 viewingCiv, 否则内层事件加到当前回合玩家身上, 弹窗玩家看不到 (嵌套事件不触发)
+        val eventCiv = worldScreen.viewingCiv
         val gameContext = GameContext(eventCiv, unit = unit)
         val choices = event.getMatchingChoices(gameContext)
         isValid = choices != null
@@ -73,7 +74,8 @@ class RenderEvent(
                 onChoice(choice)  // 关闭弹窗 + 移除本地 popupAlert
             } else {
                 onChoice(choice)
-                choice.triggerChoice(gameInfo.currentPlayerCiv, unit)
+                // 2026-08-26 修复: 用事件所属文明 viewingCiv (热座嵌套事件触发到正确文明)
+                choice.triggerChoice(worldScreen.viewingCiv, unit)
             }
         }
         val key = KeyCharAndCode.parse(choice.keyShortcut)

@@ -391,7 +391,9 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         }
 
         /** 游戏内房间监视器: 长轮询房间, 发现新 gameId (跳海) 自动下载进入新图;
-         *  发现房间回到等待 (重新开始, 仅成员) → 回房间界面等房主再点开始 */
+         *  发现房间回到等待 (重新开始, 仅成员) → 回房间界面等房主再点开始
+         *  2026-08-26 修复: 观战退出后去其他房间 — 旧 watcher 还在跑, 检测到旧房间成员移除
+         *  会把用户从新房间踢回大厅/拉回旧房间 → 循环开头检查 activeRoomId, 已离开该房间即停止 */
         fun startGameWatcher(roomId: String, currentGameId: String, isMember: Boolean) {
             if (gameWatcherRunning) return
             gameWatcherRunning = true
@@ -400,6 +402,8 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
                 var myGameId = currentGameId
                 try {
                     while (true) {
+                        // 已进入其他房间/已退出 (activeRoomId 变化) → 本 watcher 失效, 停止
+                        if (activeRoomId != roomId) break
                         val room = LobbyApi.waitRoom(roomId, since, currentPlayerId()) ?: continue
                         since = room.version
                         // 房间解散或我被移除 (仅成员) → 回大厅并恢复服务器 (主动退出时由菜单处理, 不重复导航)

@@ -230,6 +230,9 @@ class WorldScreenMenuPopup(
                 // 3. 替换掉 WorldScreen (避免背后残留观战视图), 回到联机大厅; 恢复原多人服务器
                 //    帧同步: 先停连接 (WorldScreen 即将销毁, 不依赖 dispose 时机)
                 try { com.unciv.ui.screens.worldscreen.FrameSync.stop() } catch (ignored: Exception) {}
+                // 2026-08-26 修复: 清房间标记 — 旧房间 LobbyGameWatcher 检测 activeRoomId 变化后停止,
+                // 否则观战退出后去其他房间会被旧 watcher 踢回/拉回旧房间
+                LobbyRoomScreen.activeRoomId = null
                 launchOnGLThread {
                     if (leaveError != null) ToastPopup(leaveError, worldScreen)
                     LobbyRoomScreen.restoreMultiplayerServer()

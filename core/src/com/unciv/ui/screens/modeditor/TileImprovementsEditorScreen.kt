@@ -161,7 +161,7 @@ class TileImprovementsEditorScreen(private val modFolder: FileHandle) : BaseScre
             row.add(nameLabel).growX().left().maxWidth(stage.width * 0.25f - 60f)
             val ttb = item.getIntText("turnsToBuild")
             if (ttb.isNotBlank()) {
-                row.add(("Build [$ttb]".tr()).toLabel(fontSize = 13, fontColor = Color(1f, 1f, 1f, 0.4f))).right().padRight(8f)
+                row.add(("Build in [$ttb] turns".tr()).toLabel(fontSize = 13, fontColor = Color(1f, 1f, 1f, 0.4f))).right().padRight(8f)
             }
             row.touchable = Touchable.enabled
             row.onActivation { selectedIndex = i; refreshList(); rebuildForm() }
