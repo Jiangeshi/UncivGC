@@ -567,9 +567,9 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
                         com.unciv.logic.civilization.NotificationIcon.Diplomacy)
                 }
             }
-            // 2. 期限-1, 到 1 → 续约弹窗 (2026-08-26 用户要求: 提前一回合弹, 到期回合结算)
+            // 2. 期限-1 (2→1 发续约弹窗; 1→0 到期, 玩家在剩1/到期两个回合都能续约)
             for (al in alliances) {
-                if (al.turnsLeft <= 1) continue
+                if (al.turnsLeft <= 0) continue
                 al.turnsLeft--
                 if (al.turnsLeft == 1) {
                     val a = getCivilization(al.civA)
