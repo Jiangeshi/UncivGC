@@ -647,7 +647,7 @@ class MapUnit : IsPartOfGameInfoSerialization {
     @Readonly
     fun isInvisible(to: Civilization): Boolean {
         // 组队 (2026-08-26 用户要求): 队友可见隐身单位 (组队共享视野/情报, 含 Invisible 与 InvisibleToNonAdjacent)
-        if (isFsTeammate(to)) return false
+        if (civ.isFsTeammate(to)) return false
         if (hasUnique(UniqueType.Invisible) && !to.isSpectator())
             return true
         if (hasUnique(UniqueType.InvisibleToNonAdjacent) && !to.isSpectator())
