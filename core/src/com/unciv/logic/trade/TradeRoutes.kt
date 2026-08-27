@@ -43,12 +43,13 @@ object TradeRoutes {
         val distFactor = if (route.isSea) 0.5f else 1.5f  // 2026-08-26 用户调整: 陆商 1.5/格, 海商 0.5/格
         val rank = expectedRank ?: routeRank(city, route.otherCity.id)
         val popFactor = 1f + route.otherCity.population.population / 20f  // 方案A: 接收方人口
-        var gold = improvedResourceCount(city) * 0.5f + distFactor * route.distance
+        stats.gold = improvedResourceCount(city) * 0.5f + distFactor * route.distance
         // 词条固定加成并入基础 (2026-08-28 晚): 吃同盟/人口/rank 系数; 只发起方有
+        // 2026-08-28 修复: 全 stat 并入 — 原只取 gold, 产能/粮食/科学/文化等词条全部不生效 (用户 LM2ugc 商路词条)
         for (unique in city.getMatchingUniques(UniqueType.StatsFromTradeRoute))
-            gold += unique.stats.gold
-        stats.gold = gold * allianceBonus(city, route.otherCity) * popFactor * (1f / rank)
-        return stats
+            stats.add(unique.stats)
+        val mult = allianceBonus(city, route.otherCity) * popFactor * (1f / rank)
+        return stats.times(mult)
     }
 
     /** 接收方收益: 奢侈×1文化 + 战略×1产能 + 奖金×0.5食物 (发起方已改良地块资源)

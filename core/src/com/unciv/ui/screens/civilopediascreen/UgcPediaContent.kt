@@ -98,7 +98,7 @@ object UgcPediaContent {
         CivilopediaCategories.UgcPediaEntry("同盟系统", listOf(
             point("双文明结盟（成对 1 对 1，可同时与多个文明分别结盟），前置：双方互派大使馆"),
             point("期限 10 回合；到期双方弹窗续约：都同意 → 等级+1、期限重置；本回合不响应视为拒绝"),
-            point("Lv1：同盟间商路收益 +50%"),
+            point("Lv1：同盟间商路收益 +25%（2026-08-28 从 +50% 调低）"),
             point("Lv2：盟友已研究科技 +10% 科研"),
             point("Lv3：共享实时视野（不含探索历史）"),
             point("同盟期间不能宣战/攻击/劫掠盟友，无法主动退出"),
