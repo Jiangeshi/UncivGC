@@ -330,7 +330,9 @@ class TradeRoutesPopup(private val screen: com.unciv.ui.screens.basescreen.BaseS
         val parts = mutableListOf<String>()
         for (stat in Stat.entries) {
             val value = stats[stat]
-            if (value != 0f) parts.add("${stat.character}${decimal.format(value)} ${stat.name.tr()}")
+            // 2026-08-27 修复: stat.name.tr() 对 Stat 名会自动加图标 (tr 默认 hideStats=false)
+            // → 与 stat.character 重复成双图标 (用户反馈 "金钱图标3.6 金钱图标金钱"); 显式 hideStats
+            if (value != 0f) parts.add("${stat.character}${decimal.format(value)} ${stat.name.tr(hideStats = true)}")
         }
         if (parts.isEmpty()) return "—"
         return parts.chunked(3).joinToString("\n") { it.joinToString("  ") }

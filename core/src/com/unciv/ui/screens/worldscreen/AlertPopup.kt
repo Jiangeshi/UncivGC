@@ -451,7 +451,8 @@ class AlertPopup(
             com.unciv.logic.trade.TradeRouteNetwork.Route(toCity, 0, false, false))
         val statText = com.unciv.models.stats.Stat.entries
             .filter { stats[it] != 0f }
-            .joinToString(" ") { "${stats[it]} ${it.name.tr()}" }
+            // 2026-08-27: 与商路页一致 — 图标+数字+名称 (tr 显式 hideStats 防双图标)
+            .joinToString(" ") { "${it.character}${stats[it]} ${it.name.tr(hideStats = true)}" }
         val text = "${fromCiv.civName.tr()} 的 ${fromCity.name.tr()} 向我们的城市 ${toCity.name.tr()} 发起了贸易邀请" +
                 (if (statText.isNotEmpty()) "，我们将获得 $statText" else "")
         addGoodSizedLabel(text).row()
