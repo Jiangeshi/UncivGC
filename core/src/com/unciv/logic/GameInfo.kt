@@ -962,7 +962,12 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
     }
 
     private fun convertOldSavesToNewSaves() {
-        val baseRulesetInMods = gameParameters.mods.firstOrNull { RulesetCache[it]?.modOptions?.isBaseRuleset == true }
+        // 2026-08-27: 归一化匹配 (空格/连字符容错) — 与 RulesetCache.getComplexRuleset 一致
+        val normMod = { s: String -> s.lowercase().filter { ch -> ch.isLetterOrDigit() } }
+        val baseRulesetInMods = gameParameters.mods.firstOrNull { m ->
+            val rs = RulesetCache.values.firstOrNull { normMod(it.name) == normMod(m) }
+            rs?.modOptions?.isBaseRuleset == true
+        }
         if (baseRulesetInMods != null) {
             gameParameters.baseRuleset = baseRulesetInMods
             gameParameters.mods = LinkedHashSet(gameParameters.mods.filter { it != baseRulesetInMods })

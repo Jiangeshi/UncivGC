@@ -148,14 +148,17 @@ object RulesetCache : HashMap<String, Ruleset>() {
      * Any mods in the [mods] parameter marked as base ruleset (or not loaded in [RulesetCache]) are ignored.
      */
     fun getComplexRuleset(mods: LinkedHashSet<String>, optionalBaseRuleset: String? = null): Ruleset {
+        // 2026-08-27 修复 "LM2-ugc 进不去": 存档里模组名可能空格/连字符 (gen 改写连字符→空格,
+        // 镜像安装目录原样带连字符) → 归一化匹配本地目录 (忽略大小写/连字符/空格/标点)
+        val norm: (String) -> String = { it.lowercase().filter { ch -> ch.isLetterOrDigit() } }
         val baseRuleset =
-                if (containsKey(optionalBaseRuleset) && this[optionalBaseRuleset]!!.modOptions.isBaseRuleset)
-                    this[optionalBaseRuleset]!!
+                if (optionalBaseRuleset != null)
+                    values.firstOrNull { norm(it.name) == norm(optionalBaseRuleset) && it.modOptions.isBaseRuleset }
+                        ?: getVanillaRuleset()
                 else getVanillaRuleset()
 
         val loadedMods = mods.asSequence()
-            .filter { containsKey(it) }
-            .map { this[it]!! }
+            .mapNotNull { m -> values.firstOrNull { norm(it.name) == norm(m) } }
             .filter { !it.modOptions.isBaseRuleset }
 
         return getComplexRuleset(baseRuleset, loadedMods.asIterable())
