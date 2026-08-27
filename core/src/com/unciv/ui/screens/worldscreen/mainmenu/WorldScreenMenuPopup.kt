@@ -102,7 +102,8 @@ class WorldScreenMenuPopup(
             addButton("Leave room".tr()) {
                 close()
                 confirmLeaveLobbyGame()
-            }.nextColumn()
+            }.apply { actor.style = BaseScreen.skin.get("negative", TextButtonStyle::class.java) }
+            .nextColumn()
 
         // UncivGC 联机大厅: 跳海 (房主) — 保存本局全部设置直接开新图
         if (isLobbyGame && LobbyRoomScreen.activeAmOwner)
@@ -173,7 +174,8 @@ class WorldScreenMenuPopup(
         }.open(force = true)
     }
 
-    /** UncivGC 联机大厅: 退出房间 = 玩家时文明交给 AI 托管 + 离开房间; 观战者直接离开 */
+    /** UncivGC 联机大厅: 退出房间 = 玩家时文明交给 AI 托管 + 离开房间; 观战者直接离开
+     *  2026-08-27 用户要求: 红色警告 + 二次确认 (卡顿误点 Leave room 把文明交 AI 的教训) */
     private fun confirmLeaveLobbyGame() {
         val roomId = LobbyRoomScreen.activeRoomId ?: return
         val myId = worldScreen.game.settings.multiplayer.getUserId()
@@ -184,9 +186,15 @@ class WorldScreenMenuPopup(
         val confirmText = if (isSpectator)
             "Leave the room?"
         else
-            "Leave the room? Your civilization will be handed to AI and the game continues.".tr()
-        ConfirmPopup(worldScreen, confirmText, "Leave room".tr()) {
-            leaveLobbyGameNow(worldScreen)
+            "⚠️ 退出房间后你的文明将交给 AI 托管，无法回来继续玩！\n\n（只是想退出游戏请点 Main menu，文明会保留）".tr()
+        ConfirmPopup(worldScreen, confirmText, "Leave room".tr(), restoreDefault = {}) {
+            // 二次确认: 防卡顿/误触直接交 AI
+            ConfirmPopup(worldScreen,
+                "再次确认：确定退出房间并交出文明？".tr(),
+                "Leave room".tr(),
+                restoreDefault = {}) {
+                leaveLobbyGameNow(worldScreen)
+            }.open(force = true)
         }.open(force = true)
     }
 
