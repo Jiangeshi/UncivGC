@@ -198,6 +198,11 @@ class MajorCivDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
             com.unciv.logic.diplomacy.Alliance.COOLDOWN - (gameInfo.turns - cdTurn) else 0
         val pending = gameInfo.allianceOffers[viewingCiv.civID] == otherCiv.civID
                 || gameInfo.allianceOffers[otherCiv.civID] == viewingCiv.civID
+        // 2026-08-27 用户要求: 同盟前置 = 双方互派大使馆 (SharedEmbassies)
+        val hasEmbassy = try {
+            viewingCiv.getDiplomacyManager(otherCiv)?.hasModifier(
+                com.unciv.logic.civilization.diplomacy.DiplomaticModifiers.SharedEmbassies) == true
+        } catch (e: Exception) { false }
         val button = when {
             alliance != null -> {
                 // 同盟中: 显示等级 + 剩余回合 (同盟期间无法主动退出)
@@ -208,6 +213,9 @@ class MajorCivDiplomacyTable(private val diplomacyScreen: DiplomacyScreen) {
             }
             pending -> {
                 "同盟请求已发出".toTextButton().apply { disable() }
+            }
+            !hasEmbassy -> {
+                "提议同盟（需大使馆）".toTextButton().apply { disable() }
             }
             else -> {
                 "提议同盟".toTextButton().apply {

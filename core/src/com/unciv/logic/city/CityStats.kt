@@ -98,16 +98,9 @@ class CityStats(val city: City) {
     //region Pure Functions
 
     private fun getStatsFromTradeRoute(): Stats {
-        // UncivGC 2026-08-26 设计稿 v2: 单向商路 — 本城发起方 → 金币(资源数+0.5×距离); 本城接收方 → 文产食(发起方已改良资源)
-        val stats = com.unciv.logic.trade.TradeRoutes.cityTradeRouteStats(city)
-        // 百分比加成 (如马丘比丘 +25% 金币) 乘在收益上 (原版同款处理)
-        val percentageStats = Stats()
-        for (unique in city.getMatchingUniques(UniqueType.StatPercentFromTradeRoutes))
-            percentageStats[Stat.valueOf(unique.params[1])] += unique.params[0].toFloat()
-        for ((stat) in stats) {
-            stats[stat] *= percentageStats[stat].toPercent()
-        }
-        return stats
+        // UncivGC 2026-08-26 设计稿 v2: 单向商路 — 本城发起方 → 金币(资源数+距离); 本城接收方 → 文产食(发起方已改良资源)
+        // 2026-08-28 晚: totalStats 已含百分比加成 (StatPercentFromTradeRoutes), 这里不再重复乘 (否则双重加成)
+        return com.unciv.logic.trade.TradeRoutes.cityTradeRouteStats(city)
     }
 
     @Readonly

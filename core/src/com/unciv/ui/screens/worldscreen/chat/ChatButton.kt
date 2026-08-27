@@ -49,13 +49,16 @@ class ChatButton(val worldScreen: WorldScreen) : IconTextButton(
             if (roomId != null) {
                 com.unciv.utils.Concurrency.run("FsChatButtonPoll") {
                     while (true) {
-                        try {
-                            val room = com.unciv.logic.lobby.LobbyApi.getRoom(roomId, myId)
-                            val unread = room.chat.count { it.seq > fsReadSeq &&
-                                (it.to == "world" || it.to.isEmpty() || it.to == "team" ||
-                                 (it.to.startsWith("player:") && it.to == "player:$myId")) }
-                            updateFsUnread(unread)
-                        } catch (e: Exception) {
+                        // 2026-08-28: 聊天弹窗开着 → 暂停拉取 (Popup 轮询已处理未读/显示, 避免双轮询重复打 lobby)
+                        if (!com.unciv.ui.screens.worldscreen.chat.ChatPopup.fsPopupOpen) {
+                            try {
+                                val room = com.unciv.logic.lobby.LobbyApi.getRoom(roomId, myId)
+                                val unread = room.chat.count { it.seq > fsReadSeq &&
+                                    (it.to == "world" || it.to.isEmpty() || it.to == "team" ||
+                                     (it.to.startsWith("player:") && it.to == "player:$myId")) }
+                                updateFsUnread(unread)
+                            } catch (e: Exception) {
+                            }
                         }
                         try { Thread.sleep(3000) } catch (e: InterruptedException) { break }
                     }

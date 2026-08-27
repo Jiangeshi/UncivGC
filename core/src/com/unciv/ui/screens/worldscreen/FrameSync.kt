@@ -901,6 +901,7 @@ object FrameSync {
             "allianceEnded" -> handleAllianceEnded(msg)
             "allianceFollowUp" -> handleAllianceFollowUp(msg)
             "turnStatus" -> handleTurnStatus(msg)
+            "victory" -> handleVictory(msg)
             "pauseNotice" -> handlePauseNotice(msg)
             "resumeNotice" -> handleResumeNotice(msg)
             "pong" -> lastPongAt = System.currentTimeMillis()
@@ -944,6 +945,29 @@ object FrameSync {
      *  驱动: ①顶栏倒计时显示 ②“完成回合”按钮状态 (我完成→等剩余玩家; 结算后 ready 清空→恢复).
      *  防跳变: 过期广播 (回合号落后) 忽略; 同回合内本地已声明 (myTurnFinished) 不被不含我的广播覆盖;
      *  只有回合号前进时才重置完成状态. */
+    /** 服务器权威胜利广播 (2026-08-27 新增): 宗教胜利等客户端本地判不出的胜利类型,
+     *  由服务器 doNextTurn 检测后带赢家信息广播 → 这里设置 victoryData → WorldScreen.update
+     *  checkForVictory() 见 victoryData != null 即触发胜利界面。 */
+    private fun handleVictory(msg: JsonObject) {
+        try {
+            val gameInfo = worldScreenRef?.get()?.gameInfo ?: return
+            if (gameInfo.victoryData != null) return  // 已设置过
+            val winnerId = msg["winner"]?.jsonPrimitive?.contentOrNull ?: ""
+            val vType = msg["victoryType"]?.jsonPrimitive?.contentOrNull ?: ""
+            dbg("victory 广播: winner=$winnerId type=$vType")
+            val winnerCiv = gameInfo.civilizations.firstOrNull { it.civID == winnerId }
+            if (winnerCiv != null && vType.isNotEmpty()) {
+                gameInfo.victoryData = com.unciv.logic.VictoryData(winnerCiv, vType, gameInfo.turns)
+                victoryShownForFsGame = false  // 允许弹胜利界面 (update 循环里会置 true 防重)
+                worldScreenRef?.get()?.shouldUpdate = true
+            } else {
+                dbg("victory: 找不到赢家文明或类型为空, winner=$winnerId")
+            }
+        } catch (e: Exception) {
+            dbg("handleVictory 异常: ${e.message}")
+        }
+    }
+
     private fun handleTurnStatus(msg: JsonObject) {
         val tsTurn = msg["turn"]?.jsonPrimitive?.intOrNull ?: return
         if (tsTurn < lastTurn) return  // 过期广播 (网络延迟/乱序) 忽略
@@ -2076,6 +2100,7 @@ object FrameSync {
                     // 2026-08-27: 商路变化 → 城市 stats 后台重算 + 打开的城市界面刷新 (用户反馈"发起商路后城市统计不更新")
                     try {
                         val myCiv2 = gi.civilizations.firstOrNull { it.playerId == playerId }
+                        dbg("商路同步: playerId=$playerId myCiv2=${myCiv2?.civName} routes=${newRoutes.size}条")
                         if (myCiv2 != null) scheduleFsStatsRefresh(myCiv2)
                     } catch (ignored: Exception) {
                     }
@@ -4307,6 +4332,7 @@ object FrameSync {
                         // 先城市后文明 (civ.updateStatsForNextTurn 汇总依赖城市新 stats)
                         for (c in civ.cities) c.cityStats.update()
                         civ.updateStatsForNextTurn()
+                        dbg("FsStatsRefresh 完成: ${civ.civName} goldPT=${civ.stats.statsForNextTurn.gold} sci=${civ.stats.statsForNextTurn.science}")
                     } catch (ignored: Exception) {
                     }
                 }

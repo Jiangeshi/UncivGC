@@ -36,8 +36,8 @@ class GameParameters : IsPartOfGameInfoSerialization { // Default values are the
     var simultaneousTurns = false
     /** UncivGC 帧同步: 每段回合保底时长 (分钟) — 5 段 [0-25, 26-50, 51-75, 76-100, 100+]; 0=无限制 (该段不设倒计时, 全员完成才过回合); null=服务器默认 */
     var fsTurnTimes: Array<Float>? = null
-    /** UncivGC 帧同步: 回合结算后强制停留/锁定秒数 (客户端结算锁定+提示条时长; 0=不锁定) — 2026-08-22 用户要求可设置, 默认 3 */
-    var fsSettleLockSeconds: Int = 3
+    /** UncivGC 帧同步: 回合结算后强制停留/锁定秒数 (客户端结算锁定+提示条时长; 0=不锁定) — 2026-08-22 用户要求可设置, 默认 3; 2026-08-27 用户调整默认 3→1 */
+    var fsSettleLockSeconds: Int = 1
     /** UncivGC 组队 (2026-08-23): 队伍数 (1=不组队; 2/3=组队) — 大厅设置, 开局后固定 */
     var fsTeamCount: Int = 1
     /** UncivGC 组队: 队伍分组, 按队伍索引 (队1/队2/队3), 元素是 playerId — 生成器写入存档, 服务器广播权威 */

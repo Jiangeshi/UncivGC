@@ -212,7 +212,8 @@ internal class AdvancedTab(
     }
 
     private fun addFontSizeMultiplier() {
-        addSlider("Font size multiplier", settings::fontSizeMultiplier, 0.7f, 1.5f, 0.05f) {
+        // 2026-08-27 用户要求: 上限 1.5 → 3 (全局字号倍率, Table 自适应布局; 3x = 基础 14px→42px, 手机上大字模式)
+        addSlider("Font size multiplier", settings::fontSizeMultiplier, 0.7f, 3f, 0.05f) {
             reloadWorldAndOptions()
         }
     }

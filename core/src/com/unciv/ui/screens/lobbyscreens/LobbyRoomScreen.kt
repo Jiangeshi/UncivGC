@@ -121,15 +121,17 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             return fromFolder + RulesetCache.keys
         }
 
-        /** 房间设置里缺哪些模组 (含模组型基础规则集, 如 LM2 被选为基础规则集时) */
+        /** 房间设置里缺哪些模组 (含模组型基础规则集, 如 LM2 被选为基础规则集时)
+         *  2026-08-27: 归一化匹配 (空格/连字符/大小写容错) — 镜像安装目录可能带连字符
+         *  (LM2-ugc), 房间设置是空格名/原样名 → 精确匹配误报缺模组 (用户反馈更新后仍显示缺少模组) */
         fun missingModsOf(settings: Map<String, JsonElement>): List<String> {
-            val installed = installedMods()
+            val installedNorm = installedMods().map { normName(it) }.toSet()
             val gp = settings["gp"] as? JsonObject ?: return emptyList()
             val missing = mutableListOf<String>()
             val base = gp["baseRuleset"]?.jsonPrimitive?.contentOrNull
-            if (base != null && base !in installed) missing.add(base)
+            if (base != null && normName(base) !in installedNorm) missing.add(base)
             (gp["mods"] as? JsonArray)?.mapNotNull { it.jsonPrimitive.contentOrNull }
-                ?.filter { it !in installed }?.let { missing.addAll(it) }
+                ?.filter { normName(it) !in installedNorm }?.let { missing.addAll(it) }
             return missing.distinct()
         }
 

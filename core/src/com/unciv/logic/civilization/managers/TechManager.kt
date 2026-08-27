@@ -99,10 +99,11 @@ class TechManager : IsPartOfGameInfoSerialization {
         val numberOfCivsRemaining = civInfo.gameInfo.civilizations
             .count { it.isMajorCiv() && !it.isDefeated() }
         var modifier = 1 + numberOfCivsResearchedThisTech / numberOfCivsRemaining.toFloat() * 0.3f
-        // 同盟 Lv1+ (2026-08-26 同盟设计稿 v1.0): 盟友已研究该科技 → 额外 +10% 科研 (成本降低)
+        // 同盟 Lv2+ (2026-08-27 用户调整: 科研加成从 Lv1 移到 Lv2; 原 Lv1+ 触发):
+        // 盟友已研究该科技 → 额外 +10% 科研 (成本降低)
         try {
             if (civInfo.gameInfo.alliances.any { al ->
-                    al.contains(civInfo.civID) && civInfo.gameInfo.getCivilization(
+                    al.level >= 2 && al.contains(civInfo.civID) && civInfo.gameInfo.getCivilization(
                         al.otherCiv(civInfo.civID) ?: "").tech.isResearched(techName)
                 }) modifier *= 1.1f
         } catch (ignored: Exception) {}

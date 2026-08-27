@@ -68,22 +68,8 @@ class MapUnitCombatant(val unit: MapUnit) : ICombatant {
     /** 同盟 Lv2 (2026-08-26 同盟设计稿 v1.0): 与目标交战且任一盟友也在与其交战 → +10% 战斗力 */
     @Readonly
     private fun allyWarBonus(combatant: ICombatant?): Float {
-        if (combatant == null) return 1f
-        val enemyCiv = when (combatant) {
-            is MapUnitCombatant -> combatant.unit.civ
-            is CityCombatant -> combatant.city.civ
-            else -> return 1f
-        }
-        if (!unit.civ.isAtWarWith(enemyCiv)) return 1f
-        val myCivId = unit.civ.civID
-        return try {
-            // 2026-08-27 修复: 必须 Lv2+ (设计稿: 续约 1 次后才有共同对敌加成) — 之前任意等级都触发
-            val hasAlly = unit.civ.gameInfo.alliances.any { al ->
-                al.level >= 2 && al.contains(myCivId) && unit.civ.gameInfo
-                    .getCivilization(al.otherCiv(myCivId) ?: "").isAtWarWith(enemyCiv)
-            }
-            if (hasAlly) 1.1f else 1f
-        } catch (ignored: Exception) { 1f }
+        // 2026-08-27 用户调整: 移除同盟共同对敌战斗力加成 (原 Lv2 效果, 整体删除)
+        return 1f
     }
 
     /** 计算编队战斗力加成 (按 tier: 军团/舰队 +33% / 集团军/无敌舰队 +50%; 四舍五入, 与显示 getDisplayStrength 一致) */

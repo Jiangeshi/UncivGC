@@ -94,12 +94,19 @@ class TradeRoutesPopup(private val screen: com.unciv.ui.screens.basescreen.BaseS
         // 可建立 (可达且未连接, 容量未满)
         // 2026-08-26 用户要求: 允许双向 — A→B 已存在时 B 也能连 A (各自方向一次);
         // 只排除自己已发起的连接 (已发出的邀请目标仍显示, 按钮变「等待」)
+        // 2026-08-27 观战者只读: 不显示"可建立"组 (观战者不能建立商路, 也看不到操作按钮)
+        if (com.unciv.GUI.getWorldScreen()?.viewingCiv?.isSpectator() == true) {
+            contentTable.packIfNeeded()
+            return
+        }
         if (used < cap) {
             val existing = gameInfo.tradeRoutes[city.id]?.toSet() ?: emptySet()
+            // 2026-08-28 衰减: 候选是下一条 (rank = 现有数+1), 按衰减后收益排序 — 否则推荐顺序错误
+            val nextRank = (gameInfo.tradeRoutes[city.id]?.size ?: 0) + 1
             val candidates = network.getReachable(city)
                 .filter { it.otherCity.id !in existing }
-                .sortedByDescending { TradeRoutes.initiatorStats(city, it).gold }
-            addCandidates(candidates)
+                .sortedByDescending { TradeRoutes.initiatorStats(city, it, nextRank).gold }
+            addCandidates(candidates, nextRank)
         } else {
             val full = "容量已满（断开后可建立新路线）".toLabel()
             full.setAlignment(Align.center)
@@ -130,7 +137,10 @@ class TradeRoutesPopup(private val screen: com.unciv.ui.screens.basescreen.BaseS
 
         val reachable = network.getReachable(city)
         val routes = otherCities.mapNotNull { other -> reachable.firstOrNull { it.otherCity.id == other.id } }
-        val ordered = if (isInitiatorGroup) routes.sortedByDescending { TradeRoutes.initiatorStats(city, it).gold } else routes
+        val ordered = if (isInitiatorGroup) {
+            // 2026-08-28 衰减: 已建立路线按实际 rank 的衰减后收益排序 (与入账一致)
+            routes.sortedByDescending { TradeRoutes.initiatorStats(city, it).gold }
+        } else routes
         for (route in ordered) {
             val other = route.otherCity
             val type = if (other.civ == city.civ) "内商" else "外商"
@@ -152,6 +162,12 @@ class TradeRoutesPopup(private val screen: com.unciv.ui.screens.basescreen.BaseS
             contentTable.add(makeLabel(way)).minWidth(columnWidths[3]).pad(6f, 8f)
             contentTable.add(makeLabel(formatStats(myStats))).minWidth(columnWidths[4]).pad(6f, 8f)
             contentTable.add(makeLabel(formatStats(theirStats))).minWidth(columnWidths[5]).pad(6f, 8f)
+            // 2026-08-27 观战者只读: 不显示断开按钮
+            if (com.unciv.GUI.getWorldScreen()?.viewingCiv?.isSpectator() == true) {
+                contentTable.add(makeLabel("—")).minWidth(columnWidths[6]).pad(6f, 8f)
+                contentTable.row()
+                continue
+            }
             val opCell = Table()
             opCell.add("断开".toTextButton().apply {
                 onClick {
@@ -199,7 +215,7 @@ class TradeRoutesPopup(private val screen: com.unciv.ui.screens.basescreen.BaseS
         contentTable.addSeparator(colSpan = 6).padTop(4f)
     }
 
-    private fun addCandidates(candidates: List<TradeRouteNetwork.Route>) {
+    private fun addCandidates(candidates: List<TradeRouteNetwork.Route>, nextRank: Int) {
         val gameInfo = city.civ.gameInfo
         val groupLabel = "可建立商路".toLabel()
         groupLabel.setAlignment(Align.center)
@@ -227,8 +243,9 @@ class TradeRoutesPopup(private val screen: com.unciv.ui.screens.basescreen.BaseS
         for (route in candidates) {
             val other = route.otherCity
             // 2026-08-27: 可建立候选也显示总收益 (本城词条 + 百分比加成)
-            val myStats = TradeRoutes.totalStats(city, city, route, true)
-            val theirStats = TradeRoutes.totalStats(city, route.otherCity, route, false)
+            // 2026-08-28 衰减: 候选显示下一条的实际收益 (rank=现有数+1) — 与建立后入账一致
+            val myStats = TradeRoutes.totalStats(city, city, route, true, nextRank)
+            val theirStats = TradeRoutes.totalStats(city, route.otherCity, route, false, nextRank)
             val type = if (other.civ == city.civ) "内商" else "外商"
             val way = when {
                 route.isSea -> "海路"
