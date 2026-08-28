@@ -35,6 +35,17 @@ import yairm210.purity.annotations.Readonly
 
 object NextTurnAutomation {
 
+    /** UncivGC 2026-08-28: 帧同步模拟器 AI 外交入口 (SimulationServer.java 调用).
+     *  目前只开放求和 — 修复"宣战城邦后城邦不会主动和谈" (模拟器原不跑 AI 外交自动化);
+     *  offerPeaceTreaty 是 internal, Java 不能直接调, 这里公开包装 (城邦同样生效) */
+    @JvmStatic
+    fun aiOfferPeace(civInfo: Civilization) {
+        try {
+            DiplomacyAutomation.offerPeaceTreaty(civInfo)
+        } catch (ignored: Exception) {
+        }
+    }
+
     /** Top-level AI turn task list */
     fun automateCivMoves(civInfo: Civilization,
                          /** set false for 'forced' automation, such as skip turn */

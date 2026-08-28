@@ -542,7 +542,7 @@
 		"hurryCostModifier": 25,
 		"uniques": ["[+1 Production] from [Water resource] tiles [in this city]",
 			"Connects trade routes over water","Must be next to [Coast]",
-			"Provides [1] Trade Routes"],
+			"Provides [1] Trade Routes <in cities without a [Market]> <after discovering [Compass]>"],
 		"requiredTech": "Compass"
 	},
 	{

@@ -99,6 +99,7 @@ data class CivRequest(val nickname: String, val playerId: String, val civ: Strin
 data class TeamRequest(val nickname: String, val playerId: String, val team: Int)
 @Serializable
 data class LeaveRequest(val nickname: String, val playerId: String)
+data class ExitConfirmRequest(val nickname: String, val playerId: String, val step: Int)
 @Serializable
 data class KickRequest(val nickname: String, val playerId: String, val target: String = "", val targetPlayerId: String = "")
 @Serializable
@@ -180,6 +181,14 @@ object LobbyApi {
         parse(client.post("$SERVER_URL/api/rooms/$roomId/exit") {
             contentType(ContentType.Application.Json)
             setBody(LeaveRequest(nickname, playerId ?: ""))
+        })
+
+    /** 退出确认步骤广播 (2026-08-28 用户要求): 两次确认各发一次 step (1=第一次, 2=第二次),
+     *  服务器日志区分主动退出 (step1+step2+/exit 三连) 与非主动路径 (只有 /exit 无确认序列) */
+    suspend fun confirmExit(roomId: String, step: Int, nickname: String, playerId: String? = null): ApiResult =
+        parse(client.post("$SERVER_URL/api/rooms/$roomId/exitconfirm") {
+            contentType(ContentType.Application.Json)
+            setBody(ExitConfirmRequest(nickname, playerId ?: "", step))
         })
 
     suspend fun setReady(roomId: String, nickname: String, ready: Boolean, playerId: String? = null): ApiResult =

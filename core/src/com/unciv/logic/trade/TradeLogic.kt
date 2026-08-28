@@ -95,6 +95,13 @@ class TradeLogic(val ourCivilization: Civilization, val otherCivilization: Civil
                     .filter { otherCiv.knows(it) }
             val civsWeArentAtWarWith = civsWeBothKnow
                     .filter { civInfo.getDiplomacyManager(it)!!.canDeclareWar() }
+                    // 2026-08-28: 盟友/队友不能作为买宣目标 (贸易界面不出现"宣战盟友/队友"的选项;
+                    // 双方视角都排除 — 我不能要求对方打我的盟友, 也不该提议打对方的盟友)
+                    .filterNot { target ->
+                        val alliedWithUs = civInfo.gameInfo.alliances.any { al -> al.contains(civInfo.civID) && al.contains(target.civID) }
+                        val alliedWithThem = civInfo.gameInfo.alliances.any { al -> al.contains(otherCiv.civID) && al.contains(target.civID) }
+                        alliedWithUs || alliedWithThem || civInfo.isFsTeammate(target) || otherCiv.isFsTeammate(target)
+                    }
             for (thirdCiv in civsWeArentAtWarWith) {
                 offers.add(TradeOffer(thirdCiv.civID, TradeOfferType.WarDeclaration, speed = civInfo.gameInfo.speed))
             }
@@ -186,21 +193,27 @@ class TradeLogic(val ourCivilization: Civilization, val otherCivilization: Civil
                 TradeOfferType.Introduction -> to.diplomacyFunctions.makeCivilizationsMeet(to.gameInfo.getCivilization(offer.name))
                 TradeOfferType.WarDeclaration -> {
                     val nameOfCivToDeclareWarOn = offer.name
-                    val warType = if (currentTrade.theirOffers.any { it.type == TradeOfferType.WarDeclaration && it.name == nameOfCivToDeclareWarOn }
-                            && currentTrade.ourOffers.any {it.type == TradeOfferType.WarDeclaration && it.name == nameOfCivToDeclareWarOn})
-                        WarType.TeamWar
-                    else if (currentTrade.theirOffers.any { it.type == TradeOfferType.WarDeclaration && it.name == nameOfCivToDeclareWarOn && ourCivilization.isAtWarWith(to.gameInfo.getCivilization(it.name))}
-                        || currentTrade.ourOffers.any {it.type == TradeOfferType.WarDeclaration && it.name == nameOfCivToDeclareWarOn && otherCivilization.isAtWarWith(to.gameInfo.getCivilization(it.name))})
-                        WarType.JoinWar
-                    else WarType.DirectWar
-                    when(warType) {
-                        WarType.TeamWar, WarType.JoinWar -> from.getDiplomacyManager(nameOfCivToDeclareWarOn)!!.declareWar(DeclareWarReason(warType, to))
-                        WarType.DirectWar -> {
-                            // from will always be the declaring Civ
-                            from.getDiplomacyManager(nameOfCivToDeclareWarOn)!!
-                                .declareWar(DeclareWarReason(warType))
+                    val targetCiv = from.gameInfo.getCivilization(nameOfCivToDeclareWarOn)
+                    // 2026-08-28: 不能通过贸易宣战自己的盟友/队友 (UI 已隐藏, 这里防绕过)
+                    val blockedByAlliance = targetCiv != null && from.gameInfo.alliances.any {
+                        it.contains(from.civID) && it.contains(targetCiv.civID) }
+                    if (!blockedByAlliance && (targetCiv == null || !from.isFsTeammate(targetCiv))) {
+                        val warType = if (currentTrade.theirOffers.any { it.type == TradeOfferType.WarDeclaration && it.name == nameOfCivToDeclareWarOn }
+                                && currentTrade.ourOffers.any {it.type == TradeOfferType.WarDeclaration && it.name == nameOfCivToDeclareWarOn})
+                            WarType.TeamWar
+                        else if (currentTrade.theirOffers.any { it.type == TradeOfferType.WarDeclaration && it.name == nameOfCivToDeclareWarOn && ourCivilization.isAtWarWith(to.gameInfo.getCivilization(it.name))}
+                            || currentTrade.ourOffers.any {it.type == TradeOfferType.WarDeclaration && it.name == nameOfCivToDeclareWarOn && otherCivilization.isAtWarWith(to.gameInfo.getCivilization(it.name))})
+                            WarType.JoinWar
+                        else WarType.DirectWar
+                        when(warType) {
+                            WarType.TeamWar, WarType.JoinWar -> from.getDiplomacyManager(nameOfCivToDeclareWarOn)!!.declareWar(DeclareWarReason(warType, to))
+                            WarType.DirectWar -> {
+                                // from will always be the declaring Civ
+                                from.getDiplomacyManager(nameOfCivToDeclareWarOn)!!
+                                    .declareWar(DeclareWarReason(warType))
+                            }
+                            else -> {throw IllegalStateException("Unhandled WarType: $warType found within TradeOfferType.WarDeclaration")}
                         }
-                        else -> {throw IllegalStateException("Unhandled WarType: $warType found within TradeOfferType.WarDeclaration")}
                     }
                 }
                 TradeOfferType.PeaceProposal -> {

@@ -188,11 +188,31 @@ class WorldScreenMenuPopup(
         else
             "⚠️ 退出房间后你的文明将交给 AI 托管，无法回来继续玩！\n\n（只是想退出游戏请点 Main menu，文明会保留）".tr()
         ConfirmPopup(worldScreen, confirmText, "Leave room".tr(), restoreDefault = {}) {
+            // 2026-08-28: 确认步骤广播 step1 (服务器日志定位主动/非主动路径 — 主动退出=step1+step2+/exit 三连)
+            val rid1 = LobbyRoomScreen.activeRoomId
+            if (rid1 != null) {
+                Concurrency.run("ExitConfirm1") {
+                    try {
+                        LobbyApi.confirmExit(rid1, 1, LobbyRoomScreen.currentNickname(), LobbyRoomScreen.currentPlayerId())
+                    } catch (ignored: Exception) {
+                    }
+                }
+            }
             // 二次确认: 防卡顿/误触直接交 AI
             ConfirmPopup(worldScreen,
                 "再次确认：确定退出房间并交出文明？".tr(),
                 "Leave room".tr(),
                 restoreDefault = {}) {
+                // 2026-08-28: 确认步骤广播 step2 (第二次确认才是真正主动退出信号)
+                val rid2 = LobbyRoomScreen.activeRoomId
+                if (rid2 != null) {
+                    Concurrency.run("ExitConfirm2") {
+                        try {
+                            LobbyApi.confirmExit(rid2, 2, LobbyRoomScreen.currentNickname(), LobbyRoomScreen.currentPlayerId())
+                        } catch (ignored: Exception) {
+                        }
+                    }
+                }
                 leaveLobbyGameNow(worldScreen)
             }.open(force = true)
         }.open(force = true)
