@@ -194,17 +194,20 @@ class TradeLogic(val ourCivilization: Civilization, val otherCivilization: Civil
                 TradeOfferType.WarDeclaration -> {
                     val nameOfCivToDeclareWarOn = offer.name
                     val targetCiv = from.gameInfo.getCivilization(nameOfCivToDeclareWarOn)
+                    // 2026-08-29 修复 (审查发现): 目标文明不存在 (构造请求/存档损坏) → 跳过执行,
+                    // 否则 getDiplomacyManager(name)!! 对 null 文明 NPE 崩溃 (原版遗留)
+                    if (targetCiv == null) return@transferTrade
                     // 2026-08-28: 不能通过贸易宣战自己的盟友/队友 (UI 已隐藏, 这里防绕过)
-                    val blockedByAlliance = targetCiv != null && from.gameInfo.alliances.any {
+                    val blockedByAlliance = from.gameInfo.alliances.any {
                         it.contains(from.civID) && it.contains(targetCiv.civID) }
                     // 2026-08-29 修复 (审查发现): 执行侧还需检查贸易发起方 (to) 与目标的同盟/队友 —
                     // B 买 A 宣战 C 时, 若 C 是 B 的盟友, 构造请求可绕过 UI 让盟友被打;
                     // 提议生成已排除 (alliedWithThem), 这里防服务器侧绕过
-                    val blockedByBuyerAlliance = targetCiv != null && to.gameInfo.alliances.any {
+                    val blockedByBuyerAlliance = to.gameInfo.alliances.any {
                         it.contains(to.civID) && it.contains(targetCiv.civID) }
-                    val blockedByBuyerTeam = targetCiv != null && to.isFsTeammate(targetCiv)
+                    val blockedByBuyerTeam = to.isFsTeammate(targetCiv)
                     if (!blockedByAlliance && !blockedByBuyerAlliance && !blockedByBuyerTeam
-                        && (targetCiv == null || !from.isFsTeammate(targetCiv))) {
+                        && !from.isFsTeammate(targetCiv)) {
                         val warType = if (currentTrade.theirOffers.any { it.type == TradeOfferType.WarDeclaration && it.name == nameOfCivToDeclareWarOn }
                                 && currentTrade.ourOffers.any {it.type == TradeOfferType.WarDeclaration && it.name == nameOfCivToDeclareWarOn})
                             WarType.TeamWar
