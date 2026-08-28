@@ -160,6 +160,10 @@ object FrameSync {
     /** 已广播但未选择的事件弹窗 (eventName): 存档重载会触发 start() 清空 popupAlerts →
      *  重新挂起未解决的事件, 防止"时代奖励闪现一下就没了" */
     private val pendingEvents = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    /** 2026-08-29 同盟弹窗本地挂起 (value=civId): 存档重载清空 popupAlerts 后只恢复事件弹窗,
+     *  同盟提议/续约/跟进弹窗完全依赖 fs 补推 — 多个同盟提议并发时 fs 单槽只补推最后一条,
+     *  其余永久丢失 (对方一直等). 本地也挂起, 重载后重新恢复 (与 pendingEvents 同机制) */
+    private val pendingAlliancePopups = java.util.concurrent.ConcurrentHashMap.newKeySet<Pair<com.unciv.logic.civilization.AlertType, String>>()
     /** 我是否已点“完成回合” (发送后本地立即置 true, 结算后 turnStatus 广播复位) */
     @Volatile var myTurnFinished = false
 
@@ -281,6 +285,18 @@ object FrameSync {
                     if (!exists) {
                         worldScreen.viewingCiv.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
                             com.unciv.logic.civilization.AlertType.Event, ev))
+                    }
+                }
+            }
+            // 2026-08-29 同盟弹窗重载恢复: 本地挂起的同盟提议/续约/跟进弹窗重新挂起
+            // (fs 补推单槽会丢并发弹窗, 本地挂起双保险)
+            if (pendingAlliancePopups.isNotEmpty()) {
+                for ((atype, civId) in pendingAlliancePopups) {
+                    val exists = worldScreen.viewingCiv.popupAlerts.any {
+                        it.type == atype && it.value == civId
+                    }
+                    if (!exists) {
+                        worldScreen.viewingCiv.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(atype, civId))
                     }
                 }
             }
@@ -1330,6 +1346,8 @@ object FrameSync {
                 if (myCiv.popupAlerts.none { it.type == com.unciv.logic.civilization.AlertType.AllianceOffer && it.value == fromCivId })
                     myCiv.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
                         com.unciv.logic.civilization.AlertType.AllianceOffer, fromCivId))
+                // 2026-08-29 本地挂起 (重载后恢复, 防 fs 单槽补推丢弹窗)
+                pendingAlliancePopups.add(Pair(com.unciv.logic.civilization.AlertType.AllianceOffer, fromCivId))
                 worldScreen.shouldUpdate = true
             } catch (e: Exception) {}
         }
@@ -1351,6 +1369,12 @@ object FrameSync {
                     myCiv.addNotification("你与 ${otherCivName.tr()} 结成了同盟（Lv$level）",
                         com.unciv.logic.civilization.NotificationCategory.Diplomacy,
                         com.unciv.logic.civilization.NotificationIcon.Diplomacy)
+                }
+                // 2026-08-29: 接受后清除本地挂起 (防重载后死灰复燃)
+                val otherCiv = gameInfo.civilizations.firstOrNull { it.civName == otherCivName }
+                if (otherCiv != null) {
+                    pendingAlliancePopups.remove(Pair(com.unciv.logic.civilization.AlertType.AllianceOffer, otherCiv.civID))
+                    pendingAlliancePopups.remove(Pair(com.unciv.logic.civilization.AlertType.AllianceRenew, otherCiv.civID))
                 }
                 refreshOpenDiplomacyScreen()  // 2026-08-27: 同盟成立后打开的外交界面立即刷新 (不用退出重进)
                 worldScreen.shouldUpdate = true
@@ -1374,6 +1398,10 @@ object FrameSync {
                         com.unciv.logic.civilization.NotificationCategory.Diplomacy,
                         com.unciv.logic.civilization.NotificationIcon.Diplomacy)
                 }
+                // 2026-08-29: 拒绝后清除本地挂起 (防重载后死灰复燃)
+                val otherCiv = gameInfo.civilizations.firstOrNull { it.civName == otherCivName }
+                if (otherCiv != null)
+                    pendingAlliancePopups.remove(Pair(com.unciv.logic.civilization.AlertType.AllianceOffer, otherCiv.civID))
                 worldScreen.shouldUpdate = true
             } catch (e: Exception) {}
         }
@@ -1397,6 +1425,8 @@ object FrameSync {
                 if (myCiv.popupAlerts.none { it.type == com.unciv.logic.civilization.AlertType.AllianceRenew && it.value == otherCivId })
                     myCiv.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
                         com.unciv.logic.civilization.AlertType.AllianceRenew, otherCivId))
+                // 2026-08-29 本地挂起 (重载后恢复, 防 fs 单槽补推丢弹窗)
+                pendingAlliancePopups.add(Pair(com.unciv.logic.civilization.AlertType.AllianceRenew, otherCivId))
                 worldScreen.shouldUpdate = true
             } catch (e: Exception) {}
         }
@@ -1419,6 +1449,10 @@ object FrameSync {
                         com.unciv.logic.civilization.NotificationCategory.Diplomacy,
                         com.unciv.logic.civilization.NotificationIcon.Diplomacy)
                 }
+                // 2026-08-29: 续约后清除本地挂起 (防重载后死灰复燃)
+                val otherCiv = gameInfo.civilizations.firstOrNull { it.civName == otherCivName }
+                if (otherCiv != null)
+                    pendingAlliancePopups.remove(Pair(com.unciv.logic.civilization.AlertType.AllianceRenew, otherCiv.civID))
                 refreshOpenDiplomacyScreen()  // 2026-08-27: 续约后外交界面实时刷新
                 worldScreen.shouldUpdate = true
             } catch (e: Exception) {}
@@ -1447,6 +1481,12 @@ object FrameSync {
                         com.unciv.logic.civilization.NotificationCategory.Diplomacy,
                         com.unciv.logic.civilization.NotificationIcon.Diplomacy)
                 }
+                // 2026-08-29: 同盟结束 → 清除本地挂起 (续约弹窗过期不再恢复)
+                val otherCiv = gameInfo.civilizations.firstOrNull { it.civName == otherCivName }
+                if (otherCiv != null) {
+                    pendingAlliancePopups.remove(Pair(com.unciv.logic.civilization.AlertType.AllianceRenew, otherCiv.civID))
+                    pendingAlliancePopups.remove(Pair(com.unciv.logic.civilization.AlertType.AllianceFollowUp, otherCiv.civID))
+                }
                 refreshOpenDiplomacyScreen()  // 2026-08-27: 同盟结束后外交界面实时刷新
                 worldScreen.shouldUpdate = true
             } catch (e: Exception) {}
@@ -1468,6 +1508,8 @@ object FrameSync {
                 if (myCiv.popupAlerts.none { it.type == com.unciv.logic.civilization.AlertType.AllianceFollowUp && it.value == targetCivId })
                     myCiv.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
                         com.unciv.logic.civilization.AlertType.AllianceFollowUp, targetCivId))
+                // 2026-08-29 本地挂起 (重载后恢复, 防 fs 单槽补推丢弹窗)
+                pendingAlliancePopups.add(Pair(com.unciv.logic.civilization.AlertType.AllianceFollowUp, targetCivId))
                 worldScreen.shouldUpdate = true
             } catch (e: Exception) {}
         }
@@ -2173,6 +2215,11 @@ object FrameSync {
                         civ.popupAlerts.removeIf { pa ->
                             pa.type == com.unciv.logic.civilization.AlertType.AllianceOffer
                                     && gi.allianceOffers[pa.value] != civ.civID
+                        }
+                        // 2026-08-29: 同步清理本地挂起集合 (过期邀请不再恢复)
+                        pendingAlliancePopups.removeIf { (atype, civId) ->
+                            atype == com.unciv.logic.civilization.AlertType.AllianceOffer
+                                    && gi.allianceOffers[civId] != civ.civID
                         }
                     }
                 } catch (ignored: Exception) {
