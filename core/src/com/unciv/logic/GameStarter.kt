@@ -718,10 +718,27 @@ class GameStarter private constructor(
                     allowFallbackGlobal -> getOneStartingLocation(civ, freeTiles, startScores)
                     else -> null
                 }
+                // UncivGC 组队修复 (2026-08-29): 预设起点 (含战略平衡资源) 被队伍半区限制放弃重选后,
+                // 新出生点附近没有战略平衡资源 → "队伍模式战略平衡无效"; 对最终位置补放
+                if (startingLocation != null && tileMap.mapParameters.getStrategicBalance())
+                    ensureStrategicBalanceAtStart(startingLocation)
             } else
                 startingLocation = getOneStartingLocation(civ, freeTiles, startScores)
         // If startingLocation is null we failed to get all the starting tiles with this minimum distance
         return startingLocation
+    }
+
+    /** UncivGC 组队修复 (2026-08-29): 队伍模式重选出生点后补放战略平衡资源 —
+     *  战略平衡资源在地图生成阶段 (MapRegions) 只放在各 region 的预设 startPosition 附近;
+     *  队伍模式 (computeTeamAllowedTiles) 把预设起点挪到本队半区后, 新出生点附近没有战略平衡资源,
+     *  导致"队伍模式战略平衡无效". 对最终出生点 1-3 环内补放 StrategicBalanceResource 资源. */
+    private fun ensureStrategicBalanceAtStart(startTile: Tile) {
+        val candidateTiles = (startTile.getTilesInDistanceRange(1..2).toList()
+            + startTile.getTilesAtDistance(3)).shuffled()
+        for (resource in ruleset.tileResources.values.filter { it.hasUnique(UniqueType.StrategicBalanceResource) }) {
+            val tile = candidateTiles.firstOrNull { it.resource == null && resource.generatesNaturallyOn(it) }
+            if (tile != null) tile.setTileResource(resource, majorDeposit = true)
+        }
     }
 
     @Readonly

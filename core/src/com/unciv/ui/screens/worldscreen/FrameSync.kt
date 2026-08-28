@@ -3429,6 +3429,30 @@ object FrameSync {
                             if (civ.civID == viewingCivId && fgp <= 0) closeGreatPersonPickers()
                         }
                     }
+                    // 伟人点数累计同步 (2026-08-29 修复 "伟人点数不增长"): 纯拦截下客户端本地不执行
+                    // endTurn → 本地 greatPersonPointsCounter 恒 0 → 城市界面 GPP 进度条不涨;
+                    // 服务器权威广播累计值, 写回本地 (服务器结算后每次 state 携带)
+                    obj["greatPersonPoints"]?.jsonArray?.let { gppArr ->
+                        try {
+                            val server = HashMap<String, Int>()
+                            for (gpp in gppArr) {
+                                val a = gpp.jsonArray ?: continue
+                                if (a.size < 2) continue
+                                val name = a[0].jsonPrimitive.contentOrNull ?: continue
+                                val value = a[1].jsonPrimitive.intOrNull ?: continue
+                                server[name] = value
+                            }
+                            val local = civ.greatPeople.greatPersonPointsCounter
+                            val keys = (local.keys + server.keys).toSet()
+                            if (keys.any { local[it] != server[it] }) {
+                                for (k in keys) {
+                                    val v = server[k]
+                                    if (v == null) local.remove(k) else local[k] = v
+                                }
+                                changed = true
+                            }
+                        } catch (_: Exception) {}
+                    }
                     // 创立宗教时是否附带万神殿选择 (无万神殿创立 → 创立界面出现万神殿词条; 服务器权威)
                     obj["choosePantheon"]?.jsonPrimitive?.contentOrNull?.let { cp ->
                         val v = cp == "true"
