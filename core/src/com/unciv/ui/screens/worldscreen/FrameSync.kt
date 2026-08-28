@@ -408,7 +408,7 @@ object FrameSync {
         "city.enableManualSpecialists", "city.disableManualSpecialists", "city.toggleAvoidGrowth",
         "city.annex", "city.setRazing", "city.buyTile", "city.sellBuilding", "city.rename",
         "city.setUnitSavedPromotion", "city.saveUnitPromotions", "civ.setConstructionDisabled",
-        "civ.chooseTech", "civ.choosePolicy", "civ.chooseBeliefs", "civ.eventChoice"
+        "civ.chooseTech", "civ.choosePolicy", "civ.chooseBeliefs"
     )
 
     /** 发送操作到服务器 (被暂停/结算锁定吞掉时静默无效) */

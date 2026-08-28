@@ -109,8 +109,16 @@ object TradeRoutes {
     /** 文明商路容量: 时代序号 (远古=1, 古典=2, ...) + Provides [X] Trade Routes unique 加成 */
     fun capacity(civ: Civilization): Int {
         var cap = civ.getEraNumber() + 1
+        // 文明级: 政策/文明特性/全局 uniques
         for (unique in civ.getMatchingUniques(UniqueType.ProvidesTradeRoutes)) {
             cap += unique.params[0].toInt()
+        }
+        // 2026-08-28 修复: 建筑级 ProvidesTradeRoutes (Harbor 等) 原只匹配文明级 → 港口商路容量+1 不生效;
+        // 城市条件 (<in cities without a [Market]>) 由 city.state context 正确评估
+        for (city in civ.cities) {
+            for (unique in city.getMatchingUniques(UniqueType.ProvidesTradeRoutes, includeCivUniques = false)) {
+                cap += unique.params[0].toInt()
+            }
         }
         return cap
     }

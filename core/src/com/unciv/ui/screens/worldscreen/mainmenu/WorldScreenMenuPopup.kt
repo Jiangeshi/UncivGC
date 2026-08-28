@@ -225,9 +225,15 @@ class WorldScreenMenuPopup(
                     }
                     // 2. 离开大厅房间 (尽力而为, 失败不阻断返回); 观战者/战败玩家也必须调用 —
                     //    战败玩家仍是房间成员, 不 leaveRoom → 服务器成员列表残留 → 大厅 LobbyPoll
-                    //    检测到“我还在房间里”自动拉回 → 退出死循环 (卡在多人模式出不去的根因)
+                    //    检测到"我还在房间里"自动拉回 → 退出死循环 (卡在多人模式出不去的根因)
                     try {
-                        LobbyApi.leaveRoom(roomId, LobbyRoomScreen.currentNickname(), LobbyRoomScreen.currentPlayerId())
+                        // 2026-08-28: 帧同步局主动退出走 /exit (文明交 AI 的明确信号, 独立广播);
+                        // 普通局保持 leaveRoom (resign 走官方流程已在上方处理)
+                        if (isFrameSync) {
+                            LobbyApi.exitRoom(roomId, LobbyRoomScreen.currentNickname(), LobbyRoomScreen.currentPlayerId())
+                        } else {
+                            LobbyApi.leaveRoom(roomId, LobbyRoomScreen.currentNickname(), LobbyRoomScreen.currentPlayerId())
+                        }
                     } catch (e: Exception) {
                         leaveError = "Leave room failed: [${e.message}]".tr()
                     }

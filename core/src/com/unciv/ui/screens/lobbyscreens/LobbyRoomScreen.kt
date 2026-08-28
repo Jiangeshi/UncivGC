@@ -778,7 +778,14 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             LobbyRoomScreen.leavingGame = true
             Concurrency.run("LobbyLeave") {
                 try {
-                    LobbyApi.leaveRoom(roomId, nickname, playerId)
+                    // 2026-08-28: 帧同步 playing 局主动退出走 /exit (文明交 AI 的明确信号);
+                    // 等待/普通局保持 leaveRoom (只移除成员 / 官方 resign 流程)
+                    val playing = currentRoom?.status == "playing"
+                    if (playing) {
+                        LobbyApi.exitRoom(roomId, nickname, playerId)
+                    } else {
+                        LobbyApi.leaveRoom(roomId, nickname, playerId)
+                    }
                 } catch (e: Exception) {
                     // 房间可能已解散, 直接返回
                 }

@@ -174,6 +174,14 @@ object LobbyApi {
             setBody(LeaveRequest(nickname, playerId ?: ""))
         })
 
+    /** 主动退出房间 (独立广播, 2026-08-28): 与 leave 分离 — leave 只移除成员不转 AI (掉线/异常路径),
+     *  exit 才是玩家明确"不玩了", 服务器才会把文明交 AI 托管 */
+    suspend fun exitRoom(roomId: String, nickname: String, playerId: String? = null): ApiResult =
+        parse(client.post("$SERVER_URL/api/rooms/$roomId/exit") {
+            contentType(ContentType.Application.Json)
+            setBody(LeaveRequest(nickname, playerId ?: ""))
+        })
+
     suspend fun setReady(roomId: String, nickname: String, ready: Boolean, playerId: String? = null): ApiResult =
         parse(client.post("$SERVER_URL/api/rooms/$roomId/ready") {
             contentType(ContentType.Application.Json)
