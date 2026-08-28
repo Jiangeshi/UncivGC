@@ -737,7 +737,19 @@ class GameStarter private constructor(
             + startTile.getTilesAtDistance(3)).shuffled()
         for (resource in ruleset.tileResources.values.filter { it.hasUnique(UniqueType.StrategicBalanceResource) }) {
             val tile = candidateTiles.firstOrNull { it.resource == null && resource.generatesNaturallyOn(it) }
-            if (tile != null) tile.setTileResource(resource, majorDeposit = true)
+            if (tile != null) {
+                tile.setTileResource(resource, majorDeposit = true)
+            } else {
+                // 2026-08-29 修复 (审查发现): 地形不匹配时强制放置 (原版 placeStrategicBalanceResources 同款
+                // fallback — 忽略地形自然生成规则, 只尊重水域/不可通行), 否则极端地图战略平衡仍缺失
+                val waterOnly = com.unciv.logic.map.mapgenerator.mapregions.isWaterOnlyResource(resource, ruleset)
+                val resourceTiles = if (waterOnly)
+                    candidateTiles.filter { it.isWater && !it.isImpassible() }
+                else
+                    candidateTiles.filter { it.isLand && !it.isImpassible() }
+                val fallbackTile = resourceTiles.firstOrNull { it.resource == null }
+                if (fallbackTile != null) fallbackTile.setTileResource(resource, majorDeposit = true)
+            }
         }
     }
 

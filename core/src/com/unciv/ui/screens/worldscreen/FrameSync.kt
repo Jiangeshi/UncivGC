@@ -2280,11 +2280,15 @@ object FrameSync {
             for ((k, v) in nk) playerNicknames[k] = v.jsonPrimitive.contentOrNull ?: k
         }
         // 2026-08-29 帧合并/去抖: ws 协程只更新"最新 state 快照", GL 线程专用循环消费最新一帧 —
-        // GL 处理期间到达的中间帧直接覆盖丢弃 (类似服务器 100ms 合并, 但按客户端处理能力自适应);
         // 高人口局回合中每秒 5-10 帧时, GL 线程不再被逐帧 applyState 占满 (掉帧/OUTBOX 积压根因)
-        pendingStateSnapshot = StateSnapshot(units, cities, civs, encampments, improvements,
+        // 2026-08-29 修复 (审查发现): 服务器广播的增量段 (units/cities/civs/terrainChanges 只发变化条目,
+        // removed* 删除列表发出即清) 不能直接覆盖丢弃 — 中间帧的增量变化会永久丢失 (幽灵单位/城市残留,
+        // 直到回合结算全量才恢复). 改为累积合并: 增量段按 id/name 取最新合并, removed* 取并集, full 帧替换
+        val newSnap = StateSnapshot(units, cities, civs, encampments, improvements,
             improvementsDone, roads, religions, terrainChanges, isFull, removedUnits, removedCities,
             state["removedCivs"]?.jsonArray ?: emptyList())
+        val prev = pendingStateSnapshot
+        pendingStateSnapshot = if (prev == null || newSnap.isFull) newSnap else prev.mergedWith(newSnap)
         if (!applyStateScheduled) {
             applyStateScheduled = true
             Concurrency.runOnGLThread {
@@ -2294,7 +2298,8 @@ object FrameSync {
     }
 
     /** 2026-08-29 帧合并: GL 线程消费最新 state 快照 — 一次只处理一帧, 处理完再取最新;
-     *  处理期间到达的快照直接覆盖 (中间帧丢弃), 保证 GL 线程永远只处理最新状态 */
+     *  2026-08-29 修复 (审查发现): 增量段不能直接覆盖 — 累积合并, removed* 取并集永不撤销,
+     *  full 帧整体替换. 保证 GL 繁忙时丢弃的"中间帧"里的增量变化不丢失 */
     private class StateSnapshot(
         val units: List<JsonElement>,
         val cities: List<JsonElement>,
@@ -2309,7 +2314,61 @@ object FrameSync {
         val removedUnits: List<JsonElement>,
         val removedCities: List<JsonElement>,
         val removedCivs: List<JsonElement>,
-    )
+    ) {
+        /** 累积合并: 本快照(旧) + 新帧 → 合并结果. 增量段按 id/name 取最新, removed* 并集,
+         *  全量段 (encampments/improvements/improvementsDone/roads/religions 每帧全量) 取新帧值,
+         *  被 removed 的条目从对应增量段剔除 (删除优先) */
+        fun mergedWith(newSnap: StateSnapshot): StateSnapshot {
+            // units: 按 id 合并 (旧保序 + 新覆盖/追加)
+            val mergedUnits = LinkedHashMap<Int, JsonElement>()
+            for (u in units) {
+                val id = (u.jsonObject ?: return newSnap)?.get("id")?.jsonPrimitive?.intOrNull
+                if (id != null) mergedUnits[id] = u
+            }
+            for (u in newSnap.units) {
+                val id = (u.jsonObject ?: continue)?.get("id")?.jsonPrimitive?.intOrNull ?: continue
+                mergedUnits[id] = u
+            }
+            val removedUnitIds = newSnap.removedUnits.mapNotNull { it.jsonPrimitive.intOrNull }.toSet()
+            removedUnitIds.forEach { mergedUnits.remove(it) }
+            // cities: 按 id 合并
+            val mergedCities = LinkedHashMap<String, JsonElement>()
+            for (c in cities) {
+                val id = (c.jsonObject ?: return newSnap)?.get("id")?.jsonPrimitive?.contentOrNull
+                if (id != null) mergedCities[id] = c
+            }
+            for (c in newSnap.cities) {
+                val id = (c.jsonObject ?: continue)?.get("id")?.jsonPrimitive?.contentOrNull ?: continue
+                mergedCities[id] = c
+            }
+            val removedCityIds = newSnap.removedCities.mapNotNull { it.jsonPrimitive.contentOrNull }.toSet()
+            removedCityIds.forEach { mergedCities.remove(it) }
+            // civs: 按 civ 名合并
+            val mergedCivs = LinkedHashMap<String, JsonElement>()
+            for (c in civs) {
+                val name = (c.jsonObject ?: return newSnap)?.get("civ")?.jsonPrimitive?.contentOrNull
+                if (name != null) mergedCivs[name] = c
+            }
+            for (c in newSnap.civs) {
+                val name = (c.jsonObject ?: continue)?.get("civ")?.jsonPrimitive?.contentOrNull ?: continue
+                mergedCivs[name] = c
+            }
+            val removedCivNames = newSnap.removedCivs.mapNotNull { it.jsonPrimitive.contentOrNull }.toSet()
+            removedCivNames.forEach { mergedCivs.remove(it) }
+            return StateSnapshot(
+                mergedUnits.values.toList(), mergedCities.values.toList(), mergedCivs.values.toList(),
+                newSnap.encampments, newSnap.improvements, newSnap.improvementsDone, newSnap.roads, newSnap.religions,
+                terrainChanges + newSnap.terrainChanges,  // 地形变化是追加语义 (OneTimeChangeTerrain)
+                isFull = false,
+                removedUnits = (removedUnits.mapNotNull { it.jsonPrimitive.intOrNull } + removedUnitIds)
+                    .distinct().map { kotlinx.serialization.json.JsonPrimitive(it) },
+                removedCities = (removedCities.mapNotNull { it.jsonPrimitive.contentOrNull } + removedCityIds)
+                    .distinct().map { kotlinx.serialization.json.JsonPrimitive(it) },
+                removedCivs = (removedCivs.mapNotNull { it.jsonPrimitive.contentOrNull } + removedCivNames)
+                    .distinct().map { kotlinx.serialization.json.JsonPrimitive(it) },
+            )
+        }
+    }
 
     @Volatile private var pendingStateSnapshot: StateSnapshot? = null
     @Volatile private var applyStateScheduled = false
@@ -2603,9 +2662,30 @@ object FrameSync {
         }
         cityStateChanged = false
         syncCities(worldScreen, cities, isFull, removedCities)
+        var civChanged = false
         // 2026-08-29 civs 增量: 服务器 civs 段只输出变化的文明 + removedCivs 列表 (转观战等不再输出)
-        // 客户端无需删除 — 该文明不再更新即保持旧值; 战败状态由 defeated 字段/城市消失隐式体现
-        val civChanged = syncCivInfo(gameInfo, civs, worldScreen.viewingCiv.civID)
+        // 2026-08-29 修复 (审查发现): 消费 removedCivs — 文明从输出消失 = 已转观战/被移除,
+        // 清空其城市+单位 → isDefeated() 为 true → 概览/政治学不显示幽灵文明
+        // (文明对象保留, gameInfo.civilizations 索引依赖不能删除; 单位/城市是 var listOf 可整体替换)
+        if (removedCivs.isNotEmpty()) {
+            for (rcElem in removedCivs) {
+                val rcId = rcElem.jsonPrimitive.contentOrNull ?: continue
+                val rcCiv = gameInfo.civilizations.firstOrNull { it.civID == rcId } ?: continue
+                try {
+                    if (rcCiv.cities.isNotEmpty()) {
+                        rcCiv.cities = emptyList()
+                        civChanged = true
+                        cityStateChanged = true
+                    }
+                    val rcUnits = rcCiv.units.getCivUnits().toList()
+                    if (rcUnits.isNotEmpty()) {
+                        for (u in rcUnits) u.destroy()
+                        civChanged = true
+                    }
+                } catch (ignored: Exception) {}
+            }
+        }
+        civChanged = syncCivInfo(gameInfo, civs, worldScreen.viewingCiv.civID) || civChanged
         var unitsChanged = false
         // 2026-08-25: 地图四类状态合并同步 (一次全图遍历替代 4 次 — 后期掉帧优化)
         syncMapLayers(gameInfo, improvements, improvementsDone, roads, encampments)
