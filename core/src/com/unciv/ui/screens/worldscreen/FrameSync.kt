@@ -2279,16 +2279,65 @@ object FrameSync {
             playerNicknames.clear()
             for ((k, v) in nk) playerNicknames[k] = v.jsonPrimitive.contentOrNull ?: k
         }
-        Concurrency.runOnGLThread {
-            if (!running) return@runOnGLThread
-            try {
-                applyState(worldScreen, units, cities, civs, encampments, improvements, improvementsDone, roads, religions, terrainChanges, isFull = isFull, removedUnits = removedUnits, removedCities = removedCities)
-            } catch (e: Exception) {
-                // 状态应用绝不能崩溃 — 失败项由下一条广播/回合重载兜底
+        // 2026-08-29 帧合并/去抖: ws 协程只更新"最新 state 快照", GL 线程专用循环消费最新一帧 —
+        // GL 处理期间到达的中间帧直接覆盖丢弃 (类似服务器 100ms 合并, 但按客户端处理能力自适应);
+        // 高人口局回合中每秒 5-10 帧时, GL 线程不再被逐帧 applyState 占满 (掉帧/OUTBOX 积压根因)
+        pendingStateSnapshot = StateSnapshot(units, cities, civs, encampments, improvements,
+            improvementsDone, roads, religions, terrainChanges, isFull, removedUnits, removedCities,
+            state["removedCivs"]?.jsonArray ?: emptyList())
+        if (!applyStateScheduled) {
+            applyStateScheduled = true
+            Concurrency.runOnGLThread {
+                applyStateLoop()
             }
-            updateStatusLabel()
-            // 战败检测: 弹提示 → 确认后切观战 (看海); 每局只弹一次
-            checkDefeatedAndOfferSpectate()
+        }
+    }
+
+    /** 2026-08-29 帧合并: GL 线程消费最新 state 快照 — 一次只处理一帧, 处理完再取最新;
+     *  处理期间到达的快照直接覆盖 (中间帧丢弃), 保证 GL 线程永远只处理最新状态 */
+    private class StateSnapshot(
+        val units: List<JsonElement>,
+        val cities: List<JsonElement>,
+        val civs: List<JsonElement>,
+        val encampments: List<JsonElement>,
+        val improvements: List<JsonElement>,
+        val improvementsDone: List<JsonElement>,
+        val roads: List<JsonElement>,
+        val religions: List<JsonElement>,
+        val terrainChanges: List<JsonElement>,
+        val isFull: Boolean,
+        val removedUnits: List<JsonElement>,
+        val removedCities: List<JsonElement>,
+        val removedCivs: List<JsonElement>,
+    )
+
+    @Volatile private var pendingStateSnapshot: StateSnapshot? = null
+    @Volatile private var applyStateScheduled = false
+
+    private fun applyStateLoop() {
+        applyStateScheduled = false
+        if (!running) return
+        val snapshot = pendingStateSnapshot ?: return
+        pendingStateSnapshot = null
+        val worldScreen = worldScreenRef?.get() ?: return
+        try {
+            applyState(worldScreen, snapshot.units, snapshot.cities, snapshot.civs, snapshot.encampments,
+                snapshot.improvements, snapshot.improvementsDone, snapshot.roads, snapshot.religions,
+                snapshot.terrainChanges, isFull = snapshot.isFull,
+                removedUnits = snapshot.removedUnits, removedCities = snapshot.removedCities,
+                removedCivs = snapshot.removedCivs)
+        } catch (e: Exception) {
+            // 状态应用绝不能崩溃 — 失败项由下一条广播/回合重载兜底
+        }
+        updateStatusLabel()
+        // 战败检测: 弹提示 → 确认后切观战 (看海); 每局只弹一次
+        checkDefeatedAndOfferSpectate()
+        // 处理期间又有新帧到达 → 继续消费 (自适应: 空闲时立即处理, 繁忙时合并)
+        if (pendingStateSnapshot != null && !applyStateScheduled && running) {
+            applyStateScheduled = true
+            Concurrency.runOnGLThread {
+                applyStateLoop()
+            }
         }
     }
 
@@ -2544,7 +2593,7 @@ object FrameSync {
         }
     }
 
-    private fun applyState(worldScreen: WorldScreen, units: List<JsonElement>, cities: List<JsonElement> = emptyList(), civs: List<JsonElement> = emptyList(), encampments: List<JsonElement> = emptyList(), improvements: List<JsonElement> = emptyList(), improvementsDone: List<JsonElement> = emptyList(), roads: List<JsonElement> = emptyList(), religions: List<JsonElement> = emptyList(), terrainChanges: List<JsonElement> = emptyList(), isFull: Boolean = true, removedUnits: List<JsonElement> = emptyList(), removedCities: List<JsonElement> = emptyList()) {
+    private fun applyState(worldScreen: WorldScreen, units: List<JsonElement>, cities: List<JsonElement> = emptyList(), civs: List<JsonElement> = emptyList(), encampments: List<JsonElement> = emptyList(), improvements: List<JsonElement> = emptyList(), improvementsDone: List<JsonElement> = emptyList(), roads: List<JsonElement> = emptyList(), religions: List<JsonElement> = emptyList(), terrainChanges: List<JsonElement> = emptyList(), isFull: Boolean = true, removedUnits: List<JsonElement> = emptyList(), removedCities: List<JsonElement> = emptyList(), removedCivs: List<JsonElement> = emptyList()) {
         val gameInfo = worldScreen.gameInfo ?: return
         // 地形变化同步 (OneTimeChangeTerrain "Turn this tile into"): 服务器权威改地形, 本地应用 + 刷新视野/单位通行
         syncTerrainChanges(gameInfo, terrainChanges, worldScreen)
@@ -2554,6 +2603,8 @@ object FrameSync {
         }
         cityStateChanged = false
         syncCities(worldScreen, cities, isFull, removedCities)
+        // 2026-08-29 civs 增量: 服务器 civs 段只输出变化的文明 + removedCivs 列表 (转观战等不再输出)
+        // 客户端无需删除 — 该文明不再更新即保持旧值; 战败状态由 defeated 字段/城市消失隐式体现
         val civChanged = syncCivInfo(gameInfo, civs, worldScreen.viewingCiv.civID)
         var unitsChanged = false
         // 2026-08-25: 地图四类状态合并同步 (一次全图遍历替代 4 次 — 后期掉帧优化)
