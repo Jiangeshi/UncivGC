@@ -432,6 +432,12 @@ object FrameSync {
         sendOpChecked(op, data)
     }
 
+    /** 2026-08-29: 同盟跟进弹窗处理完 (跟进/不跟进) → 清本地挂起, 防重载恢复复活
+     *  (服务器侧由 op 清 popupAlerts + 补推缓存; 本地挂起也要清, 否则 start() 重载又加回来) */
+    fun removePendingAlliancePopup(type: com.unciv.logic.civilization.AlertType, civId: String) {
+        pendingAlliancePopups.remove(Pair(type, civId))
+    }
+
     /** 发送操作到服务器; 返回是否真正发出 (false = 被暂停/结算锁定吞掉) —
      *  2026-08-27: 弹窗类操作 (事件选择等) 需知道是否被吞, 被吞不关弹窗不标记已处理 */
     fun sendOpChecked(op: String, data: Map<String, Any?>): Boolean {

@@ -298,20 +298,31 @@ class MapUnit : IsPartOfGameInfoSerialization {
         return base + bonus
     }
 
-    /** 是否可以组成军团 (陆军军事单位, 无禁止 unique, 当前为 Single) */
+    /** 编队白名单 (2026-08-29): 规则集全局存在 AllowsFormation 词条时, 只有匹配的单位类型
+     *  才能组成对应编队形态 (Corps/Army/Fleet/Armada); 不存在时返回 true = 保持默认 (所有可编队单位都能组) */
+    @Readonly
+    private fun formationAllowed(formation: UnitFormation): Boolean {
+        val allows = civ.gameInfo.getGlobalUniques().getMatchingUniques(UniqueType.AllowsFormation)
+        if (allows.none()) return true  // 无白名单 → 默认允许
+        return allows.any { it.params[0] == formation.name && matchesFilter(it.params[1]) }
+    }
+
+    /** 是否可以组成军团 (陆军军事单位, 无禁止 unique, 当前为 Single; 白名单模式时需匹配 AllowsFormation) */
     @Readonly
     fun canFormCorps(): Boolean {
         if (!isMilitary() || isCivilian()) return false
         if (baseUnit.isAirUnit()) return false  // 空军不能合并; 水军可合并为舰队/无敌舰队 (2026-08-22)
         if (formation != UnitFormation.Single) return false
         if (hasUnique(UniqueType.CannotFormCorps)) return false
-        return true
+        // 白名单: 陆军组军团, 水军组舰队
+        return formationAllowed(if (baseUnit.isWaterUnit) UnitFormation.Fleet else UnitFormation.Corps)
     }
 
-    /** 是否可以升级编队等级 (军团/舰队形态 + 还能再加一个 → 集团军/无敌舰队) */
+    /** 是否可以升级编队等级 (军团/舰队形态 + 还能再加一个 → 集团军/无敌舰队; 白名单模式时需匹配 AllowsFormation) */
     @Readonly
     fun canFormArmy(): Boolean {
-        return formation.tier == 1 && formationSnapshots.size < 2
+        if (formation.tier != 1 || formationSnapshots.size >= 2) return false
+        return formationAllowed(if (formation == UnitFormation.Fleet) UnitFormation.Armada else UnitFormation.Army)
     }
 
     /** 获取相邻格中可以被合并的同种单位列表 */
@@ -323,6 +334,11 @@ class MapUnit : IsPartOfGameInfoSerialization {
             .filter {
                 // 发起者 tier<=1 (单体/军团/舰队) 且目标为同种单体; 集团军/无敌舰队 (tier>=2) 不能再合并
                 formation.tier < 2 && it.formation == UnitFormation.Single && it.hasMovement()
+            }
+            .filter {
+                // 2026-08-29: 白名单/禁止词条统一校验 (按钮和服务器共用) —
+                // Single→军团/舰队 走 canFormCorps, 军团/舰队→集团军/无敌舰队 走 canFormArmy
+                if (formation == UnitFormation.Single) canFormCorps() else canFormArmy()
             }.toList()
     }
 

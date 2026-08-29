@@ -160,6 +160,19 @@ enum class UniqueParameterType(
                     TechFilter.getKnownValuesForAutocomplete(ruleset)
     },
 
+    /** 编队形态参数 (2026-08-29): AllowsFormation 词条用 — 指定允许组成的编队形态 */
+    Formation("formation", "Corps", "编队形态: Corps(军团)/Army(集团军)/Fleet(舰队)/Armada(无敌舰队)") {
+        override val staticKnownValues = setOf("Corps", "Army", "Fleet", "Armada")
+
+        override fun getErrorSeverity(parameterText: String, ruleset: Ruleset) =
+            if (parameterText in staticKnownValues) null
+            else UniqueType.UniqueParameterErrorSeverity.RulesetInvariant
+
+        override fun isKnownValue(parameterText: String, ruleset: Ruleset) = parameterText in staticKnownValues
+
+        override fun getKnownValuesForAutocomplete(ruleset: Ruleset) = staticKnownValues
+    },
+
     /** Implemented by [UnitType.matchesFilter][com.unciv.models.ruleset.unit.UnitType.matchesFilter] */
     UnitTypeFilter("unitType", "Water", "Can be 'Land', 'Water', 'Air', any unit type, a filtering Unique on a unit type, or a multi-filter of these", "Unit Type Filters") {
         override val staticKnownValues = setOf(

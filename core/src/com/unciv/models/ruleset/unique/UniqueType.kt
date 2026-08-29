@@ -563,6 +563,9 @@ enum class UniqueType(
     CannotEmbark("Cannot embark", UniqueTarget.Unit),
     CannotEnterOcean("Cannot enter ocean tiles", UniqueTarget.Unit),
     CannotFormCorps("Cannot form corps", UniqueTarget.Unit),
+    // 2026-08-29: 允许编队白名单 (全局) — 规则集存在本词条时, 只有匹配 [mapUnitFilter] 的单位可组成
+    // [formation] (Corps/Army/Fleet/Armada); 不存在时保持默认 (所有可编队单位都能组)
+    AllowsFormation("Allows formation of [formation] for [mapUnitFilter] units", UniqueTarget.Global),
     CanEnterForeignTiles("May enter foreign tiles without open borders", UniqueTarget.Unit),
     CanEnterForeignTilesButLosesReligiousStrength("May enter foreign tiles without open borders, but loses [amount] religious strength each turn it ends there", UniqueTarget.Unit),
     ReducedDisembarkCost("[nonNegativeAmount] Movement point cost to disembark", UniqueTarget.Global, UniqueTarget.Unit),

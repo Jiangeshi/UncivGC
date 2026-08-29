@@ -429,9 +429,18 @@ class AlertPopup(
                     }
                 }
             }
+            FrameSync.removePendingAlliancePopup(com.unciv.logic.civilization.AlertType.AllianceFollowUp, targetId)
             viewingCiv.popupAlerts.remove(popupAlert)
         }.row()
         addCloseButton("不跟进", KeyboardBinding.Cancel) {
+            if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
+                // 2026-08-29 修复: 不跟进必须发 op 给服务器清残留 — 否则服务器 popupAlerts
+                // 残留 AllianceFollowUp → 存档持久化 → 每回合结算重载后弹窗复活 (用户反馈
+                // "盟友战争跟进弹窗每回合都弹"; 发送失败不关弹窗, 防结算窗口被吞)
+                val sent = FrameSync.sendOpChecked("alliance.followUpDismiss", mapOf("targetCivId" to targetId))
+                if (!sent) return@addCloseButton
+            }
+            FrameSync.removePendingAlliancePopup(com.unciv.logic.civilization.AlertType.AllianceFollowUp, targetId)
             viewingCiv.popupAlerts.remove(popupAlert)
         }.row()
         return true

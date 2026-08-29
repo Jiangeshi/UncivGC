@@ -9,7 +9,6 @@ import com.unciv.models.UnitActionType
 import com.unciv.models.translations.tr
 import com.unciv.ui.popups.ConfirmPopup
 import com.unciv.ui.screens.worldscreen.FrameSync
-import com.unciv.models.ruleset.unique.UniqueType
 
 object UnitActionsFormation {
 
@@ -17,10 +16,10 @@ object UnitActionsFormation {
     fun getFormCorpsActions(unit: MapUnit, tile: Tile) = sequence {
         // 已是集团军/无敌舰队 → 不显示 (tier>=2 下方同样拦截)
         if (unit.formation == UnitFormation.Army || unit.formation == UnitFormation.Armada) return@sequence
-        // 不是军事单位 / 有禁止 unique → 不显示
-        if (!unit.isMilitary() || unit.isCivilian()) return@sequence
-        if (unit.baseUnit.isAirUnit()) return@sequence  // 空军不能合并; 水军可合并为舰队/无敌舰队 (2026-08-25 修复: 之前误排除水军 → 海军编队按钮永不显示)
-        if (unit.hasUnique(UniqueType.CannotFormCorps)) return@sequence
+        // 不是军事单位 / 有禁止 unique / 白名单不匹配 → 不显示 (2026-08-29: 统一走 canFormCorps)
+        if (!unit.canFormCorps()) return@sequence
+        // 军团→集团军 升级路径也走白名单 (Army/Armada)
+        if (unit.formation.tier == 1 && !unit.canFormArmy()) return@sequence
 
         val worldScreen = GUI.getWorldScreen()
         // 按钮文字: 陆军 军团/集团军, 海军 舰队/无敌舰队 (2026-08-22)
