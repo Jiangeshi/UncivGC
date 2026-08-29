@@ -298,11 +298,13 @@ class MapUnit : IsPartOfGameInfoSerialization {
         return base + bonus
     }
 
-    /** 编队白名单 (2026-08-29): 规则集全局存在 AllowsFormation 词条时, 只有匹配的单位类型
-     *  才能组成对应编队形态 (Corps/Army/Fleet/Armada); 不存在时返回 true = 保持默认 (所有可编队单位都能组) */
+    /** 编队白名单 (2026-08-29): 规则集存在 AllowsFormation 词条时, 只有匹配的单位类型
+     *  才能组成对应编队形态 (Corps/Army/Fleet/Armada); 不存在时返回 true = 保持默认 (所有可编队单位都能组)
+     *  2026-08-29 扩展: 匹配来源 = 已研究科技 uniques + 全局 uniques (civ.getMatchingUniques 两者都含) —
+     *  支持把编队能力挂科技树上 (研究罗盘→舰队 / 航海术→无敌舰队 / 骑士制度→军团 / 膛线→集团军) */
     @Readonly
     private fun formationAllowed(formation: UnitFormation): Boolean {
-        val allows = civ.gameInfo.getGlobalUniques().getMatchingUniques(UniqueType.AllowsFormation)
+        val allows = civ.getMatchingUniques(UniqueType.AllowsFormation)
         if (allows.none()) return true  // 无白名单 → 默认允许
         return allows.any { it.params[0] == formation.name && matchesFilter(it.params[1]) }
     }

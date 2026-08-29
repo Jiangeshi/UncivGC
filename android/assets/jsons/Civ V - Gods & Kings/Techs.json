@@ -235,7 +235,8 @@
 				"cost": 375,
 				"row": 1,
 				"prerequisites": ["Optics","Theology"],
-                "uniques": ["[-50]% weight to this choice for AI decisions"],
+                "uniques": ["[-50]% weight to this choice for AI decisions",
+                    "Allows formation of [Fleet] for [Water] units"],
 				"quote": "'I find the great thing in this world is not so much where we stand, as in what direction we are moving.' - Oliver Wendell Holmes"
 			},
 			{
@@ -253,7 +254,8 @@
 				"name": "Chivalry",
 				"row": 6,
 				"prerequisites": ["Civil Service","Guilds"],
-                "uniques": ["Enables Defensive Pacts <Civilopedia link [Tutorials/Defensive Pacts]>"],
+                "uniques": ["Enables Defensive Pacts <Civilopedia link [Tutorials/Defensive Pacts]>",
+                    "Allows formation of [Corps] for [Land] units"],
                 "quote": "'Whoso pulleth out this sword of this stone and anvil, is rightwise king born of all England.' - Malory"
 			},
 			{
@@ -333,6 +335,7 @@
 				"name": "Navigation",
 				"row": 2,
 				"prerequisites": ["Astronomy"],
+                "uniques": ["Allows formation of [Armada] for [Water] units"],
 				"quote": "'The winds and the waves are always on the side of the ablest navigators.' - Edward Gibbon"
 			},
 			{
@@ -396,7 +399,8 @@
 				"name": "Rifling",
 				"row": 7,
 				"prerequisites": ["Economics","Metallurgy"],
-                "uniques": ["[-50]% weight to this choice for AI decisions"],
+                "uniques": ["[-50]% weight to this choice for AI decisions",
+                    "Allows formation of [Army] for [Land] units"],
 				"quote": "'It is well that war is so terrible, or we should grow too fond of it.' - Robert E. Lee"
 			},
 			{
