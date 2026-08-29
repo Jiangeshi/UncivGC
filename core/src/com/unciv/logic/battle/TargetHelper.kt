@@ -126,7 +126,10 @@ object TargetHelper {
                 unit = combatant.unit, tile = tile, 
                 ourCombatant = combatant, theirCombatant = tileCombatant, combatAction = CombatAction.Attack)
 
-            if (combatant.hasUnique(UniqueType.CannotAttack, gameContext))
+            // 2026-08-29 修复 (LM2 法兰克 UA "蛮子不能攻击法兰克" 失效): 词条在 GlobalUniques
+            // (文明级), hasUnique 默认 checkCivInfoUniques=false 只查单位自身 → 全局 CannotAttack
+            // 永远匹配不到 → 蛮子照样攻击/俘虏法兰克单位. 加 checkCivInfoUniques=true.
+            if (combatant.hasUnique(UniqueType.CannotAttack, gameContext, checkCivInfoUniques = true))
                 return false
 
             if (combatant.unit.getMatchingUniques(UniqueType.CanOnlyAttackUnits, gameContext).run {

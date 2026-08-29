@@ -138,6 +138,11 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
     var tradeRouteOffers = HashMap<String, ArrayList<String>>()
     /** 商路断开冷却 (2026-08-26): 城市ID → 断开时的回合号; 3 回合内该城市不能发起新商路 (防反复横跳) */
     var tradeRouteCooldowns = HashMap<String, Int>()
+
+    /** 2026-08-29: 服务器权威商路收益缓存 (帧同步广播 tradeRouteStats) — 商路页显示用,
+     *  不随存档保存 (每次开局/重载由服务器广播重建) */
+    @Transient
+    var tradeRouteStats = HashMap<Pair<String, String>, com.unciv.models.stats.Stats>()
     //endregion
 
     //region UncivGC 同盟系统 (2026-08-26, 设计稿: 文档/同盟系统-设计稿.md)

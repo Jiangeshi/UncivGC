@@ -7,6 +7,7 @@ import com.unciv.logic.AlternatingStateManager
 import com.unciv.logic.multiplayer.chat.ChatStore
 import com.unciv.logic.multiplayer.chat.ChatWebSocket
 import com.unciv.logic.multiplayer.chat.Message
+import com.unciv.models.translations.tr
 import com.unciv.ui.components.SmallButtonStyle
 import com.unciv.ui.components.extensions.disable
 import com.unciv.ui.components.extensions.toTextButton
@@ -53,7 +54,8 @@ class ChatButton(val worldScreen: WorldScreen) : IconTextButton(
                         if (!com.unciv.ui.screens.worldscreen.chat.ChatPopup.fsPopupOpen) {
                             try {
                                 val room = com.unciv.logic.lobby.LobbyApi.getRoom(roomId, myId)
-                                val unread = room.chat.count { it.seq > fsReadSeq &&
+                                // 2026-08-29: 过滤自己发的消息 (自己发言不弹自己提醒)
+                                val unread = room.chat.count { it.seq > fsReadSeq && it.playerId != myId &&
                                     (it.to == "world" || it.to.isEmpty() || it.to == "team" ||
                                      (it.to.startsWith("player:") && it.to == "player:$myId")) }
                                 updateFsUnread(unread)
@@ -89,8 +91,9 @@ class ChatButton(val worldScreen: WorldScreen) : IconTextButton(
         val count = if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo))
             fsUnreadCount else chat.unreadCount
         // 帧同步: 未读显示在按钮文字上 "Chat (n)" (用户要求, 与房间聊天一致 — 2026-08-25)
+        // 2026-08-29: 翻译修复 — 整串 "Chat (n)" 无翻译条目, 应 "Chat".tr() + 数字拼接
         if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo)) {
-            label.setText(if (count > 0) "Chat ($count)" else "Chat")
+            label.setText(if (count > 0) "Chat".tr() + " ($count)" else "Chat".tr())
             badge.setText("")
             badge.isVisible = false
             return

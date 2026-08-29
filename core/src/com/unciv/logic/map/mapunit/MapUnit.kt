@@ -1188,8 +1188,20 @@ class MapUnit : IsPartOfGameInfoSerialization {
         // might have already placed your military unit in this tile.
         val unguardedCivilian = tile.getUnguardedCivilian(this)
         // Capture Enemy Civilian Unit if you move on top of it
+        // 2026-08-29 修复 (LM2 法兰克 UA): 蛮子"移动进格"俘虏不检查 CannotAttack — 即使
+        // "Cannot attack <for [Barbarians] units> <vs [Franks]>" 生效 (阻止主动攻击),
+        // 蛮子仍能走到法兰克平民格子上直接俘虏. 这里补同样的攻击检查 (含全局词条).
         if (isMilitary() && unguardedCivilian != null && civ.isAtWarWith(unguardedCivilian.civ)) {
-            BattleUnitCapture.captureCivilianUnit(MapUnitCombatant(this), MapUnitCombatant(tile.civilianUnit!!))
+            val captureContext = com.unciv.models.ruleset.unique.GameContext(
+                unit = this, tile = tile,
+                ourCombatant = com.unciv.logic.battle.MapUnitCombatant(this),
+                theirCombatant = com.unciv.logic.battle.MapUnitCombatant(tile.civilianUnit!!),
+                combatAction = com.unciv.logic.battle.CombatAction.Attack)
+            val cannotAttack = hasUnique(
+                com.unciv.models.ruleset.unique.UniqueType.CannotAttack,
+                captureContext, checkCivInfoUniques = true)
+            if (!cannotAttack)
+                BattleUnitCapture.captureCivilianUnit(MapUnitCombatant(this), MapUnitCombatant(tile.civilianUnit!!))
         }
 
         val promotionUniques = tile.neighbors

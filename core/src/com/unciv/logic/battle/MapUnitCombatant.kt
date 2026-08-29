@@ -105,9 +105,9 @@ class MapUnitCombatant(val unit: MapUnit) : ICombatant {
     }
 
     @Readonly
-    fun hasUnique(uniqueType: UniqueType, conditionalState: GameContext? = null): Boolean =
-        if (conditionalState == null) unit.hasUnique(uniqueType)
-        else unit.hasUnique(uniqueType, conditionalState)
+    fun hasUnique(uniqueType: UniqueType, conditionalState: GameContext? = null, checkCivInfoUniques: Boolean = false): Boolean =
+        if (conditionalState == null) unit.hasUnique(uniqueType, checkCivInfoUniques = checkCivInfoUniques)
+        else unit.hasUnique(uniqueType, conditionalState, checkCivInfoUniques = checkCivInfoUniques)
     
     @Readonly
     override fun hashCode() = unit.hashCode()

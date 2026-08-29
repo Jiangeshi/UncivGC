@@ -342,6 +342,7 @@ class Civilization : IsPartOfGameInfoSerialization {
         toReturn.citiesCreated = citiesCreated
         toReturn.popupAlerts.addAll(popupAlerts)
         toReturn.tradeRequests.addAll(tradeRequests)
+        toReturn.techBoostEverBuiltBuildings.addAll(techBoostEverBuiltBuildings)  // 2026-08-29 修复: clone 漏拷 → 过回合集合清空 → 朝鲜 UA 每回合重复触发
         toReturn.naturalWonders.addAll(naturalWonders)
         toReturn.cityStatePersonality = cityStatePersonality
         toReturn.cityStateResource = cityStateResource
@@ -979,6 +980,23 @@ class Civilization : IsPartOfGameInfoSerialization {
 
         for (city in cities) {
             city.setTransients(this) // must be before the city's setTransients because it depends on the tilemap, that comes from the currentPlayerCivInfo
+        }
+
+        // 2026-08-29 朝鲜 UA 严格一次兼容旧存档: 旧存档无 techBoostEverBuiltBuildings 字段
+        // (字段 8/19 后加, 老存档反序列化后空集合) → 读档后所有已建科学建筑会被当"新建"
+        // 重新触发科技加成 (用户单机实测: 图书馆正常但土窑每次读档都能刷).
+        // 预填当前已建的科学建筑/奇观, 让旧存档也满足"严格一次"语义 (未来新建照常记录).
+        if (techBoostEverBuiltBuildings.isEmpty()) {
+            // 预填当前已建的科学建筑/奇观 (首都), 旧存档/克隆后空集合也满足严格一次
+            for (city in cities) {
+                if (!city.isCapital()) continue
+                for (building in city.cityConstructions.getBuiltBuildings()) {
+                    try {
+                        if (building.isStatRelated(Stat.Science, city))
+                            techBoostEverBuiltBuildings.add(building.name)
+                    } catch (e: Exception) {}
+                }
+            }
         }
 
         // Now that all tile transients have been updated, clean "worked" tiles that are not under the Civ's control

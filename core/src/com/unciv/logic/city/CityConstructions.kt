@@ -644,11 +644,23 @@ class CityConstructions : IsPartOfGameInfoSerialization {
         // UncivGC: 加 !wasAlreadyBuilt — 每个建筑/奇观只触发一次 (防免费连锁/重复 addBuilding 重复给科技)
         // 严格一次: techBoostEverBuiltBuildings 记录本文明所有建过的科学建筑/奇观 —
         // 卖了/被摧毁后重建也不得再次触发 (add 返回 false = 建过, 跳过)
+        // 2026-08-29 修复 (单机造-卖-造刷科技根因): Civilization.clone() 漏拷该集合 →
+        // 原版过回合 clone 执行 nextTurn, 每回合集合清空 → 每次完工都当首次触发.
+        // 根因修复在 Civilization.clone() (补 addAll); 这里触发记录同步写回主 gameInfo 双保险.
         if (!wasAlreadyBuilt && building.isStatRelated(Stat.Science, city)
             && civ.hasUnique(UniqueType.TechBoostWhenScientificBuildingsBuiltInCapital)
             && city.isCapital()
-            && civ.techBoostEverBuiltBuildings.add(buildingName))
+            && civ.techBoostEverBuiltBuildings.add(buildingName)) {
             civ.tech.addScience(civ.tech.getHalfMedianScienceCostOfResearchableTechs())
+            // 触发记录同步写回主 gameInfo 对应 civ (clone 机制下双保险, 防下回合 clone 丢失)
+            try {
+                val mainGame = com.unciv.UncivGame.Current.gameInfo
+                if (mainGame != null && mainGame.gameId == civ.gameInfo.gameId) {
+                    val mainCiv = mainGame.civilizations.firstOrNull { it.civName == civ.civName }
+                    if (mainCiv != null) mainCiv.techBoostEverBuiltBuildings.add(buildingName)
+                }
+            } catch (e: Exception) {}
+        }
 
         val previousHappiness = civ.getHappiness()
         // can cause civ happiness update: reassignPopulationDeferred -> reassignPopulation -> cityStats.update -> civ.updateHappiness

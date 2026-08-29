@@ -648,99 +648,92 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
     private val readyButton = "Ready".toTextButton()
     private val startLobbyButton = "Start game".toTextButton().apply { color = Color.GREEN }
 
-    // ---- UncivGC 房间聊天 ----------------
+    // ---- UncivGC 房间聊天 (2026-08-29: 复用 FsChatPanel — 与游戏内聊天同一份 UI/数据) ----
     private val chatButton = "Chat".toTextButton()
-    private val chatMessages = ArrayList<com.unciv.logic.lobby.LobbyChatMessage>()
-    private var lastChatSeq = 0
-    private var chatUnread = 0
     private var chatPopup: Popup? = null
-    private var chatPopupMessagesTable: Table? = null
-    private var chatPopupScroll: com.badlogic.gdx.scenes.scene2d.ui.ScrollPane? = null
+    private var chatPanel: com.unciv.ui.components.widgets.FsChatPanel? = null
+    /** 房间聊天未读: 弹窗打开时清零 (与游戏内 "Chat (n)" 一致) — 2026-08-29 */
+    private var chatReadSeq = 0
+    private var chatUnreadCount = 0
 
     private fun openChatPopup() {
         if (chatPopup != null) { chatPopup!!.close(); chatPopup = null }
         val popup = Popup(this)
         popup.addGoodSizedLabel("Room chat".tr()).row()
 
-        // 房间聊天不需要频道 — 单频道世界消息 (2026-08-25 用户要求, 撤销频道列表)
-        val messagesTable = Table()
-        val scroll = com.badlogic.gdx.scenes.scene2d.ui.ScrollPane(messagesTable)
-        scroll.setOverscroll(false, false)
-        scroll.fadeScrollBars = false
-        popup.add(scroll).width(460f).height(280f).padBottom(6f).row()
-
-        val inputRow = Table()
-        val inputField = com.unciv.ui.components.widgets.UncivTextField("")
-        val sendButton = "Send".toTextButton()
-        fun doSend() {
-            val text = inputField.text.trim()
-            if (text.isEmpty()) return
-            inputField.text = ""
-            Concurrency.run("LobbyChatSend") {
-                try {
-                    LobbyApi.sendChat(roomId, nickname, playerId, text)
-                } catch (e: Exception) {
-                    launchOnGLThread {
-                        ToastPopup("Failed to send message".tr() + ": " + (e.message ?: ""), this@LobbyRoomScreen)
-                    }
-                }
-            }
-        }
-        sendButton.onActivation { doSend() }
-        sendButton.keyShortcuts.add(KeyCharAndCode.RETURN)
-        inputField.onActivation { doSend() }
-        inputRow.add(inputField).width(560f).padRight(8f)
-        inputRow.add(sendButton)
-        popup.add(inputRow).row()
-        popup.addButton("Close".tr()) { popup.close() }
+        // 帧同步聊天弹窗共享组件: 频道列表 (世界/队伍/私聊) + 消息 + 输入框, 与游戏内完全一致
+        val panel = com.unciv.ui.components.widgets.FsChatPanel(
+            roomId = roomId,
+            myId = playerId,
+            myNick = nickname,
+            memberCivOf = { pid -> currentRoom?.members?.firstOrNull { it.playerId == pid }?.civ },
+            stageWidth = stage.width,
+            stageHeight = stage.height,
+        )
+        popup.add(panel).row()
         chatPopup = popup
-        chatPopupMessagesTable = messagesTable
-        chatPopupScroll = scroll
-        popup.closeListeners.add {
+        chatPanel = panel
+        panel.closeRequested = {
+            chatPopup?.close()
             chatPopup = null
-            chatPopupMessagesTable = null
-            chatPopupScroll = null
+            chatPanel = null
         }
-        chatUnread = 0
-        updateChatButtonText()
-        refreshChatPopupMessages()
+        popup.closeListeners.add {
+            // 关闭前把已读基线更新到 panel 最新 (弹窗期间收到的消息已读,
+            // 否则关闭后弹窗期间的消息 — 含自己发的 — 被误计未读) — 2026-08-29
+            val lastRead = panel.lastMessageSeq()
+            if (lastRead > chatReadSeq) chatReadSeq = lastRead
+            panel.disposePolling()
+            chatPopup = null
+            chatPanel = null
+        }
+        // 打开弹窗 = 已读: 拉服务器最新 seq 作基线 (panel 轮询可能还是旧值,
+        // 否则关闭后新消息被误计未读 → "刚读完又变 Chat(n)") — 2026-08-29
+        chatReadSeq = 0
+        com.unciv.utils.Concurrency.run("RoomChatReadBaseline") {
+            try {
+                val room = com.unciv.logic.lobby.LobbyApi.getRoom(roomId, playerId)
+                val newBaseline = room.chat.maxOfOrNull { it.seq } ?: 0
+                com.unciv.utils.Concurrency.runOnGLThread {
+                    if (chatReadSeq < newBaseline) chatReadSeq = newBaseline
+                    chatUnreadCount = 0
+                    chatButton.setText("Chat".tr())
+                }
+            } catch (e: Exception) {}
+        }
+        chatUnreadCount = 0
+        chatButton.setText("Chat".tr())
         popup.open()
     }
 
-    private fun updateChatButtonText() {
-        chatButton.setText(if (chatUnread > 0) "Chat ($chatUnread)".tr() else "Chat".tr())
-    }
-
-    private fun refreshChatPopupMessages() {
-        val messagesTable = chatPopupMessagesTable ?: return
-        messagesTable.clearChildren()
-        for (m in chatMessages) {
-            val isMe = m.playerId == playerId
-            val civName = currentRoom?.members?.firstOrNull { it.playerId == m.playerId }?.civ
-            val namePart = if (civName.isNullOrEmpty()) m.nickname else "${m.nickname}（${civName.tr()}）"
-            val label = "[$namePart]: ${m.text}".toLabel(fontSize = 18)
-            label.color = if (isMe) Color.GREEN else Color.WHITE
-            label.setAlignment(com.badlogic.gdx.utils.Align.left)
-            // wrap 需要固定宽度才生效 (ScrollPane 内容默认无限宽 → 长消息不换行, 2026-08-25 用户反馈)
-            label.wrap = true
-            messagesTable.add(label).left().expandX().pad(2f).width(440f).row()  // 460 视口 - 滚动条/padding 余量
+    /** 房间聊天未读轮询 (与游戏内 ChatButton 同款: 按钮显示 "Chat (n)") — 2026-08-29 */
+    private fun startChatUnreadPolling() {
+        com.unciv.utils.Concurrency.run("RoomChatUnreadPoll") {
+            while (!closed) {
+                try {
+                    if (chatPopup == null) {  // 弹窗开着已读, 不重复计
+                        val room = com.unciv.logic.lobby.LobbyApi.getRoom(roomId, playerId)
+                        val maxSeq = room.chat.maxOfOrNull { it.seq } ?: 0
+                        // 与游戏内 ChatButton 一致: 过滤自己发的 + 只看相关频道 (world/team/发给我的私聊)
+                        val newCount = room.chat.count {
+                            it.seq > chatReadSeq && it.playerId != playerId &&
+                            (it.to == "world" || it.to.isEmpty() || it.to == "team" ||
+                             (it.to.startsWith("player:") && it.to == "player:$playerId"))
+                        }
+                        if (maxSeq > chatReadSeq && newCount != chatUnreadCount) {
+                            chatUnreadCount = newCount
+                            com.unciv.utils.Concurrency.runOnGLThread {
+                                // "Chat".tr() 翻译 + 数字拼接 (整串 tr 找不到 "Chat (n)" 条目 → 显示英文) — 2026-08-29
+                                chatButton.setText(
+                                    if (chatUnreadCount > 0) "Chat".tr() + " ($chatUnreadCount)" else "Chat".tr())
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                }
+                try { Thread.sleep(3000) } catch (e: InterruptedException) { break }
+            }
         }
-        // 滚到底部 (最新消息)
-        chatPopupScroll?.let { scroll ->
-            messagesTable.pack()
-            scroll.layout()
-            scroll.scrollY = scroll.maxY
-        }
-    }
-
-    private fun appendChatMessages(newMessages: List<com.unciv.logic.lobby.LobbyChatMessage>) {
-        if (newMessages.isEmpty()) return
-        chatMessages.addAll(newMessages)
-        lastChatSeq = newMessages.last().seq
-        val ownNew = newMessages.count { it.playerId == playerId }
-        chatUnread += newMessages.size - ownNew
-        updateChatButtonText()
-        if (chatPopup != null) refreshChatPopupMessages()
     }
 
     init {
@@ -767,6 +760,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         bottomTable.add(descriptionScroll).grow()
         bottomTable.add(rightSideGroup)
         chatButton.onClick { openChatPopup() }
+        startChatUnreadPolling()  // 2026-08-29: 房间聊天按钮未读提示 "Chat (n)"
 
         // ---- 退出房间 (替换原版返回动作: 先清掉原版 Tap 激活, 避免双重弹屏) ----
         closeButton.setText("Leave room".tr())
@@ -1019,11 +1013,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         if (room.version == lastRoomVersion) return
         lastRoomVersion = room.version
         currentRoom = room
-        // ---- 房间聊天: 按 seq 增量接收 (自己发的消息也走这里回来, 保证顺序一致) ----
-        val newChat = room.chat.filter { it.seq > lastChatSeq }
-        if (newChat.isNotEmpty()) {
-            appendChatMessages(newChat)
-        }
+        // ---- 房间聊天: 2026-08-29 改由 FsChatPanel 内部轮询 (与游戏内聊天同组件), 这里不再增量收 ---
         val existing = gameSetupInfo.gameParameters.players
         val newPlayers = ArrayList<Player>()
         for (m in room.members) {

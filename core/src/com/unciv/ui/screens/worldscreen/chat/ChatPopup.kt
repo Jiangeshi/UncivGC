@@ -127,20 +127,9 @@ class ChatPopup(
         @Volatile var fsPopupOpen = false
     }
 
-    private var fsChannel = "world"
-    private val fsChannels = LinkedHashMap<String, String>()
-    private val fsUnread = HashMap<String, Int>()
-    private val fsMessages = ArrayList<com.unciv.logic.lobby.LobbyChatMessage>()
-    private var fsLastSeq = 0
-    private var fsPolling = false
-    /** 已渲染到的消息 seq (增量渲染: 新消息只追加行, 不清空重建 — 2026-08-27 卡顿优化) */
-    private var fsRenderedSeq = 0
-    /** 频道按钮的未读 label 引用 (未读只改文字, 不重建按钮 — 2026-08-27) */
-    private val fsChannelLabels = HashMap<String, Label>()
-    /** playerId -> civName (消息显示文明用) — 2026-08-25 */
-    private val fsMemberCivs = HashMap<String, String>()
-    /** 每频道已读 seq: 切换频道时记录, 切回不重计未读 — 2026-08-25 */
-    private val fsChannelReadSeq = fsChannelReadSeqStatic
+    // 2026-08-29: 帧同步聊天弹窗改由共享组件 FsChatPanel 实现 (与房间界面同一份 UI/数据),
+    // 旧字段 (fsChannel/fsChannels/fsMessages/fsLastSeq/fsUnread/fsMemberCivs/fsChannelReadSeq 等)
+    // 已迁移进 FsChatPanel, 此处不再需要
 
     private val chatTable = Table(skin)
     private val scrollPane = ScrollPane(chatTable, skin)
@@ -209,204 +198,32 @@ class ChatPopup(
     }
 
     private fun buildFsChat() {
-        // 2026-08-28: 弹窗打开 → ChatButton 轮询暂停 (避免双轮询打 lobby); 关闭时复位
+        // 2026-08-29: 复用共享组件 FsChatPanel — 与房间界面聊天同一份 UI/数据 (用户要求"一模一样")
+        // 弹窗打开 → ChatButton 轮询暂停 (避免双轮询打 lobby); 关闭时复位
         fsPopupOpen = true
         val roomId = com.unciv.ui.screens.lobbyscreens.LobbyRoomScreen.activeRoomId ?: return
         val myId = com.unciv.ui.screens.lobbyscreens.LobbyRoomScreen.currentPlayerId()
         val myNick = com.unciv.ui.screens.lobbyscreens.LobbyRoomScreen.currentNickname()
 
-        val header = Table(skin)
-        header.add("Chat".toLabel(fontSize = 30, alignment = Align.left)).left().expandX()
-        header.add(
-            ImageButton(ImageGetter.getImage("OtherIcons/Close").drawable).onClick { close() }
-        ).size(30f, 30f).right().padLeft(8f)
-        add(header).growX().top().pad(5f).row()
-
-        val mainRow = Table()
-        val channelTable = Table()
-        channelTable.defaults().pad(3f)
-        val channelScroll = ScrollPane(channelTable, skin)
-        channelScroll.setFadeScrollBars(false)
-        mainRow.add(channelScroll).width(140f).height(0.42f * worldScreen.stage.height).padRight(6f)
-
-        val msgTable = Table()
-        msgTable.defaults().growX().pad(3f).left()
-        val msgScroll = ScrollPane(msgTable, skin)
-        msgScroll.setFadeScrollBars(false)
-        msgScroll.setScrollingDisabled(true, false)
-        mainRow.add(msgScroll).width(0.36f * worldScreen.stage.width).height(0.42f * worldScreen.stage.height)
-        add(mainRow).padBottom(6f).row()
-
-        val inputRow = Table()
-        val inputField = UncivTextField(hint = "Type something...")
-        val sendButton = Button(skin)
-        sendButton.add(ImageGetter.getImage("OtherIcons/Send"))
-        inputRow.add(inputField).expandX().fillX()
-        inputRow.add(sendButton).size(inputField.height * 1.2f, inputField.height).padLeft(4f)
-        add(inputRow).growX().row()
-
-        fun refreshMessages(appendOnly: Boolean = false) {
-            if (!appendOnly) {
-                msgTable.clearChildren()
-                fsRenderedSeq = 0
-            }
-            for (m in fsMessages) {
-                if (m.seq <= fsRenderedSeq) continue
-                fsRenderedSeq = m.seq  // 无论是否渲染都推进 (跳过的旧消息/其他频道不再重复处理)
-                val visible = when {
-                    fsChannel == "world" -> m.to == "world" || m.to.isEmpty()
-                    fsChannel == "team" -> m.to == "team"
-                    fsChannel.startsWith("player:") -> {
-                        val target = fsChannel.removePrefix("player:")
-                        (m.to == "player:$target" && m.playerId == myId) ||
-                        (m.to == "player:$myId" && m.playerId == target)
-                    }
-                    else -> false
-                }
-                if (!visible) continue
-                val civName = fsMemberCivs[m.playerId]
-                    ?: worldScreen.gameInfo.civilizations.firstOrNull { it.playerId == m.playerId }?.civName
-                    ?.also { fsMemberCivs[m.playerId] = it }
-                val namePart = if (civName.isNullOrEmpty()) m.nickname else "${m.nickname}（${civName.tr()}）"
-                val label = "[$namePart]: ${m.text}".toLabel(fontSize = 18)
-                label.color = if (m.playerId == myId) Color.GREEN else Color.WHITE
-                label.setAlignment(Align.left)
-                // wrap 需要固定宽度才生效 (ScrollPane 内容默认无限宽 → 长消息不换行被截断, 2026-08-25 用户反馈)
-                label.wrap = true
-                val msgWidth = 0.36f * worldScreen.stage.width - 20f  // 视口宽 - 滚动条/padding 余量
-                msgTable.add(label).growX().left().pad(2f).width(msgWidth).row()
-            }
-            msgTable.pack()
-            msgScroll.layout()
-            msgScroll.scrollY = msgScroll.maxY
+        val panel = com.unciv.ui.components.widgets.FsChatPanel(
+            roomId = roomId,
+            myId = myId,
+            myNick = myNick,
+            memberCivOf = { pid ->
+                worldScreen.gameInfo.civilizations.firstOrNull { it.playerId == pid }?.civName
+            },
+            stageWidth = worldScreen.stage.width,
+            stageHeight = worldScreen.stage.height,
+        )
+        add(panel).grow()
+        panel.closeRequested = { close() }
+        // 弹窗开着时其他频道来消息 → 游戏内 ChatButton 角标实时更新 (2026-08-29)
+        panel.onUnreadChange = { total ->
+            com.unciv.ui.screens.worldscreen.chat.ChatButton.updateFsUnread(total)
         }
-
-        /** 频道列表变化时全量重建按钮 (成员进出/首次打开) */
-        fun rebuildChannels() {
-            channelTable.clearChildren()
-            fsChannelLabels.clear()
-            for ((label, key) in fsChannels) {
-                // 矩形列表行: Button.draw() 会用 style 的 drawable 覆盖 setBackground (libGDX 1.14)
-                // → 背景/高亮必须写进 ButtonStyle (up/over/down/checked), 否则是皮肤默认圆角按钮 (2026-08-25 用户反馈)
-                val selected = key == fsChannel
-                val bg = com.unciv.ui.screens.basescreen.BaseScreen.skinStrings.getUiBackground(
-                    "General/Border",
-                    tintColor = if (selected) Color.valueOf("3a7d44") else Color.valueOf("4a4a5a"))
-                val style = com.badlogic.gdx.scenes.scene2d.ui.Button.ButtonStyle()
-                style.up = bg
-                style.over = bg
-                style.down = bg
-                style.checked = bg
-                val row = Button(style)
-                val textLabel = label.toLabel().apply { color = Color.WHITE }
-                fsChannelLabels[key] = textLabel
-                row.add(textLabel).growX().pad(6f, 10f, 6f, 10f)
-                row.onClick {
-                    fsChannel = key
-                    fsUnread[key] = 0
-                    fsChannelReadSeq[key] = fsLastSeq  // 切到该频道 = 已读到当前 (2026-08-25)
-                    rebuildChannels()  // 选中高亮变化 → 重建 (频率低, 可接受)
-                    refreshMessages()
-                }
-                channelTable.add(row).growX().pad(2f).row()
-            }
-            channelTable.pack()
-        }
-
-        /** 未读变化时只更新按钮文字, 不重建按钮 (2026-08-27 卡顿优化) */
-        fun updateChannelUnread() {
-            for ((key, textLabel) in fsChannelLabels) {
-                val label = fsChannels.entries.firstOrNull { it.value == key }?.key ?: continue
-                val unread = fsUnread[key] ?: 0
-                textLabel.setText(if (unread > 0) "$label ($unread)" else label)
-            }
-        }
-
-        fun sendText() {
-            val text = inputField.text.trim()
-            if (text.isEmpty()) return
-            inputField.setText("")
-            Concurrency.run("FsChatSend") {
-                try {
-                    com.unciv.logic.lobby.LobbyApi.sendChat(roomId, myNick, myId, text, fsChannel)
-                } catch (e: Exception) {
-                }
-            }
-        }
-        sendButton.onClick { sendText() }
-        inputField.addListener(object : InputListener() {
-            override fun keyDown(event: InputEvent?, keycode: Int): Boolean {
-                if (keycode == Input.Keys.ENTER || keycode == Input.Keys.NUMPAD_ENTER) sendText()
-                return true
-            }
-        })
-
-        rebuildChannels()
-        refreshMessages()
-
-        // 轮询房间聊天 (getRoom 每 2 秒短轮询 — waitRoom 长轮询在弹窗环境可能不返回, 用户反馈收不到)
-        fsPolling = true
-        var channelsBuilt = false
-        Concurrency.run("FsChatPoll") {
-            while (fsPolling) {
-                try {
-                    val room = com.unciv.logic.lobby.LobbyApi.getRoom(roomId, myId)
-                    if (!channelsBuilt) {
-                        fsChannels.clear()
-                        fsChannels["世界"] = "world"
-                        val myTeam = room.members.firstOrNull { it.playerId == myId }?.team ?: 0
-                        if (myTeam > 0) fsChannels["队伍"] = "team"
-                        for (m in room.members) {
-                            if (m.playerId == myId || m.playerId.isEmpty()) continue
-                            fsChannels[m.nickname] = "player:" + m.playerId
-                            m.civ?.let { fsMemberCivs[m.playerId] = it }
-                        }
-                        // 弹窗打开 = 已读: 按钮未读清零 (但 fsLastSeq 保持 0, 历史消息也要显示 — 2026-08-25)
-                        val maxSeq = room.chat.maxOfOrNull { it.seq } ?: 0
-                        com.unciv.ui.screens.worldscreen.chat.ChatButton.fsReadSeq = maxSeq
-                        com.unciv.ui.screens.worldscreen.chat.ChatButton.updateFsUnread(0)
-                        channelsBuilt = true
-                        com.unciv.utils.Concurrency.runOnGLThread { rebuildChannels() }
-                    }
-                    val newMsgs = room.chat.filter { it.seq > fsLastSeq }
-                    if (newMsgs.isNotEmpty()) {
-                        fsLastSeq = newMsgs.last().seq
-                        // 弹窗开着: 消息即已读 (按钮未读清零) — 2026-08-25
-                        com.unciv.ui.screens.worldscreen.chat.ChatButton.fsReadSeq = fsLastSeq
-                        com.unciv.ui.screens.worldscreen.chat.ChatButton.updateFsUnread(0)
-                        fsMessages.addAll(newMsgs)
-                        // 防无限累积: 只保留最近 200 条 (服务器 chat 也截断 200) — 2026-08-27
-                        if (fsMessages.size > 200)
-                            fsMessages.subList(0, fsMessages.size - 200).clear()
-                        for (m in newMsgs) {
-                            val chanKey = when {
-                                m.to == "world" || m.to.isEmpty() -> "world"
-                                m.to == "team" -> "team"
-                                m.to.startsWith("player:") -> m.to
-                                else -> null
-                            }
-                            if (chanKey == null) continue
-                            if (chanKey == fsChannel) continue
-                            if (chanKey.startsWith("player:") && m.playerId != myId && m.to != "player:$myId") continue
-                            // 该频道已读进度: 读过的消息不重计 (2026-08-25)
-                            val readSeq = fsChannelReadSeq[chanKey] ?: 0
-                            if (m.seq <= readSeq) continue
-                            fsUnread[chanKey] = (fsUnread[chanKey] ?: 0) + 1
-                        }
-                        val totalUnread = fsUnread.values.sum()
-                        com.unciv.ui.screens.worldscreen.chat.ChatButton.updateFsUnread(totalUnread)
-                        com.unciv.utils.Concurrency.runOnGLThread {
-                            updateChannelUnread()   // 未读只改文字 (2026-08-27 卡顿优化)
-                            refreshMessages(appendOnly = true)  // 新消息只追加行, 不清空重建
-                        }
-                    }
-                } catch (e: Exception) {
-                }
-                try { Thread.sleep(2000) } catch (e: InterruptedException) { break }
-            }
-        }
-        closeListeners.add { fsPolling = false; fsPopupOpen = false }
+        closeListeners.add { fsPopupOpen = false; panel.disposePolling() }
     }
+
 
     fun sendMessage() {
         val message = messageField.text.trim()
