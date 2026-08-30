@@ -749,10 +749,12 @@ object FrameSync {
     }
 
     /** 结束回合: 服务器收集所有在线玩家的结束信号后才推进 (掉线视为已结束).
-     *  本地立即置 myTurnFinished → 按钮变“等待剩余玩家” (不等广播, 点击即反馈). */
+     *  本地立即置 myTurnFinished → 按钮变“等待剩余玩家” (不等广播, 点击即反馈).
+     *  2026-08-30 回合 0 例外: 开局准备回合 (城市还没选生产) 完成回合不锁操作 —
+     *  否则“选择建造/训练”(Pick construction) 按钮变灰, 等全员就绪期间无法补选生产 (用户反馈) */
     fun sendNextTurn() {
         sendJson("""{"type":"nextTurn"}""")
-        myTurnFinished = true
+        if (lastTurn > 0) myTurnFinished = true
         worldScreenRef?.get()?.let { ws ->
             try {
                 ws.nextTurnButton.update()
@@ -1093,7 +1095,9 @@ object FrameSync {
                 "turn-$tsTurn",
                 "New turn".tr(),
                 "Turn [turnNumber] has started".tr().fillPlaceholders(tsTurn.toString()))
-        } else if (playerId in turnReadyPlayers) {
+        } else if (tsTurn > 0 && playerId in turnReadyPlayers) {
+            // 回合 0 例外: 准备回合不锁 (与 sendNextTurn 一致) — 否则重连补推 turnStatus
+            // 又把 ended 推回来, 大退也解不了锁 (用户反馈 2026-08-30)
             myTurnFinished = true
         }
         // 同回合且广播不含我: 保持本地状态 (已声明的不被旧广播覆盖)
@@ -2376,7 +2380,12 @@ object FrameSync {
         // 直到回合结算全量才恢复). 改为累积合并: 增量段按 id/name 取最新合并, removed* 取并集, full 帧替换
         val newSnap = StateSnapshot(units, cities, civs, encampments, improvements,
             improvementsDone, roads, religions, terrainChanges, isFull, removedUnits, removedCities,
-            state["removedCivs"]?.jsonArray ?: emptyList())
+            state["removedCivs"]?.jsonArray ?: emptyList(),
+            state["removedEncampments"]?.jsonArray ?: emptyList(),
+            state["removedImprovements"]?.jsonArray ?: emptyList(),
+            state["removedImprovementsDone"]?.jsonArray ?: emptyList(),
+            state["removedRoads"]?.jsonArray ?: emptyList(),
+            state["removedReligions"]?.jsonArray ?: emptyList())
         // 2026-08-29 修复 (审查发现): read-modify-write 竞态 — ws 线程读 prev → GL 线程消费置 null →
         // ws 写回 prev.mergedWith(new) 会把已消费的旧快照重新合并进 pending (重复处理/闪烁).
         // 用锁保护"读-改-写 + 调度标记"两步 (applyState 本体在 GL 线程, 不进锁)
@@ -2409,6 +2418,11 @@ object FrameSync {
         val removedUnits: List<JsonElement>,
         val removedCities: List<JsonElement>,
         val removedCivs: List<JsonElement>,
+        val removedEncampments: List<JsonElement>,
+        val removedImprovements: List<JsonElement>,
+        val removedImprovementsDone: List<JsonElement>,
+        val removedRoads: List<JsonElement>,
+        val removedReligions: List<JsonElement>,
     ) {
         /** 累积合并: 本快照(旧) + 新帧 → 合并结果. 增量段按 id/name 取最新, removed* 并集,
          *  全量段 (encampments/improvements/improvementsDone/roads/religions 每帧全量) 取新帧值,
@@ -2452,9 +2466,37 @@ object FrameSync {
                 keyOf = { it.get("civ")?.jsonPrimitive?.contentOrNull },
                 removedKey = { it.jsonPrimitive.contentOrNull },
             )
+            // 2026-08-30 地图段增量: 坐标 key (数组 [x,y,...]) 累积合并 + removed 剔除; full 帧整体替换
+            fun coordKeyOf(e: JsonElement): String? {
+                val a = e.jsonArray ?: return null
+                val x = a.getOrNull(0)?.jsonPrimitive?.intOrNull ?: return null
+                val y = a.getOrNull(1)?.jsonPrimitive?.intOrNull ?: return null
+                return "$x,$y"
+            }
+            fun mergeCoordIncremental(old: List<JsonElement>, new: List<JsonElement>, removed: List<JsonElement>): List<JsonElement> {
+                val merged = LinkedHashMap<String, JsonElement>()
+                for (e in old) { val k = coordKeyOf(e); if (k != null) merged[k] = e }
+                for (e in new) { val k = coordKeyOf(e); if (k != null) merged[k] = e }
+                removed.mapNotNull { coordKeyOf(it) }.forEach { merged.remove(it) }  // 删除优先
+                return merged.values.toList()
+            }
+            fun mergeRemovedCoords(a: List<JsonElement>, b: List<JsonElement>): List<JsonElement> {
+                val m = LinkedHashMap<String, JsonElement>()
+                for (e in a + b) { val k = coordKeyOf(e); if (k != null) m[k] = e }
+                return m.values.toList()
+            }
+            val mergedReligions = if (this.isFull) newSnap.religions else mergeIncremental(
+                religions, newSnap.religions, newSnap.removedReligions,
+                keyOf = { it.get("name")?.jsonPrimitive?.contentOrNull },
+                removedKey = { it.jsonPrimitive.contentOrNull },
+            )
             return StateSnapshot(
                 mergedUnits, mergedCities, mergedCivs,
-                newSnap.encampments, newSnap.improvements, newSnap.improvementsDone, newSnap.roads, newSnap.religions,
+                if (this.isFull) newSnap.encampments else mergeCoordIncremental(encampments, newSnap.encampments, newSnap.removedEncampments),
+                if (this.isFull) newSnap.improvements else mergeCoordIncremental(improvements, newSnap.improvements, newSnap.removedImprovements),
+                if (this.isFull) newSnap.improvementsDone else mergeCoordIncremental(improvementsDone, newSnap.improvementsDone, newSnap.removedImprovementsDone),
+                if (this.isFull) newSnap.roads else mergeCoordIncremental(roads, newSnap.roads, newSnap.removedRoads),
+                mergedReligions,
                 terrainChanges + newSnap.terrainChanges,  // 地形变化是追加语义 (OneTimeChangeTerrain)
                 // 2026-08-29 修复 (审查发现): 必须保留 this.isFull — 全量帧 pending 未消费时同回合增量帧到达,
                 // 合并后仍是全量语义 (stateIds/serverCityIds 全量扫描校准不能丢), 否则回合结算/重连的
@@ -2468,6 +2510,13 @@ object FrameSync {
                     .distinct().map { kotlinx.serialization.json.JsonPrimitive(it) },
                 removedCivs = (removedCivs.mapNotNull { it.jsonPrimitive.contentOrNull }
                     + newSnap.removedCivs.mapNotNull { it.jsonPrimitive.contentOrNull })
+                    .distinct().map { kotlinx.serialization.json.JsonPrimitive(it) },
+                removedEncampments = mergeRemovedCoords(removedEncampments, newSnap.removedEncampments),
+                removedImprovements = mergeRemovedCoords(removedImprovements, newSnap.removedImprovements),
+                removedImprovementsDone = mergeRemovedCoords(removedImprovementsDone, newSnap.removedImprovementsDone),
+                removedRoads = mergeRemovedCoords(removedRoads, newSnap.removedRoads),
+                removedReligions = (removedReligions.mapNotNull { it.jsonPrimitive.contentOrNull }
+                    + newSnap.removedReligions.mapNotNull { it.jsonPrimitive.contentOrNull })
                     .distinct().map { kotlinx.serialization.json.JsonPrimitive(it) },
             )
         }
@@ -2494,7 +2543,10 @@ object FrameSync {
                 snap.improvements, snap.improvementsDone, snap.roads, snap.religions,
                 snap.terrainChanges, isFull = snap.isFull,
                 removedUnits = snap.removedUnits, removedCities = snap.removedCities,
-                removedCivs = snap.removedCivs)
+                removedCivs = snap.removedCivs,
+                removedEncampments = snap.removedEncampments, removedImprovements = snap.removedImprovements,
+                removedImprovementsDone = snap.removedImprovementsDone,
+                removedRoads = snap.removedRoads, removedReligions = snap.removedReligions)
         } catch (e: Exception) {
             // 状态应用绝不能崩溃 — 失败项由下一条广播/回合重载兜底
         }
@@ -2764,7 +2816,7 @@ object FrameSync {
         }
     }
 
-    private fun applyState(worldScreen: WorldScreen, units: List<JsonElement>, cities: List<JsonElement> = emptyList(), civs: List<JsonElement> = emptyList(), encampments: List<JsonElement> = emptyList(), improvements: List<JsonElement> = emptyList(), improvementsDone: List<JsonElement> = emptyList(), roads: List<JsonElement> = emptyList(), religions: List<JsonElement> = emptyList(), terrainChanges: List<JsonElement> = emptyList(), isFull: Boolean = true, removedUnits: List<JsonElement> = emptyList(), removedCities: List<JsonElement> = emptyList(), removedCivs: List<JsonElement> = emptyList()) {
+    private fun applyState(worldScreen: WorldScreen, units: List<JsonElement>, cities: List<JsonElement> = emptyList(), civs: List<JsonElement> = emptyList(), encampments: List<JsonElement> = emptyList(), improvements: List<JsonElement> = emptyList(), improvementsDone: List<JsonElement> = emptyList(), roads: List<JsonElement> = emptyList(), religions: List<JsonElement> = emptyList(), terrainChanges: List<JsonElement> = emptyList(), isFull: Boolean = true, removedUnits: List<JsonElement> = emptyList(), removedCities: List<JsonElement> = emptyList(), removedCivs: List<JsonElement> = emptyList(), removedEncampments: List<JsonElement> = emptyList(), removedImprovements: List<JsonElement> = emptyList(), removedImprovementsDone: List<JsonElement> = emptyList(), removedRoads: List<JsonElement> = emptyList(), removedReligions: List<JsonElement> = emptyList()) {
         val gameInfo = worldScreen.gameInfo ?: return
         // 地形变化同步 (OneTimeChangeTerrain "Turn this tile into"): 服务器权威改地形, 本地应用 + 刷新视野/单位通行
         syncTerrainChanges(gameInfo, terrainChanges, worldScreen)
@@ -2803,8 +2855,9 @@ object FrameSync {
         civChanged = syncCivInfo(gameInfo, civs, worldScreen.viewingCiv.civID) || civChanged
         var unitsChanged = false
         // 2026-08-25: 地图四类状态合并同步 (一次全图遍历替代 4 次 — 后期掉帧优化)
-        syncMapLayers(gameInfo, improvements, improvementsDone, roads, encampments)
-        syncReligions(gameInfo, religions, worldScreen)
+        syncMapLayers(gameInfo, improvements, improvementsDone, roads, encampments, isFull,
+            removedImprovements, removedImprovementsDone, removedRoads, removedEncampments)
+        syncReligions(gameInfo, religions, worldScreen, isFull, removedReligions)
         val stateIds = HashSet<Int>()
         // 本次广播中服务器驱动了 due 变化的单位 (跳过回合切换) — 重应用“已查看”标记时跳过, 防止取消跳过被回滚
         val serverDueChanged = HashSet<Int>()
@@ -3119,6 +3172,11 @@ object FrameSync {
         improvementsDone: List<JsonElement>,
         roads: List<JsonElement>,
         encampments: List<JsonElement>,
+        isFull: Boolean = true,
+        removedImprovements: List<JsonElement> = emptyList(),
+        removedImprovementsDone: List<JsonElement> = emptyList(),
+        removedRoads: List<JsonElement> = emptyList(),
+        removedEncampments: List<JsonElement> = emptyList(),
     ) {
         try {
             // ---- 构建 4 个服务器数据 (不遍历 tileMap) ----
@@ -3160,6 +3218,121 @@ object FrameSync {
                 com.unciv.logic.map.HexCoord(x, y)
             }.toSet()
 
+            // ---- 2026-08-30 增量帧: 只处理服务器发的变化 + removed 删除 (不遍历全图对齐) ----
+            if (!isFull) {
+                var changed = false
+                var roadsChanged = false
+                val affectedCities = HashSet<com.unciv.logic.city.City>()
+                fun cityAffected(tile: com.unciv.logic.map.tile.Tile) {
+                    if (tile.owningCity != null) affectedCities.add(tile.owningCity!!)
+                    for (adj in tile.neighbors) if (adj.owningCity != null) affectedCities.add(adj.owningCity!!)
+                }
+                for ((key, pair) in serverImps) {
+                    val tile = gameInfo.tileMap.get(key.first, key.second) ?: continue
+                    tile.improvementQueue.clear()
+                    tile.improvementQueue.add(com.unciv.logic.map.tile.Tile.ImprovementQueueEntry(pair.first, pair.second))
+                    changed = true
+                    cityAffected(tile)
+                }
+                for (rem in removedImprovements) {
+                    val a = rem.jsonArray ?: continue
+                    val x = a.getOrNull(0)?.jsonPrimitive?.intOrNull ?: continue
+                    val y = a.getOrNull(1)?.jsonPrimitive?.intOrNull ?: continue
+                    val tile = gameInfo.tileMap.get(x, y) ?: continue
+                    if (tile.improvementQueue.isNotEmpty() || tile.improvementInProgress != null) {
+                        tile.improvementQueue.clear()
+                        changed = true
+                        cityAffected(tile)
+                    }
+                }
+                for ((key, name) in serverDoneNames) {
+                    val tile = gameInfo.tileMap.get(key.first, key.second) ?: continue
+                    tile.improvement = name
+                    tile.improvementIsPillaged = serverDonePillaged[key] ?: false
+                    changed = true
+                    cityAffected(tile)
+                }
+                for (rem in removedImprovementsDone) {
+                    val a = rem.jsonArray ?: continue
+                    val x = a.getOrNull(0)?.jsonPrimitive?.intOrNull ?: continue
+                    val y = a.getOrNull(1)?.jsonPrimitive?.intOrNull ?: continue
+                    val tile = gameInfo.tileMap.get(x, y) ?: continue
+                    if (tile.improvement != null && tile.improvement?.isNotEmpty() == true) {
+                        tile.improvement = null
+                        tile.improvementIsPillaged = false
+                        changed = true
+                        cityAffected(tile)
+                    }
+                }
+                for ((key, pair) in serverRoads) {
+                    val tile = gameInfo.tileMap.get(key.first, key.second) ?: continue
+                    try {
+                        tile.roadStatus = com.unciv.logic.map.tile.RoadStatus.valueOf(pair.first)
+                    } catch (ignored: Exception) {
+                        continue
+                    }
+                    tile.roadIsPillaged = pair.second
+                    roadsChanged = true
+                }
+                for (rem in removedRoads) {
+                    val a = rem.jsonArray ?: continue
+                    val x = a.getOrNull(0)?.jsonPrimitive?.intOrNull ?: continue
+                    val y = a.getOrNull(1)?.jsonPrimitive?.intOrNull ?: continue
+                    val tile = gameInfo.tileMap.get(x, y) ?: continue
+                    if (tile.roadStatus != com.unciv.logic.map.tile.RoadStatus.None || tile.roadIsPillaged) {
+                        tile.roadStatus = com.unciv.logic.map.tile.RoadStatus.None
+                        tile.roadIsPillaged = false
+                        roadsChanged = true
+                    }
+                }
+                for (pos in serverCamps) {
+                    val x = pos.x ?: continue
+                    val y = pos.y ?: continue
+                    val tile = gameInfo.tileMap.get(x, y) ?: continue
+                    if (!tile.isBarbarianEncampment()) {
+                        try {
+                            tile.improvement = com.unciv.Constants.barbarianEncampment
+                            changed = true
+                            cityAffected(tile)
+                        } catch (e: Exception) {
+                        }
+                    }
+                }
+                for (rem in removedEncampments) {
+                    val a = rem.jsonArray ?: continue
+                    val x = a.getOrNull(0)?.jsonPrimitive?.intOrNull ?: continue
+                    val y = a.getOrNull(1)?.jsonPrimitive?.intOrNull ?: continue
+                    val tile = gameInfo.tileMap.get(x, y) ?: continue
+                    if (tile.isBarbarianEncampment()) {
+                        try {
+                            tile.removeImprovement()
+                            changed = true
+                            cityAffected(tile)
+                        } catch (e: Exception) {
+                        }
+                    }
+                }
+                if (changed) {
+                    val affectedCivs = HashSet<com.unciv.logic.civilization.Civilization>()
+                    for (city in affectedCities) {
+                        try {
+                            city.cityStats.update()
+                            affectedCivs.add(city.civ)
+                        } catch (e: Exception) {
+                        }
+                    }
+                    for (civ in affectedCivs) {
+                        try { civ.updateStatsForNextTurn() } catch (ignored: Exception) {}
+                    }
+                    worldScreenRef?.get()?.let { it.shouldUpdate = true }
+                    refreshOpenCityScreen()
+                }
+                if (roadsChanged) {
+                    gameInfo.invalidateTradeRoutes()
+                    worldScreenRef?.get()?.let { it.shouldUpdate = true }
+                }
+                return
+            }
             // ---- 单次全图遍历, 四类对比 ----
             var changed = false
             var roadsChanged = false
@@ -3406,9 +3579,9 @@ object FrameSync {
 
     /** 宗教全量同步: 服务器 religions 列表覆盖本地 gameInfo.religions
      *  (万神殿/创立宗教后宗教页立即解锁并显示内容, 不等回合末重载; 服务器权威) */
-    private fun syncReligions(gameInfo: GameInfo, religions: List<JsonElement>, worldScreen: WorldScreen) {
+    private fun syncReligions(gameInfo: GameInfo, religions: List<JsonElement>, worldScreen: WorldScreen, isFull: Boolean = true, removedReligions: List<JsonElement> = emptyList()) {
         try {
-            if (religions.isEmpty()) return  // 服务器无宗教时不用清本地 (开局双方都是空, 广播也空)
+            if (religions.isEmpty() && removedReligions.isEmpty()) return  // 无变化 (开局双方都是空, 广播也空)
             val server = religions.mapNotNull { rj ->
                 try {
                     val obj = rj.jsonObject
@@ -3462,10 +3635,17 @@ object FrameSync {
                     // 单个宗教处理失败不中断其他宗教
                 }
             }
-            if (gameInfo.religions.size != server.size || gameInfo.religions.keys.any { it !in server } || religionContentChanged) {
+            if (isFull && (gameInfo.religions.size != server.size || gameInfo.religions.keys.any { it !in server }) || religionContentChanged) {
                 gameInfo.religions.clear()
                 gameInfo.religions.putAll(server)
                 worldScreen.shouldUpdate = true
+                // 2026-08-30 增量帧: removedReligions 从本地删除 (宗教一般只增不减, 兜底)
+                if (!isFull && removedReligions.isNotEmpty()) {
+                    for (re in removedReligions) {
+                        val rname = re.jsonPrimitive.contentOrNull ?: continue
+                        if (gameInfo.religions.remove(rname) != null) worldScreen.shouldUpdate = true
+                    }
+                }
                 // 选词条页面实时刷新: 仅自己宗教内容变化时重建 (别人创立/强化宗教不应闪我正打开的选词条弹窗 → "选不了")
                 if (ownReligionChanged) refreshBeliefPickers(worldScreen)
                 // 概览界面打开时刷新 (宗教页解锁/内容实时显示) — 在 religion 赋值之后, 重建才能读到内容

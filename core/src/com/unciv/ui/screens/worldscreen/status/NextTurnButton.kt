@@ -93,8 +93,14 @@ class NextTurnButton(
     }
 
     private fun getNextTurnAction(worldScreen: WorldScreen) =
-        // Guaranteed to return a non-null NextTurnAction because the last isChoice always returns true
-        NextTurnAction.entries.first { it.isChoice(worldScreen) }
+        // UncivGC 帧同步 2026-08-30: 已完成回合 → 按钮只能是“取消完成回合”(可点反悔);
+        // 点取消 → myTurnFinished=false → 走 else → 显示没做完的事 (选择建造/训练等待办, 可点);
+        // “完成回合”只在所有待办处理完才出现 (待办动作永远优先)
+        if (FrameSync.isFsMode(worldScreen.gameInfo) && FrameSync.myTurnFinished) {
+            NextTurnAction.NextTurn
+        } else
+            // Guaranteed to return a non-null NextTurnAction because the last isChoice always returns true
+            NextTurnAction.entries.first { it.isChoice(worldScreen) }
 
     @Readonly fun isNextUnitAction(): Boolean = nextTurnAction == NextTurnAction.NextUnit
 

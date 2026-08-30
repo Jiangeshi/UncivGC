@@ -220,6 +220,9 @@ class FsChatPanel(
                             }
                         }
                         for (chan in readBaseChans) fsChannelReadSeq[chan] = maxSeq
+                        // 2026-08-30 修复: 同步更新 ChatButton 轮询的已读进度 (弹窗读完 → 关闭后
+                        // 按钮轮询不再把刚读过的消息算未读 — 用户反馈“读完退出过一秒又跳出来”)
+                        com.unciv.ui.screens.worldscreen.chat.ChatButton.fsReadSeq = maxSeq
                         channelsBuilt = true
                         com.unciv.utils.Concurrency.runOnGLThread { rebuildChannels() }
                     }
