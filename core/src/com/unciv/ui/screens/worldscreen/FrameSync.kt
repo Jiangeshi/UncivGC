@@ -1080,6 +1080,19 @@ object FrameSync {
         if (settling) {
             dbg("settling=true → 锁定 + 提示条")
             showSettlingHint()  // 显示提示条 + 全程锁定 (serverSettling 控制实际锁定)
+            // 2026-08-30 修复: 结算窗口内断开重连 → reload 后的 turnReady 在旧连接上丢失,
+            // 服务器等就绪卡 60s 保底 (用户反馈"卡在12回合"); 收到 settling=true 即补发就绪
+            // (幂等: 服务器 turnReady 集合去重; 正常重载流程的 pendingTurnReady 照常发, 重复无害)
+            try {
+                kotlinx.coroutines.GlobalScope.launch {
+                    try {
+                        session?.send("""{"type":"turnReady"}""")
+                        dbg("settling=true → 补发 turnReady")
+                    } catch (ignored: Exception) {
+                    }
+                }
+            } catch (ignored: Exception) {
+            }
         } else {
             // 结算结束 (延迟到期, 服务器已广播新回合): 解锁 + 移除提示条
             // 无条件 hide (不要求 wasSettling) — 防 applyState 曾显示/状态错位导致提示条残留 (2026-08-22)
