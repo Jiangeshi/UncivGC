@@ -88,6 +88,25 @@ class TradePopup(worldScreen: WorldScreen) : Popup(worldScreen) {
             if (FrameSync.isFsMode(viewingCiv.gameInfo)) {
                 // 帧同步: 服务器权威接受 (转移/条约在服务器执行, 状态广播同步)
                 FrameSync.sendTradeAccept(tradeRequest.requestingCiv)
+                // 2026-08-31 修复: 接受方本地应用对方提供的 embassy — tradeAccepted 广播只给发起方,
+                // 接受方侧 modifier 缺失 (互卖大使馆"自己没卖出去/还是对面的"根因; 服务器已应用, 本地补齐显示)
+                if (trade.theirOffers.any { it.type == TradeOfferType.Embassy }) {
+                    try {
+                        val theirDm = requestingCiv.getDiplomacyManager(viewingCiv)
+                        if (theirDm != null) {
+                            if (theirDm.hasModifier(com.unciv.logic.civilization.diplomacy.DiplomaticModifiers.EstablishedEmbassy)) {
+                                theirDm.replaceModifier(com.unciv.logic.civilization.diplomacy.DiplomaticModifiers.EstablishedEmbassy,
+                                    com.unciv.logic.civilization.diplomacy.DiplomaticModifiers.SharedEmbassies, 3f)
+                                theirDm.otherCivDiplomacy().replaceModifier(com.unciv.logic.civilization.diplomacy.DiplomaticModifiers.ReceivedEmbassy,
+                                    com.unciv.logic.civilization.diplomacy.DiplomaticModifiers.SharedEmbassies, 3f)
+                            } else {
+                                theirDm.addModifier(com.unciv.logic.civilization.diplomacy.DiplomaticModifiers.ReceivedEmbassy, 1f)
+                                theirDm.otherCivDiplomacy().addModifier(com.unciv.logic.civilization.diplomacy.DiplomaticModifiers.EstablishedEmbassy, 2f)
+                            }
+                        }
+                    } catch (ignored: Exception) {
+                    }
+                }
                 viewingCiv.tradeRequests.remove(tradeRequest)
                 close()
             } else {

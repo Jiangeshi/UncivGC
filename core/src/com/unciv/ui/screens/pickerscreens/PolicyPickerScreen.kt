@@ -683,6 +683,17 @@ class PolicyPickerScreen(
             }
         }
         policies.adoptedPolicies.add(policyName)
+        // 2026-08-31 修复: 政策 stat 实时生效 — 乐观采用后 ①重建 policyUniques 缓存 (cityStats 读它算加成,
+        // 只加 adoptedPolicies 不 rebuild → 新政策 stat 不生效, 根因) ②重算城市/文明产出
+        // (城市级 update 触发文明级 statsForNextTurn; 原版 adopt 内部做这两步, 帧同步乐观路径漏了)
+        try {
+            policies.rebuildPolicyUniquesFromAdopted()
+        } catch (ignored: Exception) {
+        }
+        try {
+            for (city in civ.cities) city.cityStats.update()
+        } catch (ignored: Exception) {
+        }
     }
 
     private fun confirmAction() {
