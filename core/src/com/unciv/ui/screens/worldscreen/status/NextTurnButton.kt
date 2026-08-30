@@ -31,7 +31,13 @@ class NextTurnButton(
 
     init {
         pad(15f)
-        onActivation { nextTurnAction.action(worldScreen) }
+        onActivation {
+            // 2026-08-30 调试: 完成回合按钮点击是否触发
+            com.unciv.ui.screens.worldscreen.FrameSync.log(
+                "NextTurnBtn clicked: action=$nextTurnAction myTurnFinished=" +
+                com.unciv.ui.screens.worldscreen.FrameSync.myTurnFinished)
+            nextTurnAction.action(worldScreen)
+        }
         addContextMenu { NextTurnMenu(stage, this, worldScreen) }
         keyShortcuts.add(KeyboardBinding.NextTurn)
         keyShortcuts.add(KeyboardBinding.NextTurnAlternate)
@@ -54,8 +60,13 @@ class NextTurnButton(
             }
         }
 
-        isEnabled = nextTurnAction.getText(worldScreen) == "AutoPlay"
-            || ((worldScreen.isPlayersTurn || worldScreen.failedUpload) && !worldScreen.waitingForAutosave && !worldScreen.isNextTurnUpdateRunning())
+        val baseEnabled = (worldScreen.isPlayersTurn || worldScreen.failedUpload)
+            && !worldScreen.waitingForAutosave && !worldScreen.isNextTurnUpdateRunning()
+        com.unciv.ui.screens.worldscreen.FrameSync.log(
+            "NextTurnBtn update: action=$nextTurnAction base=$baseEnabled isPlayersTurn=${worldScreen.isPlayersTurn} " +
+            "waitingAutosave=${worldScreen.waitingForAutosave} isNextTurnRunning=${worldScreen.isNextTurnUpdateRunning()} " +
+            "myTurnFinished=" + com.unciv.ui.screens.worldscreen.FrameSync.myTurnFinished)
+        isEnabled = nextTurnAction.getText(worldScreen) == "AutoPlay" || baseEnabled
         // UncivGC 帧同步: 已点“完成回合”后按钮变「取消完成」仍可点 (点击取消); NextUnit 例外: 完成回合后仍可跳转/操作剩余闲置单位
         if (FrameSync.isFsMode(worldScreen.gameInfo) && FrameSync.myTurnFinished
             && nextTurnAction != NextTurnAction.NextUnit

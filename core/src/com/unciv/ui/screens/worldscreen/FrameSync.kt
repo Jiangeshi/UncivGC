@@ -414,7 +414,9 @@ object FrameSync {
                 settlingPersist = wasSettling || settlingPersist  // 2026-08-27: 持久标志不受后续 dispose stop() 影响
                 // 不走 onlineMultiplayer.downloadGame: 它会更新 preview 触发 MultiplayerGameUpdated
                 // 事件 → WorldScreen 处理器再触发一次重载 (双刷根因)。直接下载+loadGame。
+                val dlT0 = System.currentTimeMillis()
                 val gi = com.unciv.UncivGame.Current.onlineMultiplayer.multiplayerServer.downloadGame(gameId)
+                dbg("reload 下载耗时: " + (System.currentTimeMillis() - dlT0) + "ms")
                 // ⚠️ 快照清空必须在 loadGame 之前! loadGame 同步触发新 WorldScreen → start() →
                 // 本地视野刷新 (含队友探索历史合并), 若清空在 loadGame 后执行, start() 用的是旧快照:
                 // teamExploredMerged 仍 true → 合并被跳过 → 队友历史探索永久缺失 (2026-08-23 用户实测
@@ -425,7 +427,9 @@ object FrameSync {
                 meetUnitPos.clear()
                 meetCitySnapshot.clear()
                 teamExploredMerged = false  // 重载后重新全量合并队友探索历史
+                val lgT0 = System.currentTimeMillis()
                 com.unciv.UncivGame.Current.loadGame(gi)
+                dbg("reload loadGame 耗时: " + (System.currentTimeMillis() - lgT0) + "ms")
                 // 恢复通知历史 (2026-08-30): 只恢复"本回合新广播"的通知 (结算瞬间生成玩家来不及看),
                 // 旧通知显示一回合后自然消失 — 对齐原版 endTurn 清空, 不无限累积
                 if (backupNotifs != null) {
@@ -516,7 +520,9 @@ object FrameSync {
         // 完成回合后 (myTurnFinished) 锁定城市配置/科技/政策/信仰类 op —
         // 结算已按旧配置入账, 再改 → 服务器状态变但本回合产出已入账 → 显示与入账不符;
         // 单位操作 (move/attack 等) 保留 — 完成回合后仍可操作闲置单位 (NextUnit 例外)
-        if (myTurnFinished && op in TURN_LOCKED_OPS) {
+        // 2026-08-30: 回合 0 (lastTurn=0) 完成回合后不锁城市操作 — 开局准备回合允许补选生产
+        // (服务器 finished 检查同样 turnNo>0 才拒绝; 完成回合有按钮反馈"取消完成回合", 可取消)
+        if (myTurnFinished && lastTurn > 0 && op in TURN_LOCKED_OPS) {
             // 2026-08-30: 拒绝提示已全部移除 (用户要求 — 拒绝 toast 海量弹出加剧卡顿), 静默忽略
             return false
         }
@@ -754,7 +760,9 @@ object FrameSync {
      *  否则“选择建造/训练”(Pick construction) 按钮变灰, 等全员就绪期间无法补选生产 (用户反馈) */
     fun sendNextTurn() {
         sendJson("""{"type":"nextTurn"}""")
-        if (lastTurn > 0) myTurnFinished = true
+        // 2026-08-30: 无条件置 true (回合 0 也置 — 按钮立即变"取消完成回合", 点击有反馈);
+        // 回合 0 不锁城市操作由 sendOpChecked 的 lastTurn>0 条件保证 (不是靠不置 myTurnFinished)
+        myTurnFinished = true
         worldScreenRef?.get()?.let { ws ->
             try {
                 ws.nextTurnButton.update()
@@ -1095,9 +1103,9 @@ object FrameSync {
                 "turn-$tsTurn",
                 "New turn".tr(),
                 "Turn [turnNumber] has started".tr().fillPlaceholders(tsTurn.toString()))
-        } else if (tsTurn > 0 && playerId in turnReadyPlayers) {
-            // 回合 0 例外: 准备回合不锁 (与 sendNextTurn 一致) — 否则重连补推 turnStatus
-            // 又把 ended 推回来, 大退也解不了锁 (用户反馈 2026-08-30)
+        } else if (playerId in turnReadyPlayers) {
+            // 2026-08-30: 回合 0 也置 (完成回合有按钮反馈); 不死锁 — 双端回合 0 都不锁城市 op,
+            // 按钮显示"取消完成回合"可点取消 (重连补推同样可取消, 不再"大退解不了")
             myTurnFinished = true
         }
         // 同回合且广播不含我: 保持本地状态 (已声明的不被旧广播覆盖)
