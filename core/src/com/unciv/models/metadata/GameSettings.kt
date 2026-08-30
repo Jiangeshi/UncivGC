@@ -48,6 +48,10 @@ class GameSettings {
     var unitSet: String? = Constants.defaultUnitset
     var skin: String = Constants.defaultSkin
 
+    //// Performance
+    /** UncivGC 2026-08-30: 显示帧率 (P0 体感诊断) — 开启后所有界面右上角显示 FPS + 广播处理耗时 */
+    var showFps = false
+
     //// UI
     /** NotificationScroll on Word Screen visibility control - mapped to [NotificationsScroll.UserSetting] enum */
     // Defaulting this to "" - and implement the fallback only in NotificationsScroll leads to Options popup and actual effect being in disagreement!

@@ -76,6 +76,8 @@ internal class DisplayTab(
 
         addHeader("Performance")
 
+        addCheckbox("Show FPS", settings::showFps)
+
         addCheckbox("Continuous rendering", settings::continuousRendering) {
             Gdx.graphics.isContinuousRendering = it
         }

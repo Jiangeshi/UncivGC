@@ -23,6 +23,7 @@ import com.unciv.models.ruleset.Ruleset
 import com.unciv.models.ruleset.RulesetCache
 import com.unciv.models.skins.SkinStrings
 import com.unciv.ui.components.extensions.isNarrowerThan4to3
+import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.components.fonts.Fonts
 import com.unciv.ui.components.input.DispatcherVetoer
 import com.unciv.ui.components.input.KeyShortcutDispatcher
@@ -37,6 +38,7 @@ import com.unciv.ui.popups.options.OptionsPopup
 import com.unciv.ui.popups.options.OptionsPopupPages
 import com.unciv.ui.screens.civilopediascreen.CivilopediaScreen
 import com.unciv.ui.screens.mainmenuscreen.MainMenuScreen
+import com.unciv.ui.screens.worldscreen.FrameSync
 import com.unciv.ui.screens.worldscreen.WorldScreen
 
 // Both `this is CrashScreen` and `this::createPopupBasedDispatcherVetoer` are flagged.
@@ -88,8 +90,38 @@ abstract class BaseScreen : Screen {
         Gdx.gl.glClearColor(clearColor.r, clearColor.g, clearColor.b, clearColor.a)
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT)
 
+        updateFpsLabel()
         stage.act()
         stage.draw()
+    }
+
+    /** P0 体感诊断 (2026-08-30): 设置→显示→Show FPS 开启后, 所有界面右上角显示 FPS + 广播处理耗时 */
+    private var fpsLabel: Label? = null
+    private var fpsLabelLastUpdateMs = 0L
+    private fun updateFpsLabel() {
+        val show = game.settings.showFps
+        val label = fpsLabel
+        if (!show) {
+            if (label != null) {
+                label.remove()
+                fpsLabel = null
+            }
+            return
+        }
+        if (label == null) {
+            val newLabel = "".toLabel().apply { color = Color.WHITE }
+            stage.addActor(newLabel)
+            fpsLabel = newLabel
+        }
+        // 节流: 每 300ms 更新一次文本 (避免每帧 new String 拖慢诊断目标本身)
+        val now = System.currentTimeMillis()
+        if (now - fpsLabelLastUpdateMs < 300) return
+        fpsLabelLastUpdateMs = now
+        val text = "FPS: ${Gdx.graphics.framesPerSecond}  Sim: ${String.format("%.1f", FrameSync.lastSimProcessMs)}ms"
+        val cur = fpsLabel ?: return
+        cur.setText(text)
+        cur.pack()
+        cur.setPosition(stage.width - cur.width - 10f, stage.height - cur.height - 10f)
     }
 
     override fun resize(width: Int, height: Int) {

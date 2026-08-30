@@ -123,7 +123,7 @@ class UnitIconGroup(val unit: MapUnit, val size: Float) : NonTransformGroup() {
         // (用户要求: 灰显改为小锁图标; 位置基于 flagIcon 右上 — 修复锁掉到图标下方)
         // 2026-08-23 05:37 用户反馈锁全没了: 锁在 addToCenter(flagIcon) 之前创建 → flagIcon.x/y=0 定位错位,
         // 且 flagIcon 后 add 绘制在锁上层把它完全盖住 → 移到 flagIcon 居中之后创建 (此时坐标正确且锁在最上层)
-        val viewingCiv = GUI.getWorldScreen()?.viewingCiv
+        val viewingCiv = com.unciv.ui.screens.worldscreen.FrameSync.currentWorldScreenOrNull()?.viewingCiv
         if (GUI.getSettings().experimentalUi && viewingCiv != null && unit.civ.civID != viewingCiv.civID
             && com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(unit.civ.gameInfo)
             && unit.isMilitary() && unit.attacksThisTurn >= unit.maxAttacksPerTurn()) {

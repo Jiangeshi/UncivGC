@@ -54,14 +54,27 @@ class RankingPanel(private val worldScreen: WorldScreen) : Table(BaseScreen.skin
     /** 大数显示: >=10000 用 k 单位 (10k/12k — 用户 2026-08-23); 四位数内原样 */
     private fun formatValue(v: Int): String = if (v >= 10000) "${v / 1000}k" else v.toString()
 
-    /** 取值: 分数/军力为累计值; 科技/文化/金钱/产能为每回合增量 (与顶栏一致 — 用户 2026-08-22) */
+    /** 取值: 分数/军力为累计值; 科技/文化/金钱/产能/增长为每回合增量 —
+     *  2026-08-30 公共/私有拆分: 增量列用服务器 stats 摘要 (别人的工作格/专家已不广播, 本地算不了别人增量) */
     private fun getValue(civ: Civilization, category: RankingType): Int = when (category) {
         RankingType.Score, RankingType.Force -> civ.getStatForRanking(category)
-        RankingType.Technologies -> civ.stats.statsForNextTurn.science.roundToInt()
-        RankingType.Culture -> civ.stats.statsForNextTurn.culture.roundToInt()
-        RankingType.Gold -> civ.stats.statsForNextTurn.gold.roundToInt()
-        RankingType.Production -> civ.stats.statsForNextTurn.production.roundToInt()
+        RankingType.Technologies -> serverStat(civ, 3)  // science 增量
+        RankingType.Culture -> serverStat(civ, 4)       // culture 增量
+        RankingType.Gold -> serverStat(civ, 2)          // gold 增量
+        RankingType.Production -> serverStat(civ, 1)    // production 增量
+        RankingType.Growth -> serverStat(civ, 0)        // food 增量
         else -> civ.getStatForRanking(category)
+    }
+
+    /** 读服务器 stats 摘要; 摘要缺失时回落本地算 (自己文明) */
+    private fun serverStat(civ: Civilization, idx: Int): Int {
+        val s = com.unciv.ui.screens.worldscreen.FrameSync.serverStatsByCiv[civ.civName]
+        if (s != null) return s[idx].roundToInt()
+        val own = civ.stats.statsForNextTurn
+        return when (idx) {
+            0 -> own.food; 1 -> own.production; 2 -> own.gold; 3 -> own.science; 4 -> own.culture
+            else -> own.faith
+        }.roundToInt()
     }
 
     /** 固定列宽 (用户 2026-08-23: 宽度高度都不变; 232→1/3≈77) */

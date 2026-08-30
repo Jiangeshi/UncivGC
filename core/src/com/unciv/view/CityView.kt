@@ -157,9 +157,14 @@ class CityView(city: City,
     fun tryLockTile(tileView: TileView): Boolean {
         if (!canChangeState()) return false
         if (FrameSync.isFsMode(city.civ.gameInfo)) {
-            // 帧同步: 服务器权威 (doLockTile 内部处理"未工作先工作再锁定";
-            // 本地 isWorked 不更新 → 不能前置检查, 2026-08-23 帧同步双击锁定失效)
-            val pos = getTile(tileView).position
+            // 2026-08-30 公共/私有拆分: lockedTiles 不再广播 → 本地执行实时显示 + 服务器确认
+            // (对齐服务器 doLockTile: 未工作先工作再锁定)
+            val tile = getTile(tileView)
+            try {
+                if (!city.isWorked(tile)) city.workTile(tile)
+                city.lockTile(tile)
+            } catch (ignored: Exception) {}
+            val pos = tile.position
             FrameSync.sendOp("city.lockTile", mapOf("cityId" to city.id, "tileX" to pos.x!!, "tileY" to pos.y!!))
             return true
         }
@@ -169,7 +174,10 @@ class CityView(city: City,
     fun tryUnlockTile(tileView: TileView): Boolean {
         if (!canChangeState()) return false
         if (FrameSync.isFsMode(city.civ.gameInfo)) {
-            val pos = getTile(tileView).position
+            // 2026-08-30 拆分: 本地执行实时显示 + 服务器确认
+            val tile = getTile(tileView)
+            try { city.unlockTile(tile) } catch (ignored: Exception) {}
+            val pos = tile.position
             FrameSync.sendOp("city.unlockTile", mapOf("cityId" to city.id, "tileX" to pos.x!!, "tileY" to pos.y!!))
             return true
         }
@@ -184,8 +192,10 @@ class CityView(city: City,
     fun tryWorkTile(tileView: TileView): Boolean {
         if (!canChangeState()) return false
         if (FrameSync.isFsMode(city.civ.gameInfo)) {
-            // 帧同步: 服务器权威 (工作格由广播同步)
-            val pos = getTile(tileView).position
+            // 2026-08-30 拆分: workedTiles 不再广播 → 本地执行实时显示 + 服务器确认
+            val tile = getTile(tileView)
+            try { city.workTile(tile) } catch (ignored: Exception) {}
+            val pos = tile.position
             FrameSync.sendOp("city.workTile", mapOf("cityId" to city.id, "tileX" to pos.x!!, "tileY" to pos.y!!))
             return true
         }
@@ -194,7 +204,10 @@ class CityView(city: City,
     fun tryStopWorkingTile(tileView: TileView): Boolean {
         if (!canChangeState()) return false
         if (FrameSync.isFsMode(city.civ.gameInfo)) {
-            val pos = getTile(tileView).position
+            // 2026-08-30 拆分: 本地执行实时显示 + 服务器确认
+            val tile = getTile(tileView)
+            try { city.stopWorkingTile(tile) } catch (ignored: Exception) {}
+            val pos = tile.position
             FrameSync.sendOp("city.stopWorkTile", mapOf("cityId" to city.id, "tileX" to pos.x!!, "tileY" to pos.y!!))
             return true
         }
@@ -203,7 +216,8 @@ class CityView(city: City,
     fun tryAddToQueue(name: String): Boolean {
         if (!canChangeState()) return false
         if (FrameSync.isFsMode(city.civ.gameInfo)) {
-            // 帧同步: 服务器权威 (队列由广播/回合末存档同步)
+            // 2026-08-30 拆分: queue 不再广播 → 本地执行实时显示 + 服务器确认
+            try { city.cityConstructions.addToQueue(name) } catch (ignored: Exception) {}
             FrameSync.sendOp("city.setProduction", mapOf("cityId" to city.id, "item" to name))
             return true
         }
@@ -213,6 +227,8 @@ class CityView(city: City,
     fun tryRemoveFromQueue(index: Int, automatic: Boolean): Boolean {
         if (!canChangeState()) return false
         if (FrameSync.isFsMode(city.civ.gameInfo)) {
+            // 2026-08-30 拆分: 本地执行实时显示 + 服务器确认
+            try { city.cityConstructions.removeFromQueue(index, automatic) } catch (ignored: Exception) {}
             FrameSync.sendOp("city.removeFromQueue", mapOf("cityId" to city.id, "index" to index))
             return true
         }
@@ -222,16 +238,20 @@ class CityView(city: City,
     fun tryRaisePriority(index: Int): Int? {
         if (!canChangeState()) return null
         if (FrameSync.isFsMode(city.civ.gameInfo)) {
+            // 2026-08-30 拆分: 本地执行 (返回新索引让 UI 刷新) + 服务器确认
+            val newIdx = try { city.cityConstructions.raisePriority(index) } catch (ignored: Exception) { null }
             FrameSync.sendOp("city.raisePriority", mapOf("cityId" to city.id, "index" to index))
-            return null
+            return newIdx
         }
         return city.cityConstructions.raisePriority(index)
     }
     fun tryLowerPriority(index: Int): Int? {
         if (!canChangeState()) return null
         if (FrameSync.isFsMode(city.civ.gameInfo)) {
+            // 2026-08-30 拆分: 本地执行 + 服务器确认
+            val newIdx = try { city.cityConstructions.lowerPriority(index) } catch (ignored: Exception) { null }
             FrameSync.sendOp("city.lowerPriority", mapOf("cityId" to city.id, "index" to index))
-            return null
+            return newIdx
         }
         return city.cityConstructions.lowerPriority(index)
     }
@@ -272,6 +292,8 @@ class CityView(city: City,
     fun tryAddToQueueWithTile(construction: IConstruction, tile: Tile): Boolean {
         if (!canChangeState()) return false
         if (FrameSync.isFsMode(city.civ.gameInfo)) {
+            // 2026-08-30 拆分: 本地执行实时显示 + 服务器确认
+            try { city.cityConstructions.addToQueue(construction, tile = tile) } catch (ignored: Exception) {}
             FrameSync.sendOp("city.addToQueueWithTile", mapOf(
                 "cityId" to city.id, "item" to construction.name,
                 "tileX" to tile.position.x!!, "tileY" to tile.position.y!!))
@@ -283,6 +305,8 @@ class CityView(city: City,
     fun trySetUnitShouldUseSavedPromotion(baseUnit: String, value: Boolean): Boolean {
         if (!canChangeState()) return false
         if (FrameSync.isFsMode(city.civ.gameInfo)) {
+            // 2026-08-30 拆分: savedPromotionPrefs 不再广播 → 本地执行 + 服务器确认
+            try { city.unitShouldUseSavedPromotion[baseUnit] = value } catch (ignored: Exception) {}
             FrameSync.sendCitySetUnitSavedPromotion(city.id, baseUnit, value)
             return true
         }
@@ -297,6 +321,8 @@ class CityView(city: City,
     fun tryMoveEntryToTop(index: Int) {
         if (!canChangeState()) return
         if (FrameSync.isFsMode(city.civ.gameInfo)) {
+            // 2026-08-30 拆分: 本地执行 + 服务器确认
+            try { city.cityConstructions.moveEntryToTop(index) } catch (ignored: Exception) {}
             FrameSync.sendOp("city.moveQueueEntry", mapOf("cityId" to city.id, "index" to index))
             return
         }
@@ -305,6 +331,8 @@ class CityView(city: City,
     fun tryMoveEntryToEnd(index: Int) {
         if (!canChangeState()) return
         if (FrameSync.isFsMode(city.civ.gameInfo)) {
+            // 2026-08-30 拆分: 本地执行 + 服务器确认
+            try { city.cityConstructions.moveEntryToEnd(index) } catch (ignored: Exception) {}
             FrameSync.sendCityMoveEntryToEnd(city.id, index)
             return
         }
@@ -313,6 +341,8 @@ class CityView(city: City,
     fun tryAddToQueueConstruction(construction: IConstruction, addToTop: Boolean = false) {
         if (!canChangeState()) return
         if (FrameSync.isFsMode(city.civ.gameInfo)) {
+            // 2026-08-30 拆分: 本地执行 + 服务器确认
+            try { city.cityConstructions.addToQueue(construction, addToTop = addToTop) } catch (ignored: Exception) {}
             FrameSync.sendCityAddToQueue(city.id, construction.name, addToTop)
             return
         }
@@ -321,6 +351,8 @@ class CityView(city: City,
     fun tryRemoveAllByName(name: String) {
         if (!canChangeState()) return
         if (FrameSync.isFsMode(city.civ.gameInfo)) {
+            // 2026-08-30 拆分: 本地执行 + 服务器确认
+            try { city.cityConstructions.removeAllByName(name) } catch (ignored: Exception) {}
             FrameSync.sendCityRemoveFromQueueByName(city.id, name)
             return
         }
@@ -329,6 +361,8 @@ class CityView(city: City,
     fun tryDisableConstruction(name: String) {
         if (!canChangeState()) return
         if (FrameSync.isFsMode(city.civ.gameInfo)) {
+            // 2026-08-30 拆分: disabledConstructions 不再广播 → 本地执行 + 服务器确认
+            try { city.disabledConstructions.add(name) } catch (ignored: Exception) {}
             FrameSync.sendCityDisableConstruction(city.id, name, disable = true)
             return
         }
@@ -337,6 +371,8 @@ class CityView(city: City,
     fun tryEnableConstruction(name: String) {
         if (!canChangeState()) return
         if (FrameSync.isFsMode(city.civ.gameInfo)) {
+            // 2026-08-30 拆分: 本地执行 + 服务器确认
+            try { city.disabledConstructions.remove(name) } catch (ignored: Exception) {}
             FrameSync.sendCityDisableConstruction(city.id, name, disable = false)
             return
         }
@@ -344,8 +380,9 @@ class CityView(city: City,
     }
     fun tryReassignPopulation(resetLocked: Boolean = false): Boolean {
         if (!canChangeState()) return false
-        // UncivGC 帧同步: 服务器权威 (纯拦截 — 本地执行会被状态广播回滚)
+        // 2026-08-30 拆分: workedTiles/specialists 不再广播 → 本地执行实时 + 服务器确认
         if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(city.civ.gameInfo)) {
+            try { city.reassignPopulation(resetLocked) } catch (ignored: Exception) {}
             com.unciv.ui.screens.worldscreen.FrameSync.sendOp("city.reassignPopulation", mapOf(
                 "cityId" to city.id,
                 "resetLocked" to resetLocked))
@@ -368,8 +405,9 @@ class CityView(city: City,
     }
     fun tryEnableManualSpecialists(): Boolean {
         if (!canChangeState()) return false
-        // UncivGC 帧同步: 服务器权威 (纯拦截 — 本地执行会被状态广播回滚)
+        // 2026-08-30 拆分: manualSpecialists 不再广播 → 本地执行实时 + 服务器确认
         if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(city.civ.gameInfo)) {
+            try { city.manualSpecialists = true } catch (ignored: Exception) {}
             com.unciv.ui.screens.worldscreen.FrameSync.sendOp("city.enableManualSpecialists", mapOf(
                 "cityId" to city.id))
             return true
@@ -380,7 +418,8 @@ class CityView(city: City,
     fun tryDisableManualSpecialists(): Boolean {
         if (!canChangeState()) return false
         if (FrameSync.isFsMode(city.civ.gameInfo)) {
-            // 服务器权威 (manual=false; 原 enable op 默认 true, 兼容)
+            // 2026-08-30 拆分: 本地执行 + 服务器确认
+            try { city.manualSpecialists = false; city.reassignPopulation() } catch (ignored: Exception) {}
             FrameSync.sendCityDisableManualSpecialists(city.id)
             return true
         }
@@ -391,6 +430,12 @@ class CityView(city: City,
     fun tryAssignSpecialist(specialistName: String): Boolean {
         if (!canChangeState()) return false
         if (FrameSync.isFsMode(city.civ.gameInfo)) {
+            // 2026-08-30 拆分: specialists 不再广播 → 本地执行实时 + 服务器确认
+            try {
+                city.population.specialistAllocations.add(specialistName, 1)
+                city.manualSpecialists = true
+                city.cityStats.update()
+            } catch (ignored: Exception) {}
             FrameSync.sendCityAssignSpecialist(city.id, specialistName, delta = 1)
             return true
         }
@@ -402,6 +447,12 @@ class CityView(city: City,
     fun tryUnassignSpecialist(specialistName: String): Boolean {
         if (!canChangeState()) return false
         if (FrameSync.isFsMode(city.civ.gameInfo)) {
+            // 2026-08-30 拆分: 本地执行实时 + 服务器确认
+            try {
+                city.population.specialistAllocations.add(specialistName, -1)
+                city.manualSpecialists = true
+                city.cityStats.update()
+            } catch (ignored: Exception) {}
             FrameSync.sendCityAssignSpecialist(city.id, specialistName, delta = -1)
             return true
         }
@@ -412,10 +463,14 @@ class CityView(city: City,
     }
     fun trySetCityFocus(focus: CityFocus): Boolean {
         if (!canChangeState()) return false
-        // UncivGC 帧同步: 服务器权威 (纯拦截 — 本地执行则服务器不知道, 下次状态广播回滚)
+        // 2026-08-30 拆分: focus 不再广播 → 本地执行实时 + 服务器确认
         val city = this.city
         val gameInfo = city.civ.gameInfo
         if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo)) {
+            try {
+                city.setCityFocus(focus)
+                city.reassignPopulation()
+            } catch (ignored: Exception) {}
             com.unciv.ui.screens.worldscreen.FrameSync.sendOp("city.setFocus", mapOf(
                 "cityId" to city.id,
                 "focus" to focus.name))

@@ -67,6 +67,40 @@ import kotlinx.serialization.json.jsonPrimitive
  */
 object FrameSync {
 
+    /** 最近一次 sim 广播处理耗时 ms (P0 体感诊断, 2026-08-30): FPS 显示右上角实时展示,
+     *  跑真实对局定位卡顿来源 (广播处理慢 → 渲染被抢) */
+    @Volatile
+    var lastSimProcessMs = 0f
+
+    /** 结算重载恢复通知历史上限 (2026-08-30): 防无限累积 (用户反馈"通知越来越多") */
+    private const val MAX_RESTORED_NOTIFS = 20
+
+    /** 本回合广播到达的通知 key (category|text) — 结算重载只恢复这些 (对齐原版"当回合可见",
+     *  但结算瞬间生成的通知玩家来不及看 → 保留到下一回合显示, 再下回合清空) */
+    private val currentTurnNotifKeys = HashSet<String>()
+
+    /** 2026-08-30 公共/私有拆分: 服务器广播的每文明 stats 摘要 (civ名 -> [food, production, gold, science, culture, faith])
+     *  排行/概览需要"别人的每回合产出" — 工作格/专家已不广播, 本地算不了别人 stats → 用服务器权威摘要 */
+    @Volatile
+    var serverStatsByCiv: HashMap<String, FloatArray> = HashMap()
+
+    private fun parseServerStats(state: JsonObject) {
+        val arr = state["stats"]?.jsonArray ?: return
+        val map = HashMap<String, FloatArray>()
+        for (e in arr) {
+            val o = e.jsonObject ?: continue
+            val name = o["civ"]?.jsonPrimitive?.contentOrNull ?: continue
+            map[name] = floatArrayOf(
+                o["food"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0f,
+                o["production"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0f,
+                o["gold"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0f,
+                o["science"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0f,
+                o["culture"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0f,
+                o["faith"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0f)
+        }
+        serverStatsByCiv = map
+    }
+
     /** 帧同步调试日志 (用户目录 fs_debug.log — 桌面版 .app 无控制台, 必须落文件; 2026-08-22 排查"结算停留不生效"用) */
     private fun dbg(msg: String) {
         try {
@@ -362,6 +396,12 @@ object FrameSync {
         val oldWorldScreen = worldScreenRef?.get()
         Concurrency.run("FrameSyncReload") {
             try {
+                // 2026-08-30 修复: 结算重载会清空通知历史 (存档不含通知, 服务器结算时清内存)
+                // — 备份旧通知, loadGame 后恢复 (广播通知在重载前到达的不会丢)
+                val backupNotifs = oldWorldScreen?.gameInfo?.civilizations?.mapNotNull { civ ->
+                    if (civ.isSpectator() || civ.isBarbarian) null
+                    else civ.civName to civ.notifications.toList()
+                }?.toMap()
                 // 先停旧连接/UI — 否则 loadGame 后新 WorldScreen init 的 start 被 running=true 挡住
                 // (statusLabel/暂停按钮不重建, 旧连接残留) — 新 start 会重建全部
                 // 2026-08-27: 重载≠断线 — 服务器可能仍在结算停留 (保底未过), stop() 会重置锁定状态,
@@ -384,6 +424,27 @@ object FrameSync {
                 meetCitySnapshot.clear()
                 teamExploredMerged = false  // 重载后重新全量合并队友探索历史
                 com.unciv.UncivGame.Current.loadGame(gi)
+                // 恢复通知历史 (2026-08-30): 只恢复"本回合新广播"的通知 (结算瞬间生成玩家来不及看),
+                // 旧通知显示一回合后自然消失 — 对齐原版 endTurn 清空, 不无限累积
+                if (backupNotifs != null) {
+                    try {
+                        for (civ in gi.civilizations) {
+                            val saved = backupNotifs[civ.civName] ?: continue
+                            val toRestore = saved.filter { n ->
+                                val key = n.category.name + "|" + n.text
+                                key in currentTurnNotifKeys
+                            }
+                            for (n in toRestore) {
+                                if (civ.notifications.none { it.text == n.text && it.category == n.category }) {
+                                    civ.notifications.add(n)
+                                }
+                            }
+                            while (civ.notifications.size > MAX_RESTORED_NOTIFS) civ.notifications.removeAt(0)
+                        }
+                        currentTurnNotifKeys.clear()  // 下回合重新积累
+                    } catch (ignored: Exception) {
+                    }
+                }
                 if (turn >= 0) lastReloadedTurn = turn  // 成功才记录
                 // 2026-08-27: 重载完成且服务器仍在结算中 → 恢复提示条 (锁定已由 serverSettling 恢复),
                 // 直到 settle_finish 广播 settling=false 才解锁
@@ -454,7 +515,7 @@ object FrameSync {
         // 结算已按旧配置入账, 再改 → 服务器状态变但本回合产出已入账 → 显示与入账不符;
         // 单位操作 (move/attack 等) 保留 — 完成回合后仍可操作闲置单位 (NextUnit 例外)
         if (myTurnFinished && op in TURN_LOCKED_OPS) {
-            showToast("Turn finished - city changes apply next turn".tr())
+            // 2026-08-30: 拒绝提示已全部移除 (用户要求 — 拒绝 toast 海量弹出加剧卡顿), 静默忽略
             return false
         }
         if (!connected) {
@@ -893,7 +954,11 @@ object FrameSync {
         }
         val type = msg["type"]?.jsonPrimitive?.contentOrNull ?: "sim"
         when (type) {
-            "sim" -> handleSimMessage(msg)
+            "sim" -> {
+                val t0 = System.nanoTime()
+                handleSimMessage(msg)
+                lastSimProcessMs = (System.nanoTime() - t0) / 1_000_000f  // P0 诊断: 广播处理耗时
+            }
             "battle" -> handleBattleMessage(msg)
             "campCleared" -> handleCampCleared(msg)
             "saveUpdated" -> reloadGame(msg["turn"]?.jsonPrimitive?.intOrNull ?: -1)
@@ -1293,6 +1358,8 @@ object FrameSync {
                 val displayText = text.tr()
                 if (myCiv.notifications.any { it.text == displayText }) return@runOnGLThread
                 myCiv.addNotification(displayText, null, cat)
+                // 2026-08-30: 记录本回合广播通知 key — 结算重载恢复用 (只恢复当回合新产生的)
+                currentTurnNotifKeys.add(cat.name + "|" + displayText)
                 worldScreen.shouldUpdate = true
             } catch (e: Exception) {
             }
@@ -2060,18 +2127,13 @@ object FrameSync {
         val reason = msg["reason"]?.jsonPrimitive?.contentOrNull ?: ""
         val state = msg["state"] as? JsonObject
         if (state == null) {
-            // op 结果失败 (如移动被拒)
-            if (!ok && reason.isNotEmpty() && reason != "state") {
-                // 结算窗口拒绝 (全员完成→模拟器结算中): 友好提示而非“Operation rejected”, 玩家稍候重试即可
-                if (reason.contains("turn settling")) {
-                    showToast("Turn settling, please wait a moment".tr())
-                } else {
-                    showToast("Operation rejected: [$reason]".tr())
-                }
-            }
+            // op 结果失败 (如移动被拒): 拒绝提示已全部移除 — 卡顿时疯狂点击产生海量拒绝 toast
+            // → GL 弹窗风暴 → 更卡 (2026-08-30 用户要求); 静默忽略, 状态由后续广播收敛
             return
         }
         val worldScreen = worldScreenRef?.get() ?: return
+        // 2026-08-30 公共/私有拆分: 每文明每回合产出摘要 (排行/概览用 — 别人的工作格/专家被裁后本地算不了)
+        parseServerStats(state)
         val newTurn = state["turn"]?.jsonPrimitive?.intOrNull
         if (newTurn != null && newTurn > lastTurn) {
             // 新回合: “已查看”闲置单位标记重置 — 上回合点过“下一个单位”的单位本回合重新参与循环
@@ -2996,6 +3058,7 @@ object FrameSync {
                     if (unit.isDestroyed || !unit.hasTile()) continue
                     if (unit.id !in stateIds) {
                         try {
+                            worldScreen.mapHolder.cancelServerUnitAnimation(unit.id)  // 取消在播动画 (2026-08-30)
                             unit.destroy()
                             unitsChanged = true
                         } catch (e: Exception) {
@@ -3012,6 +3075,7 @@ object FrameSync {
                         if (unit.isDestroyed || !unit.hasTile()) continue
                         if (unit.id == ruId) {
                             try {
+                                worldScreen.mapHolder.cancelServerUnitAnimation(ruId)  // 取消在播动画 (2026-08-30)
                                 unit.destroy()
                                 unitsChanged = true
                             } catch (e: Exception) {
@@ -4541,6 +4605,8 @@ object FrameSync {
             }
             if (changed) {
                 cityStateChanged = true
+                // 2026-08-30: 锁定格变 (影响自动分配) → 文明 stats 缓存失效 (排行/概览实时)
+                try { city.civ.updateStatsForNextTurn() } catch (ignored: Exception) {}
                 worldScreen.shouldUpdate = true
             }
         } catch (e: Exception) {

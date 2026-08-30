@@ -167,13 +167,20 @@ class BuyButtonFactory(val cityScreen: CityScreen) {
     ) {
         SoundPlayer.play(stat.purchaseSound)
         val cityView = cityScreen.cityView
-        // UncivGC 帧同步: 服务器权威, 本地不执行 (统一服务器广播 — 避免双执行/回滚)
+        // UncivGC 帧同步: 2026-08-30 拆分 — queue 不再广播 → 本地执行实时显示 + 服务器确认
+        // (本地执行成功才发 op; 失败=服务器也失败, 不发避免错位; 金币/单位/建筑由公共广播覆盖一致)
         if (FrameSync.isFsMode(cityScreen.cityView.getCity().civ.gameInfo)) {
-            FrameSync.sendOp("city.buy", mapOf(
-                "cityId" to cityView.getCity().id,
-                "item" to construction.name,
-                "stat" to stat.name))
-            // 关闭购买弹窗 (购买结果由状态广播/回合末存档同步)
+            val ok = try {
+                cityView.constructions.purchaseConstruction(construction, cityScreen.selectedQueueEntry, false, stat, tile)
+            } catch (e: Exception) {
+                false
+            }
+            if (ok) {
+                FrameSync.sendOp("city.buy", mapOf(
+                    "cityId" to cityView.getCity().id,
+                    "item" to construction.name,
+                    "stat" to stat.name))
+            }
             if (cityScreen.selectedQueueEntry >= 0) cityScreen.selectedQueueEntry = -1
             cityScreen.clearSelection()
             cityScreen.update()

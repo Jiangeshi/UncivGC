@@ -64,6 +64,10 @@ class WorldMapHolder(
 
     private lateinit var tileGroupMap: TileGroupMap<WorldTileGroup>
 
+    /** 帧同步广播移动动画跟踪 (2026-08-30 插值动画): unitId -> 在播动画 Group.
+     *  新广播到达时接管续播 (取消会丢 sprite 导致单位消失), 动画结束/单位移除时清理 */
+    private val serverAnimatingUnits = HashMap<Int, Group>()
+
     lateinit var currentTileSetStrings: TileSetStrings
 
     init {
@@ -408,19 +412,25 @@ class WorldMapHolder(
         previousTile: Tile,
         selectedUnit: MapUnit,
         targetTile: Tile,
-        pathToTile: List<Tile>
-    ) {
+        pathToTile: List<Tile>,
+        existingGroup: Group? = null,
+        perTileSecs: Float = 0.5f / pathToTile.size,
+        onDone: (() -> Unit)? = null
+    ): Group {
         val tileGroup = tileGroups[previousTile]!!
 
         // Steal the current sprites to our new group
-        val unitSpriteAndIcon = Group().apply { setPosition(tileGroup.x, tileGroup.y) }
-        val unitSpriteSlot = tileGroup.layerUnitArt.getSpriteSlot(selectedUnit) ?: return
-        
-        for (spriteImage in unitSpriteSlot.spriteGroup.children.toList()) // toList because actors added remove themselves from previous parent  
-            unitSpriteAndIcon.addActor(spriteImage)
-        tileGroupMap.addActor(unitSpriteAndIcon)
-
-        
+        val unitSpriteAndIcon = existingGroup ?: Group().apply { setPosition(tileGroup.x, tileGroup.y) }
+        if (existingGroup == null) {
+            val unitSpriteSlot = tileGroup.layerUnitArt.getSpriteSlot(selectedUnit) ?: return unitSpriteAndIcon
+            for (spriteImage in unitSpriteSlot.spriteGroup.children.toList()) // toList because actors add themselves remove their previous parent
+                unitSpriteAndIcon.addActor(spriteImage)
+            tileGroupMap.addActor(unitSpriteAndIcon)
+        } else if (unitSpriteAndIcon.parent == null) {
+            // 接管续播: 旧动画已结束 (Group 被 remove) 但记录未清理 → 重新挂回地图层
+            tileGroupMap.addActor(unitSpriteAndIcon)
+        }
+        unitSpriteAndIcon.clearActions()
 
         unitSpriteAndIcon.addAction(
             Actions.sequence(
@@ -434,7 +444,7 @@ class WorldMapHolder(
                     Actions.moveTo(
                         tileGroups[tile]!!.x,
                         tileGroups[tile]!!.y,
-                        0.5f / pathToTile.size
+                        perTileSecs
                     )
                 }.toTypedArray(),
                 Actions.run {
@@ -442,15 +452,24 @@ class WorldMapHolder(
                     val targetTileSpriteSlot = tileGroups[targetTile]!!.layerUnitArt.getSpriteSlot(selectedUnit)
                     targetTileSpriteSlot?.spriteGroup?.isVisible = true
                     worldScreen.shouldUpdate = true
+                    onDone?.invoke()
                 },
                 Actions.removeActor(),
             )
         )
+        return unitSpriteAndIcon
     }
 
     /** 帧同步 (服务器权威): 按服务器状态落位单位并播放移动动画.
      *  数据先落位 (tile 注册表), 显示层沿路径平滑移动 — 动画期间不触发重渲染,
-     *  动画结束时 shouldUpdate=true 让单位在目标格正确渲染. */
+     *  动画结束时 shouldUpdate=true 让单位在目标格正确渲染.
+     *  2026-08-30 插值动画: 每格 180ms 自适应时长 (与 150ms 广播窗口匹配, 广播再稀也平滑);
+     *  单位已有在播动画时接管续播 (旧动画取消会丢 sprite 导致单位消失/闪烁) */
+    /** 单位被移除 (removedUnits 广播/消灭/全量扫描): 取消在播动画, 防幽灵 sprite 继续飞 (2026-08-30) */
+    fun cancelServerUnitAnimation(unitId: Int) {
+        serverAnimatingUnits.remove(unitId)?.remove()
+    }
+
     fun animateServerUnitMove(unit: MapUnit, targetTile: Tile) {
         val previousTile = unit.getTile()
         if (previousTile == targetTile || unit.isDestroyed) return
@@ -472,7 +491,13 @@ class WorldMapHolder(
             worldScreen.shouldUpdate = true
             return
         }
-        animateMovement(previousTile, unit, targetTile, path)
+        // 插值动画: 接管旧动画 (如有) 从当前位置续播, 注册新动画
+        val old = serverAnimatingUnits.remove(unit.id)
+        val group = animateMovement(previousTile, unit, targetTile, path,
+            existingGroup = old,
+            perTileSecs = 0.18f,
+            onDone = { serverAnimatingUnits.remove(unit.id) })
+        serverAnimatingUnits[unit.id] = group
     }
 
     internal fun swapMoveUnitToTargetTile(selectedUnit: MapUnit, targetTile: Tile) {
