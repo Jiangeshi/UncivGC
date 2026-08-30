@@ -200,16 +200,21 @@ class LobbyScreen : PickerScreen() {
         popup.addGoodSizedLabel("Create room".tr()).colspan(2).row()
         val nameField = UncivTextField("My room".tr())
         popup.add(nameField).width(stage.width / 2).row()
+        // 2026-08-31 房间密码: 可选, 留空=公开房间
+        val passwordField = UncivTextField("")
+        popup.add("Password (optional)".tr()).padTop(5f)
+        popup.add(passwordField).width(stage.width / 2).row()
         val createButton = "Create".toTextButton()
         createButton.onActivation {
             val name = nameField.text.trim().ifEmpty { "My room".tr() }
+            val password = passwordField.text.trim()
             popup.close()
             val loading = Popup(this)
             loading.addGoodSizedLabel("Creating...".tr())
             loading.open()
             Concurrency.run("LobbyCreate") {
                 try {
-                    val room = LobbyApi.createRoom(name, nickname, playerId, null)
+                    val room = LobbyApi.createRoom(name, nickname, playerId, null, password)
                     launchOnGLThread {
                         loading.close()
                         game.pushScreen(LobbyRoomScreen(room.id, room.name))
@@ -249,6 +254,8 @@ class LobbyScreen : PickerScreen() {
             val row = Table()
             row.defaults().pad(5f)
             row.add(room.name.toLabel(fontSize = 22)).width(200f)
+            // 2026-08-31 房间密码: 锁标 (文本标记)
+            if (room.hasPassword) row.add("[密码]".toLabel(fontSize = 16)).padLeft(2f)
             row.add("Host: [${room.owner ?: "-"}]".toLabel()).width(140f)
             row.add("[${room.playerCount}] players".toLabel()).width(60f)
             val statusText = when (room.status) {
@@ -289,12 +296,40 @@ class LobbyScreen : PickerScreen() {
     }
 
     private fun joinRoom(room: LobbyRoom) {
+        // 2026-08-31 房间密码: 有密码的房间先弹输入框 (房主/成员重进免 — 服务器端按成员判定)
+        if (room.hasPassword) {
+            val popup = Popup(this)
+            popup.addGoodSizedLabel("This room is password protected".tr()).colspan(2).row()
+            val pwdField = UncivTextField("")
+            popup.add("Password".tr())
+            popup.add(pwdField).width(stage.width / 3).row()
+            val okButton = "Join".toTextButton()
+            okButton.onActivation {
+                val pw = pwdField.text.trim()
+                popup.close()
+                doJoinRoom(room, pw)
+            }
+            okButton.keyShortcuts.add(KeyCharAndCode.RETURN)
+            val cancelButton = "Cancel".toTextButton()
+            cancelButton.onActivation { popup.close() }
+            cancelButton.keyShortcuts.add(KeyCharAndCode.BACK)
+            val buttonRow = com.badlogic.gdx.scenes.scene2d.ui.Table()
+            buttonRow.add(cancelButton).padRight(10f)
+            buttonRow.add(okButton)
+            popup.add(buttonRow)
+            popup.open()
+            return
+        }
+        doJoinRoom(room, "")
+    }
+
+    private fun doJoinRoom(room: LobbyRoom, password: String) {
         val loading = Popup(this)
         loading.addGoodSizedLabel("Joining...".tr())
         loading.open()
         Concurrency.run("LobbyJoin") {
             try {
-                val result = LobbyApi.joinRoom(room.id, nickname, playerId, null)
+                val result = LobbyApi.joinRoom(room.id, nickname, playerId, null, password)
                 launchOnGLThread {
                     loading.close()
                     if (result.ok) {

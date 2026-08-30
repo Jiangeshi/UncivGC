@@ -59,6 +59,7 @@ data class LobbyRoom(
     val status: String = "waiting",   // waiting | starting | playing
     val gameId: String? = null,
     val version: Int = 1,
+    val hasPassword: Boolean = false,  // 2026-08-31 房间密码 (列表锁标/加入需输密码)
     val playerCount: Int = 0,
     val owner: String? = null,
     val settings: Map<String, JsonElement> = emptyMap(),
@@ -88,9 +89,9 @@ data class ApiResult(val ok: Boolean = false, val msg: String = "", val gameId: 
 data class ApiError(val error: String? = null)
 
 @Serializable
-data class CreateRoomRequest(val name: String, val nickname: String, val playerId: String, val civ: String)
+data class CreateRoomRequest(val name: String, val nickname: String, val playerId: String, val civ: String, val password: String = "")
 @Serializable
-data class JoinRequest(val nickname: String, val playerId: String, val civ: String)
+data class JoinRequest(val nickname: String, val playerId: String, val civ: String, val password: String = "")
 @Serializable
 data class ReadyRequest(val nickname: String, val playerId: String, val ready: Boolean)
 @Serializable
@@ -146,10 +147,10 @@ object LobbyApi {
     suspend fun listRooms(): List<LobbyRoom> =
         parse(client.get("$SERVER_URL/api/rooms"))
 
-    suspend fun createRoom(name: String, nickname: String, playerId: String, civ: String?): LobbyRoom =
+    suspend fun createRoom(name: String, nickname: String, playerId: String, civ: String?, password: String = ""): LobbyRoom =
         parse(client.post("$SERVER_URL/api/rooms") {
             contentType(ContentType.Application.Json)
-            setBody(CreateRoomRequest(name, nickname, playerId, civ ?: ""))
+            setBody(CreateRoomRequest(name, nickname, playerId, civ ?: "", password))
         })
 
     suspend fun getRoom(roomId: String, playerId: String? = null): LobbyRoom =
@@ -163,10 +164,10 @@ object LobbyApi {
         return parse(response)
     }
 
-    suspend fun joinRoom(roomId: String, nickname: String, playerId: String, civ: String?): ApiResult =
+    suspend fun joinRoom(roomId: String, nickname: String, playerId: String, civ: String?, password: String = ""): ApiResult =
         parse(client.post("$SERVER_URL/api/rooms/$roomId/join") {
             contentType(ContentType.Application.Json)
-            setBody(JoinRequest(nickname, playerId, civ ?: ""))
+            setBody(JoinRequest(nickname, playerId, civ ?: "", password))
         })
 
     suspend fun leaveRoom(roomId: String, nickname: String, playerId: String? = null): ApiResult =
