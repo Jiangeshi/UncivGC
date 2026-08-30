@@ -31,9 +31,9 @@ class CityTileGroup(val cityView: CityView, tileView: TileView, tileSetStrings: 
         // layerMisc is no longer a Group actor; touch handling is managed at the TileMapLayer level.
     }
 
-    override fun update(viewingCiv: CivView?) {
+    override fun update(viewingCiv: CivView?, updateStatic: Boolean) {
         val tileView = cityView.tileView(tile)
-        super.update(cityView.viewingCiv())
+        super.update(cityView.viewingCiv(), updateStatic)
 
         tileState = CityTileState.NONE
 

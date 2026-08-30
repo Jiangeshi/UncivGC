@@ -71,6 +71,11 @@ open class TileGroup(
         layerCityButton
     )
 
+    /** 2026-08-31 分层重绘: 静态层 (地形/特征/边界/资源/改良/产出) 是否需重建 —
+     *  数据变化 (单位移动/改良道路/地形资源变化) 由 WorldMapHolder 标记对应格子;
+     *  未标记的格子跳过静态层重建 (原实现每次 update 全图 11 层全刷, 大图/频繁广播卡顿) */
+    var staticLayersDirty = true
+
     init {
         this.setSize(groupSize, groupSize)
         this.isTransform = false // Cannot be a NonTransformGroup as this causes font-rendered terrain to be upside-down
@@ -95,13 +100,14 @@ open class TileGroup(
         layerOverlay.reset()
         layerUnitArt.reset()
         layerUnitFlag.reset()
+        staticLayersDirty = true  // 内容清空 → 下次 update 静态层需重建
     }
 
     private fun setAllLayersVisible(isVisible: Boolean) {
         for (layer in allLayers) layer.isVisible = isVisible
     }
 
-    open fun update(viewingCiv: CivView? = null) {
+    open fun update(viewingCiv: CivView? = null, updateStatic: Boolean = true) {
         if (viewingCiv == null) {
             if (tileView.getViewer() != null)
                 tileView = TileMapView(tile.tileMap, null).getTile(tile)
@@ -134,7 +140,22 @@ open class TileGroup(
 
         removeMissingModReferences()
 
-        for (layer in allLayers) layer.update(viewingCiv)
+        // 2026-08-31 分层重绘: 静态层 (地形/特征/边界/资源/改良/产出) 脏才重建;
+        // 动态层 (迷雾高亮/单位/旗帜/城市按钮) 每帧更新 (轻量, 操作/可见性驱动)
+        if (updateStatic || staticLayersDirty) {
+            layerTerrain.update(viewingCiv)
+            layerFeatures.update(viewingCiv)
+            layerBorders.update(viewingCiv)
+            layerResource.update(viewingCiv)
+            layerImprovement.update(viewingCiv)
+            layerMisc.update(viewingCiv)
+            layerYield.update(viewingCiv)
+            staticLayersDirty = false
+        }
+        layerOverlay.update(viewingCiv)
+        layerUnitArt.update(viewingCiv)
+        layerUnitFlag.update(viewingCiv)
+        layerCityButton.update(viewingCiv)
     }
 
     private fun removeMissingModReferences() {

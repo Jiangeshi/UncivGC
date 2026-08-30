@@ -12,8 +12,8 @@ import com.unciv.ui.components.extensions.darken
 class WorldTileGroup(tileView: TileView, tileSetStrings: TileSetStrings)
     : TileGroup(tileView, tileSetStrings) {
 
-    override fun update(viewingCiv: CivView?) {
-        super.update(viewingCiv)
+    override fun update(viewingCiv: CivView?, updateStatic: Boolean) {
+        super.update(viewingCiv, updateStatic)
 
         updateWorkedIcon(viewingCiv!!)
     }

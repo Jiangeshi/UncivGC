@@ -25,9 +25,11 @@ object WorldMapTileUpdater {
                 it.isForceVisible = true } // So we can see all resources, regardless of tech
         }
 
-        // General update of all tiles
+        // 2026-08-31 分层重绘: 静态层只刷脏格子 (数据变化标记), 其余格子只更新动态层 (轻量);
+        // 全量脏 (全量帧/视野探索变化) 时全部刷新静态层
+        val (allDirty, dirtySet) = consumeStaticDirty()
         for (tileGroup in tileGroups.values)
-            tileGroup.update(civView)
+            tileGroup.update(civView, updateStatic = allDirty || dirtySet.contains(tileGroup.tile))
 
         // Update tiles according to selected unit/city
         val unitTable = worldScreen.bottomUnitTable

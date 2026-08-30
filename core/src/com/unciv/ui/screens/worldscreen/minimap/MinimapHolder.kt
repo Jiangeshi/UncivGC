@@ -39,7 +39,14 @@ class MinimapHolder(val mapHolder: WorldMapHolder) : Table() {
         "TileIcons/MapOverlayToggleYields",
         // This is a use in the UI that has little to do with the stat… These buttons have more in common with each other than they do with other uses of getStatIcon().
         getter = { UncivGame.Current.settings.showTileYields },
-        setter = { UncivGame.Current.settings.showTileYields = it }
+        setter = {
+            UncivGame.Current.settings.showTileYields = it
+            // 2026-08-31 分层重绘: 显示开关切换 → 全图静态层需重建 (产出层是静态层, 脏标记才刷新)
+            try {
+                com.unciv.UncivGame.Current.worldScreen?.mapHolder?.markAllStaticDirty()
+            } catch (ignored: Exception) {
+            }
+        }
     )
     /** Button, next to the minimap, to toggle the worked tiles map overlay. */
     val populationImageButton = MapOverlayToggleButton(
@@ -51,7 +58,14 @@ class MinimapHolder(val mapHolder: WorldMapHolder) : Table() {
     val resourceImageButton = MapOverlayToggleButton(
         "TileIcons/MapOverlayToggleResources",
         getter = { UncivGame.Current.settings.showResourcesAndImprovements },
-        setter = { UncivGame.Current.settings.showResourcesAndImprovements = it }
+        setter = {
+            UncivGame.Current.settings.showResourcesAndImprovements = it
+            // 2026-08-31 分层重绘: 资源/改良图标是静态层, 开关切换 → 全图重建
+            try {
+                com.unciv.UncivGame.Current.worldScreen?.mapHolder?.markAllStaticDirty()
+            } catch (ignored: Exception) {
+            }
+        }
     )
     /** Button, next to the minimap, to toggle the pixel improvements map overlay. */
     val improvementsImageButton = MapOverlayToggleButton(

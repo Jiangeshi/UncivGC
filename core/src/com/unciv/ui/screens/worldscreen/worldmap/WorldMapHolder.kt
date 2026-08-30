@@ -64,6 +64,32 @@ class WorldMapHolder(
 
     private lateinit var tileGroupMap: TileGroupMap<WorldTileGroup>
 
+    /** 2026-08-31 分层重绘: 静态层脏格子集合 (数据变化标记, updateTiles 消费) —
+     *  广播变化 (单位移动/地图段/地形资源) 由 FrameSync 标记; 全量帧/视野变化标记全图 */
+    private val dirtyTiles = HashSet<com.unciv.logic.map.tile.Tile>()
+    private var allStaticDirty = false
+
+    /** 标记指定格子的静态层需重建 (单位移动/改良道路/地形资源变化) */
+    fun markTilesDirty(tiles: Collection<com.unciv.logic.map.tile.Tile>) {
+        if (allStaticDirty) return  // 已全量脏, 无需再记
+        dirtyTiles.addAll(tiles)
+    }
+
+    /** 标记全部格子静态层需重建 (全量帧/视野探索变化/产出显示开关切换) */
+    fun markAllStaticDirty() {
+        allStaticDirty = true
+        dirtyTiles.clear()
+    }
+
+    /** 消费脏集合: 返回 (是否全量脏, 脏格子集合); 调用后脏状态复位 */
+    fun consumeStaticDirty(): Pair<Boolean, Set<com.unciv.logic.map.tile.Tile>> {
+        val all = allStaticDirty
+        allStaticDirty = false
+        val dirty = if (all) emptySet() else dirtyTiles.toSet()
+        dirtyTiles.clear()
+        return all to dirty
+    }
+
     /** 帧同步广播移动动画跟踪 (2026-08-30 插值动画): unitId -> 在播动画 Group.
      *  新广播到达时接管续播 (取消会丢 sprite 导致单位消失), 动画结束/单位移除时清理 */
     private val serverAnimatingUnits = HashMap<Int, Group>()

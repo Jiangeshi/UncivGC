@@ -2613,6 +2613,12 @@ object FrameSync {
             unitVisibilityPos[id] = pos
             unitProcessedEntry[id] = curEntry ?: ""
             try { unit.updateVisibleTiles() } catch (e: Exception) {}
+            // 2026-08-31 分层重绘: 重算单位的新视野格标记静态层脏 —
+            // 新探索格 (之前隐藏) 要显示地形/资源 (静态层重建; 范围=该单位视野, 远小于全图)
+            try {
+                worldScreenRef?.get()?.mapHolder?.markTilesDirty(unit.viewableTiles)
+            } catch (ignored: Exception) {
+            }
             // 组队: 队友新视野 → 我也永久探索 (幂等, 只覆盖重算过的单位)
             if (explorerCiv != null) {
                 try {
@@ -2839,6 +2845,10 @@ object FrameSync {
 
     private fun applyState(worldScreen: WorldScreen, units: List<JsonElement>, cities: List<JsonElement> = emptyList(), civs: List<JsonElement> = emptyList(), encampments: List<JsonElement> = emptyList(), improvements: List<JsonElement> = emptyList(), improvementsDone: List<JsonElement> = emptyList(), roads: List<JsonElement> = emptyList(), religions: List<JsonElement> = emptyList(), terrainChanges: List<JsonElement> = emptyList(), isFull: Boolean = true, removedUnits: List<JsonElement> = emptyList(), removedCities: List<JsonElement> = emptyList(), removedCivs: List<JsonElement> = emptyList(), removedEncampments: List<JsonElement> = emptyList(), removedImprovements: List<JsonElement> = emptyList(), removedImprovementsDone: List<JsonElement> = emptyList(), removedRoads: List<JsonElement> = emptyList(), removedReligions: List<JsonElement> = emptyList()) {
         val gameInfo = worldScreen.gameInfo ?: return
+        // 2026-08-31 分层重绘: 全量帧 → 全图静态层需重建 (回合切换/重连/视野全量变化)
+        if (isFull) {
+            try { worldScreen.mapHolder.markAllStaticDirty() } catch (ignored: Exception) {}
+        }
         // 地形变化同步 (OneTimeChangeTerrain "Turn this tile into"): 服务器权威改地形, 本地应用 + 刷新视野/单位通行
         syncTerrainChanges(gameInfo, terrainChanges, worldScreen)
         // 回合数显示同步 (顶栏)
@@ -3333,6 +3343,25 @@ object FrameSync {
                         }
                     }
                 }
+                // 2026-08-31 分层重绘: 地图段变化的格子 → 静态层需重建
+                try {
+                    val mapHolder = worldScreenRef?.get()?.mapHolder
+                    if (mapHolder != null) {
+                        val changedTiles = HashSet<com.unciv.logic.map.tile.Tile>()
+                        for (key in serverImps.keys) changedTiles.add(gameInfo.tileMap[key.first, key.second])
+                        for (key in serverDoneNames.keys) changedTiles.add(gameInfo.tileMap[key.first, key.second])
+                        for (key in serverRoads.keys) changedTiles.add(gameInfo.tileMap[key.first, key.second])
+                        for (pos in serverCamps) changedTiles.add(gameInfo.tileMap.get(pos.x ?: continue, pos.y ?: continue))
+                        for (rem in removedImprovements + removedImprovementsDone + removedRoads + removedEncampments) {
+                            val a = rem.jsonArray ?: continue
+                            val x = a.getOrNull(0)?.jsonPrimitive?.intOrNull ?: continue
+                            val y = a.getOrNull(1)?.jsonPrimitive?.intOrNull ?: continue
+                            gameInfo.tileMap[x, y]?.let { changedTiles.add(it) }
+                        }
+                        mapHolder.markTilesDirty(changedTiles)
+                    }
+                } catch (ignored: Exception) {
+                }
                 if (changed) {
                     val affectedCivs = HashSet<com.unciv.logic.civilization.Civilization>()
                     for (city in affectedCities) {
@@ -3555,6 +3584,7 @@ object FrameSync {
         try {
             if (terrainChanges.isEmpty()) return
             var changed = false
+            val changedTiles = HashSet<com.unciv.logic.map.tile.Tile>()
             for (tc in terrainChanges) {
                 try {
                     val arr = tc.jsonArray ?: continue
@@ -3567,6 +3597,7 @@ object FrameSync {
                     val improvement = arr.getOrNull(5)?.jsonPrimitive?.contentOrNull?.takeIf { it != "null" }
                     val tile = gameInfo.tileMap.get(x, y) ?: continue
                     val terrain = gameInfo.ruleset.terrains[baseTerrain] ?: continue
+                    changedTiles.add(tile)
                     if (tile.baseTerrain != baseTerrain) {
                         tile.setBaseTerrain(terrain)
                         changed = true
@@ -3589,10 +3620,11 @@ object FrameSync {
             }
             if (changed) {
                 worldScreen.shouldUpdate = true
+                // 2026-08-31 分层重绘: 只标记变化的格子 (静态层重建; 不再全图立即刷)
                 try {
-                    val civView = worldScreen.gameView.civView
-                    for (tg in worldScreen.mapHolder.tileGroups.values) tg.update(civView)
-                } catch (ignored: Exception) {}
+                    worldScreen.mapHolder.markTilesDirty(changedTiles)
+                } catch (ignored: Exception) {
+                }
             }
         } catch (e: Exception) {
         }
@@ -4652,6 +4684,10 @@ object FrameSync {
                 try {
                     val newCity = civ.addCity(com.unciv.logic.map.HexCoord(x, y), null)
                     newCity.id = id
+                    // 2026-08-31 分层重绘: 新城市中心格静态层重建 (城市取代地形/资源显示)
+                    if (!isFull) {
+                        try { worldScreen.mapHolder.markTilesDirty(listOf(newCity.getCenterTile())) } catch (ignored: Exception) {}
+                    }
                     obj["name"]?.jsonPrimitive?.contentOrNull?.let { newCity.name = it }
                     worldScreen.shouldUpdate = true
                     newCity
