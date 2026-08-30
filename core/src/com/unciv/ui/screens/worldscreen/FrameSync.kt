@@ -1758,7 +1758,8 @@ object FrameSync {
                     val fromCityId = msg["fromCityId"]?.jsonPrimitive?.contentOrNull ?: ""
                     val toCityId = msg["toCityId"]?.jsonPrimitive?.contentOrNull ?: ""
                     val otherCity = gameInfo.getCities().firstOrNull { it.id == toCityId }
-                    myCiv.addNotification("Your trade route to [${otherCity?.name ?: toCityId}] has been accepted",
+                    // 2026-08-31 修复: 英文模板+城市名 → tr() 查不到带城市名的 key → 翻译丢; 改中文 (对齐拒绝通知)
+                    myCiv.addNotification("你的商路请求到 ${otherCity?.name?.tr() ?: toCityId} 已被接受",
                         com.unciv.logic.civilization.NotificationCategory.Trade, "",
                         com.unciv.logic.civilization.NotificationIcon.Trade)
                 }
@@ -1842,7 +1843,8 @@ object FrameSync {
             try {
                 val myCiv = worldScreen.viewingCiv
                 if (myCiv != null && !myCiv.isSpectator()) {
-                    myCiv.addNotification("A trade route has been discontinued",
+                    // 2026-08-31 修复: 英文 → 中文 (原 key 无翻译)
+                    myCiv.addNotification("贸易路线已断开",
                         com.unciv.logic.civilization.NotificationCategory.Trade, "",
                         com.unciv.logic.civilization.NotificationIcon.Trade)
                 }
