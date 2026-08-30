@@ -4684,9 +4684,9 @@ object FrameSync {
                 try {
                     val newCity = civ.addCity(com.unciv.logic.map.HexCoord(x, y), null)
                     newCity.id = id
-                    // 2026-08-31 分层重绘: 新城市中心格静态层重建 (城市取代地形/资源显示)
+                    // 2026-08-31 分层重绘: 建城低频 → 全图静态层重建 (领土轮廓/边界跨格, 单格标记会漏)
                     if (!isFull) {
-                        try { worldScreen.mapHolder.markTilesDirty(listOf(newCity.getCenterTile())) } catch (ignored: Exception) {}
+                        try { worldScreen.mapHolder.markAllStaticDirty() } catch (ignored: Exception) {}
                     }
                     obj["name"]?.jsonPrimitive?.contentOrNull?.let { newCity.name = it }
                     worldScreen.shouldUpdate = true
@@ -4707,6 +4707,8 @@ object FrameSync {
         if (isFull) {
             // 全量模式: 扫描本地城市, 不在服务器列表中的 → 移除
             if (serverCityIds.isNotEmpty()) {
+                // 2026-08-31 分层重绘: 城市被移除 → 领土边界消失 → 全图静态层重建
+                try { worldScreen.mapHolder.markAllStaticDirty() } catch (ignored: Exception) {}
                 for (localCity in gameInfo.getCities().toList()) {
                     if (localCity.id in serverCityIds) continue
                     try {
@@ -4783,6 +4785,8 @@ object FrameSync {
                 }.toSet()
             if (owned.isEmpty()) return
             var changed = false
+            // 2026-08-31 分层重绘: 归属变化的格子 + 邻居标脏 (边界线跨格判断, 买地/扩张后领土立即绘制)
+            val borderDirty = HashSet<com.unciv.logic.map.tile.Tile>()
             for ((x, y) in owned) {
                 val px = x ?: continue
                 val py = y ?: continue
@@ -4790,6 +4794,8 @@ object FrameSync {
                 if (t.owningCity != city) {
                     t.setOwningCity(city)
                     city.tiles.add(t.position)  // 更新城市地块集 (城市界面立即显示)
+                    borderDirty.add(t)
+                    borderDirty.addAll(t.neighbors)
                     changed = true
                 }
             }
@@ -4798,11 +4804,15 @@ object FrameSync {
                 if ((t.position.x!! to t.position.y!!) !in owned && t.owningCity == city) {
                     t.setOwningCity(null)
                     city.tiles.remove(t.position)
+                    borderDirty.add(t)
+                    borderDirty.addAll(t.neighbors)
                     changed = true
                 }
             }
             if (changed) {
                 cityStateChanged = true
+                // 2026-08-31 分层重绘: 领土边界变化 → 对应格子静态层重建
+                try { worldScreen.mapHolder.markTilesDirty(borderDirty) } catch (ignored: Exception) {}
                 // 2026-08-30: 地块归属变 → 城市 stats 完整重算 (含文明级; updateStatsForNextTurn 快乐条件坑)
                 try { city.cityStats.update() } catch (ignored: Exception) {}
                 worldScreen.shouldUpdate = true
