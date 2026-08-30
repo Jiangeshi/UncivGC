@@ -57,7 +57,8 @@ class RankingPanel(private val worldScreen: WorldScreen) : Table(BaseScreen.skin
     /** 取值: 分数/军力为累计值; 科技/文化/金钱/产能/增长为每回合增量 —
      *  2026-08-30 公共/私有拆分: 增量列用服务器 stats 摘要 (别人的工作格/专家已不广播, 本地算不了别人增量) */
     private fun getValue(civ: Civilization, category: RankingType): Int = when (category) {
-        RankingType.Score, RankingType.Force -> civ.getStatForRanking(category)
+        RankingType.Score -> civ.getStatForRanking(category)
+        RankingType.Force -> serverStat(civ, 6)          // 军力 (服务器摘要, 本地缓存不失效) 2026-08-30
         RankingType.Technologies -> serverStat(civ, 3)  // science 增量
         RankingType.Culture -> serverStat(civ, 4)       // culture 增量
         RankingType.Gold -> serverStat(civ, 2)          // gold 增量

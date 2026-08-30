@@ -208,7 +208,18 @@ class FsChatPanel(
                         // 弹窗打开 = 全部已读: 清频道未读 + 记录各频道已读基线 — 2026-08-29
                         fsUnread.clear()
                         fsChannelReadSeq.clear()
-                        fsLastSeq = maxSeq
+                        // 2026-08-30 修复: fsLastSeq=0 → 打开时显示全部历史 (重开聊天能看到之前消息,
+                        // 用户反馈"退出去就没了"); 未读基线=maxSeq → 打开前的消息不计未读, 新消息才计
+                        fsLastSeq = 0
+                        val readBaseChans = buildList {
+                            add("world")
+                            add("team")
+                            for (m in room.members) {
+                                if (m.playerId == myId || m.playerId.isEmpty()) continue
+                                add("player:" + m.playerId)
+                            }
+                        }
+                        for (chan in readBaseChans) fsChannelReadSeq[chan] = maxSeq
                         channelsBuilt = true
                         com.unciv.utils.Concurrency.runOnGLThread { rebuildChannels() }
                     }

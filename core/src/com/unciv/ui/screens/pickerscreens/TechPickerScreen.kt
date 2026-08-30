@@ -128,9 +128,18 @@ class TechPickerScreen(
             // More evil people fast-clicking to cheat - #4977
             if (!researchableTechs.contains(freeTech)) return
         }
-        // UncivGC 帧同步: 服务器权威, 本地不执行 (统一服务器广播 — 避免双执行/回滚)
-        // 免费科技 (freeTechPick) 同样走服务器 (防重载回滚)
+        // UncivGC 帧同步: 2026-08-30 拆分 — 科技队列/进度不再广播 → 本地执行实时显示 + 服务器确认
+        // (免费科技同样本地执行; 不一致由回合重载兑底)
         if (FrameSync.isFsMode(civInfo.gameInfo)) {
+            try {
+                if (freeTechPick) {
+                    civTech.getFreeTechnology(selectedTech!!.name)
+                } else {
+                    civTech.techsToResearch = tempTechsToResearch
+                    civTech.updateResearchProgress()
+                }
+            } catch (ignored: Exception) {
+            }
             if (freeTechPick) {
                 FrameSync.sendOp("civ.chooseTech", mapOf("techs" to ArrayList(listOf(selectedTech!!.name)), "free" to true))
             } else {

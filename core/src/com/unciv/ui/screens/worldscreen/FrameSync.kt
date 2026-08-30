@@ -79,8 +79,9 @@ object FrameSync {
      *  但结算瞬间生成的通知玩家来不及看 → 保留到下一回合显示, 再下回合清空) */
     private val currentTurnNotifKeys = HashSet<String>()
 
-    /** 2026-08-30 公共/私有拆分: 服务器广播的每文明 stats 摘要 (civ名 -> [food, production, gold, science, culture, faith])
-     *  排行/概览需要"别人的每回合产出" — 工作格/专家已不广播, 本地算不了别人 stats → 用服务器权威摘要 */
+    /** 2026-08-30 公共/私有拆分: 服务器广播的每文明 stats 摘要
+     *  (civ名 -> [food, production, gold, science, culture, faith, force])
+     *  排行/概览需要"别人的每回合产出/军力" — 工作格/专家已不广播, 本地算不了别人 → 用服务器权威摘要 */
     @Volatile
     var serverStatsByCiv: HashMap<String, FloatArray> = HashMap()
 
@@ -96,7 +97,8 @@ object FrameSync {
                 o["gold"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0f,
                 o["science"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0f,
                 o["culture"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0f,
-                o["faith"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0f)
+                o["faith"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0f,
+                o["force"]?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0f)
         }
         serverStatsByCiv = map
     }
@@ -3046,6 +3048,11 @@ object FrameSync {
                 if (resCiv != null && !resCiv.isSpectator()) resCiv.cache.updateCivResources()
             } catch (e: Exception) {
             }
+            // 2026-08-30: 单位增删 → 军力缓存失效 (cachedMilitaryMight 不自动失效 → 排行/概览军力不实时)
+            try {
+                for (civ in gameInfo.civilizations) civ.resetMilitaryMightCache()
+            } catch (ignored: Exception) {
+            }
         }
         // 每次状态都刷新我方全部单位视野 (必须先落位再计算): 我方移动后视野立即刷新;
         // 对方单位进入视野时, 我方即使没动也要触发相遇/视野更新
@@ -3243,11 +3250,17 @@ object FrameSync {
             }
             // ---- 副作用 (与原 4 函数一致) ----
             if (changed) {
+                val affectedCivs = HashSet<com.unciv.logic.civilization.Civilization>()
                 for (city in affectedCities) {
                     try {
                         city.cityStats.update()
+                        affectedCivs.add(city.civ)
                     } catch (e: Exception) {
                     }
+                }
+                // 2026-08-30: 改良/道路变 → 文明 statsForNextTurn 缓存失效 (排行读它 — 之前只更新城市级, 排行不更新)
+                for (civ in affectedCivs) {
+                    try { civ.updateStatsForNextTurn() } catch (ignored: Exception) {}
                 }
                 worldScreenRef?.get()?.let { it.shouldUpdate = true }
                 refreshOpenCityScreen()
@@ -4525,11 +4538,12 @@ object FrameSync {
     /** 城市地块归属同步: 服务器 ownedTiles 全量列表 → 本地设置/清空 (买地后立即显示, 不等回合末重载) */
     private fun syncOwnedTiles(gameInfo: GameInfo, city: com.unciv.logic.city.City, obj: JsonObject, worldScreen: WorldScreen) {
         try {
-            val owned = obj["ownedTiles"]?.jsonArray
-                ?.mapNotNull { arr ->
+            // 2026-08-30 裁剪版: ownedTiles 仍广播 (公共字段), 但防御: 缺失时跳过
+            val ownedArr = obj["ownedTiles"]?.jsonArray ?: return
+            val owned = ownedArr.mapNotNull { arr ->
                     val a = arr.jsonArray ?: return@mapNotNull null
                     if (a.size >= 2) (a[0].jsonPrimitive.intOrNull to a[1].jsonPrimitive.intOrNull) else null
-                }?.toSet() ?: emptySet()
+                }.toSet()
             if (owned.isEmpty()) return
             var changed = false
             for ((x, y) in owned) {
@@ -4552,6 +4566,8 @@ object FrameSync {
             }
             if (changed) {
                 cityStateChanged = true
+                // 2026-08-30: 地块归属变 → 城市 stats 完整重算 (含文明级; updateStatsForNextTurn 快乐条件坑)
+                try { city.cityStats.update() } catch (ignored: Exception) {}
                 worldScreen.shouldUpdate = true
             }
         } catch (e: Exception) {
@@ -4561,11 +4577,15 @@ object FrameSync {
     /** 工作格同步: 服务器 workedTiles 全量列表 → 本地增删 (公民分配立即生效, 界面刷新) */
     private fun syncWorkedTiles(gameInfo: GameInfo, city: com.unciv.logic.city.City, obj: JsonObject, worldScreen: WorldScreen) {
         try {
-            val worked = obj["workedTiles"]?.jsonArray
-                ?.mapNotNull { arr ->
+            // 2026-08-30 裁剪版: 服务器不再广播 workedTiles (字段缺失) → 本地维护, 跳过同步 —
+            // 否则空列表会把本地所有工作格清掉 (回合结算重载后"人口全下" bug)
+            val workedArr = obj["workedTiles"]?.jsonArray ?: return
+            val worked = workedArr.mapNotNull { arr ->
                     val a = arr.jsonArray ?: return@mapNotNull null
                     if (a.size >= 2) (a[0].jsonPrimitive.intOrNull to a[1].jsonPrimitive.intOrNull) else null
-                }?.toSet() ?: emptySet()
+                }.toSet()
+            val beforeWorked = city.workedTiles.size
+            val beforeCityProd = city.cityStats.currentCityStats.production
             var changed = false
             for ((x, y) in worked) {
                 val px = x ?: continue
@@ -4577,6 +4597,17 @@ object FrameSync {
             }
             if (changed) {
                 cityStateChanged = true
+                // 2026-08-30: 工作格变 → 城市 stats 完整重算 (cityStats.update 默认 updateCivStats=true
+                // → 内部触发文明 statsForNextTurn; 不能用 updateStatsForNextTurn() — 它只在快乐变化时重算城市,
+                // 快乐不变 → 排行读旧城市产出 (15:57 日志铁证 worked 1->0 但 cityProd 5.0->5.0)
+                try {
+                    city.cityStats.update()
+                    log("DBG workedTiles city=${city.name} civ=${city.civ.civName} worked ${beforeWorked}->${city.workedTiles.size} " +
+                            "cityProd ${beforeCityProd}->${city.cityStats.currentCityStats.production} " +
+                            "civProd=${city.civ.stats.statsForNextTurn.production}")
+                } catch (e: Exception) {
+                    log("DBG workedTiles updateStats FAIL: ${e.message}")
+                }
                 worldScreen.shouldUpdate = true
             }
         } catch (e: Exception) {
@@ -4587,11 +4618,12 @@ object FrameSync {
      *  纯拦截后本地不执行, 不广播则锁定无显示) */
     private fun syncLockedTiles(gameInfo: GameInfo, city: com.unciv.logic.city.City, obj: JsonObject, worldScreen: WorldScreen) {
         try {
-            val locked = obj["lockedTiles"]?.jsonArray
-                ?.mapNotNull { arr ->
+            // 2026-08-30 裁剪版: lockedTiles 不再广播 → 跳过同步 (本地维护)
+            val lockedArr = obj["lockedTiles"]?.jsonArray ?: return
+            val locked = lockedArr.mapNotNull { arr ->
                     val a = arr.jsonArray ?: return@mapNotNull null
                     if (a.size >= 2) (a[0].jsonPrimitive.intOrNull to a[1].jsonPrimitive.intOrNull) else null
-                }?.toSet() ?: emptySet()
+                }.toSet()
             var changed = false
             // 服务器有而本地没有 → 加锁
             for ((x, y) in locked) {
@@ -4605,8 +4637,8 @@ object FrameSync {
             }
             if (changed) {
                 cityStateChanged = true
-                // 2026-08-30: 锁定格变 (影响自动分配) → 文明 stats 缓存失效 (排行/概览实时)
-                try { city.civ.updateStatsForNextTurn() } catch (ignored: Exception) {}
+                // 2026-08-30: 锁定格变 (影响自动分配) → 城市 stats 完整重算 (含文明级)
+                try { city.cityStats.update() } catch (ignored: Exception) {}
                 worldScreen.shouldUpdate = true
             }
         } catch (e: Exception) {
