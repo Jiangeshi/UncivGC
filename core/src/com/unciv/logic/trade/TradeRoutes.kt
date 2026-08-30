@@ -40,7 +40,7 @@ object TradeRoutes {
      *  2026-08-28: 资源 1→0.5 削基础; 人口系数 ×(1+接收方人口/20) 方案A; 词条并入基础吃全系数 (晚) */
     fun initiatorStats(city: City, route: TradeRouteNetwork.Route, expectedRank: Int? = null): Stats {
         val stats = Stats()
-        val distFactor = if (route.isSea) 0.5f else 1.5f  // 2026-08-26 用户调整: 陆商 1.5/格, 海商 0.5/格
+        val distFactor = if (route.isSea) 0.3f else 1.2f  // 2026-08-31 用户调整: 陆商 1.2/格, 海商 0.3/格 (原 1.5/0.5)
         val rank = expectedRank ?: routeRank(city, route.otherCity.id)
         val popFactor = 1f + route.otherCity.population.population / 20f  // 方案A: 接收方人口
         stats.gold = improvedResourceCount(city) * 0.5f + distFactor * route.distance
