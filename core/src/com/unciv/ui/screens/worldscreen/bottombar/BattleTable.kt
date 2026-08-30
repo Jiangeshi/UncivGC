@@ -67,7 +67,39 @@ class BattleTable(val worldScreen: WorldScreen) : Table() {
         pack()
     }
 
+    /** 2026-08-31 节流: 上次渲染的输入签名 (攻击方/防守方 id+位置+血量), 没变则不重建.
+     *  WorldScreen 主循环每帧调 update(), 密集操作 (移动/选单位/战斗动画) 时原实现每帧
+     *  clear+simulateBattle 重建 → 卡顿; 签名含 hp/位置 — 受伤/移动/换目标都会触发刷新 */
+    private var lastBattleKey = ""
+
+    private fun battleKey(): String {
+        val unitTable = worldScreen.bottomUnitTable
+        val selUnit = unitTable.selectedUnit
+        val selCity = unitTable.selectedCity
+        val selTile = worldScreen.mapHolder.selectedTile
+        val attackerKey = when {
+            selUnit != null && selUnit.hasTile() ->
+                "u" + selUnit.id + "@" + selUnit.currentTile.position + "hp" + selUnit.health + "xp" + selUnit.promotions.XP
+            selCity != null -> "c" + selCity.getCity().id + "hp" + selCity.getCity().health
+            else -> ""
+        }
+        val defKey = selTile?.let { tile ->
+            when (val d = Battle.getMapCombatantOfTile(tile)) {
+                is MapUnitCombatant -> {
+                    val du = d.unit
+                    if (du.hasTile()) "u" + du.id + "@" + du.currentTile.position + "hp" + du.health else "u" + du.id
+                }
+                is CityCombatant -> "c" + d.city.id + "hp" + d.city.health
+                else -> "t" + tile.position.x + "," + tile.position.y
+            }
+        } ?: ""
+        return "$attackerKey|$defKey"
+    }
+
     fun update() {
+        val key = battleKey()
+        if (key == lastBattleKey) return  // 输入没变 → 保持现状 (不重建)
+        lastBattleKey = key
         when (val attacker = tryGetAttacker()) {
             null -> return hide()
             is MapUnitCombatant if attacker.unit.isNuclearWeapon() -> {
