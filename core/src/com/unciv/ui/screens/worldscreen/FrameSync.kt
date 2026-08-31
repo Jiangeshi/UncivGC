@@ -309,6 +309,11 @@ object FrameSync {
             localDueSeen.clear()
             localDueSeenGameId = gameId
             worldScreen.viewingCiv.popupAlerts.clear()
+            // UncivGC 待办事件 (实验性UI): 事件不立即弹, 排队由「事件」按钮查看 — 下回合清空, 重载不重挂
+            if (com.unciv.GUI.getSettings().experimentalUi) {
+                pendingEvents.clear()
+                pendingAlliancePopups.clear()
+            } else {
             // 事件弹窗 (时代奖励等): 服务器广播后挂起未选择, 存档重载会清空 → 重新挂起, 弹窗不消失
             if (pendingEvents.isNotEmpty()) {
                 for (ev in pendingEvents) {
@@ -336,6 +341,7 @@ object FrameSync {
                     }
                 }
             }
+            } // 非实验性UI: 重挂挂起弹窗
         } catch (e: Exception) {
         }
         updateStatusLabel()
@@ -1759,7 +1765,7 @@ object FrameSync {
                     val toCityId = msg["toCityId"]?.jsonPrimitive?.contentOrNull ?: ""
                     val otherCity = gameInfo.getCities().firstOrNull { it.id == toCityId }
                     // 2026-08-31 修复: 英文模板+城市名 → tr() 查不到带城市名的 key → 翻译丢; 改中文 (对齐拒绝通知)
-                    myCiv.addNotification("你的商路请求到 ${otherCity?.name?.tr() ?: toCityId} 已被接受",
+                    myCiv.addNotification("你的商路请求到${otherCity?.name?.tr() ?: toCityId}已被接受",
                         com.unciv.logic.civilization.NotificationCategory.Trade, "",
                         com.unciv.logic.civilization.NotificationIcon.Trade)
                 }
@@ -2691,10 +2697,7 @@ object FrameSync {
                 && tileUnit.civ.civID !in shownMeets) {
                 if (!civ.diplomacy.containsKey(tileUnit.civ.civID)) {
                     sendOp("civ.meet", mapOf("civ" to tileUnit.civ.civID))
-                    try {
-                        civ.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
-                            com.unciv.logic.civilization.AlertType.FirstContact, tileUnit.civ.civID))
-                    } catch (e3: Exception) {}
+                    // 2026-08-31: 相遇弹窗帧同步 ban 掉 (时有时无 bug, 用户说不需要) — 只保留 meet op 建外交
                 }
                 shownMeets.add(tileUnit.civ.civID)
             }
@@ -2704,10 +2707,7 @@ object FrameSync {
                 && tileCity.civ.civID !in shownMeets) {
                 if (!civ.diplomacy.containsKey(tileCity.civ.civID)) {
                     sendOp("civ.meet", mapOf("civ" to tileCity.civ.civID))
-                    try {
-                        civ.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
-                            com.unciv.logic.civilization.AlertType.FirstContact, tileCity.civ.civID))
-                    } catch (e3: Exception) {}
+                    // 2026-08-31: 相遇弹窗帧同步 ban 掉 (同单位分支)
                 }
                 shownMeets.add(tileCity.civ.civID)
             }

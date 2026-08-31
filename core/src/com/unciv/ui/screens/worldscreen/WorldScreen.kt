@@ -82,6 +82,14 @@ import yairm210.purity.annotations.Readonly
 import java.util.Timer
 import kotlin.concurrent.timer
 
+/** UncivGC 待办事件 (实验性UI): 必须立即弹出的弹窗类型 — 城市决策(占领/外交联姻)/终局(游戏结束)/宣战(用户 2026-08-31: 不然都不知道自己被打了), 不进事件队列 */
+internal val immediatePopupAlertTypes = setOf(
+    com.unciv.logic.civilization.AlertType.CityConquered,
+    com.unciv.logic.civilization.AlertType.DiplomaticMarriage,
+    com.unciv.logic.civilization.AlertType.GameHasBeenWon,
+    com.unciv.logic.civilization.AlertType.WarDeclaration
+)
+
 /**
  * Do not create this screen without seriously thinking about the implications: this is the single most memory-intensive class in the application.
  * There really should ever be only one in memory at the same time, likely managed by [UncivGame].
@@ -516,10 +524,15 @@ class WorldScreen(
                         game.pushScreen(VictoryScreen(this))
                     }
                 }
-                viewingCiv.greatPeople.freeGreatPeople > 0 ->
+                // 必须立即弹出的弹窗 (用户 2026-08-31): 占领城市/外交联姻(城市决策)/游戏结束(终局) — 不进队列
+                viewingCiv.popupAlerts.any { it.type in immediatePopupAlertTypes } ->
+                    AlertPopup(this, viewingCiv.popupAlerts.first { it.type in immediatePopupAlertTypes })
+                // UncivGC 待办事件 (实验性UI): 事件不立即弹, 进队列由「事件」按钮查看 (下回合清空)
+                !com.unciv.GUI.getSettings().experimentalUi && viewingCiv.greatPeople.freeGreatPeople > 0 ->
                     game.pushScreen(GreatPersonPickerScreen(this, viewingCiv))
-                viewingCiv.popupAlerts.any() -> AlertPopup(this, viewingCiv.popupAlerts.first())
-                viewingCiv.tradeRequests.isNotEmpty() -> {
+                !com.unciv.GUI.getSettings().experimentalUi && viewingCiv.popupAlerts.any() ->
+                    AlertPopup(this, viewingCiv.popupAlerts.first())
+                !com.unciv.GUI.getSettings().experimentalUi && viewingCiv.tradeRequests.isNotEmpty() -> {
                     // In the meantime this became invalid, perhaps because we accepted previous trades
                     for (tradeRequest in viewingCiv.tradeRequests.toList())
                         if (!TradeEvaluation().isTradeValid(tradeRequest.trade, viewingCiv,
@@ -669,6 +682,11 @@ class WorldScreen(
         }
         isPlayersTurn = false
         shouldUpdate = true
+        // UncivGC 待办事件 (实验性UI): 单机过回合清空未查看事件 (帧同步由结算重载清空)
+        if (com.unciv.GUI.getSettings().experimentalUi) {
+            viewingCiv.popupAlerts.clear()
+            viewingCiv.tradeRequests.clear()
+        }
         undoManager.clear()  // UncivGC: 过回合清空撤回快照
         val progressBar = NextTurnProgress(nextTurnButton)
         progressBar.start(this)
@@ -788,6 +806,18 @@ class WorldScreen(
     internal fun isNextTurnUpdateRunning(): Boolean {
         val job = nextTurnUpdateJob
         return job != null && job.isActive
+    }
+
+    /** UncivGC 待办事件队列 (实验性UI): 是否有排队事件 — 有则「完成回合」按钮变「事件 (n)」 */
+    internal fun hasPendingQueueEvents(): Boolean = pendingQueueEventCount() > 0
+
+    /** UncivGC 待办事件队列计数: popupAlerts 弹窗 (立即弹类型除外) + 免费伟人(1) + 贸易请求 (实验性UI外恒 0) */
+    internal fun pendingQueueEventCount(): Int {
+        if (!com.unciv.GUI.getSettings().experimentalUi) return 0
+        var count = viewingCiv.popupAlerts.count { it.type !in immediatePopupAlertTypes }
+        if (viewingCiv.greatPeople.freeGreatPeople > 0) count++
+        count += viewingCiv.tradeRequests.size
+        return count
     }
 
     private fun updateGameplayButtons() {

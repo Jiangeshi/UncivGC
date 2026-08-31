@@ -39,6 +39,12 @@ import com.unciv.logic.civilization.MapUnitAction
  */
 class MapUnit : IsPartOfGameInfoSerialization {
 
+    companion object {
+        // 编队白名单存在性缓存 (规则集固定, 每局算一次; 防每次编队检查全规则集扫描)
+        private var formationWhitelistCachedRuleset: Ruleset? = null
+        private var formationWhitelistCached = false
+    }
+
     //region Persisted fields
 
     /** civName owning the unit */
@@ -301,16 +307,32 @@ class MapUnit : IsPartOfGameInfoSerialization {
     /** 编队白名单 (2026-08-29): 规则集存在 AllowsFormation 词条时, 只有匹配的单位类型
      *  才能组成对应编队形态 (Corps/Army/Fleet/Armada); 不存在时返回 true = 保持默认 (所有可编队单位都能组)
      *  2026-08-29 扩展: 匹配来源 = 已研究科技 uniques + 全局 uniques (civ.getMatchingUniques 两者都含) —
-     *  支持把编队能力挂科技树上 (研究罗盘→舰队 / 航海术→无敌舰队 / 骑士制度→军团 / 膛线→集团军) */
-    @Readonly
+     *  支持把编队能力挂科技树上 (研究罗盘→舰队 / 航海术→无敌舰队 / 骑士制度→军团 / 膛线→集团军)
+     *  2026-08-31 修复: 白名单存在性改查**整个规则集** (不看是否已研究) — 之前用 civ.getMatchingUniques
+     *  判空: 科技没研究时返回空 → 误走"默认允许" → 帆船时代就能组舰队 (用户反馈: 迦太基船/三列桨船
+     *  在没研究光学/罗盘时能组舰队) */
     private fun formationAllowed(formation: UnitFormation): Boolean {
+        if (!rulesetHasFormationWhitelist()) return true  // 规则集没有编队白名单 → 默认允许 (原版行为)
         val allows = civ.getMatchingUniques(UniqueType.AllowsFormation)
-        if (allows.none()) return true  // 无白名单 → 默认允许
         return allows.any { it.params[0] == formation.name && matchesFilter(it.params[1]) }
     }
 
+    /** 规则集是否定义过编队白名单 (任意来源: 科技/政策/文明/建筑/时代/宗教/全局 uniques) — 每局缓存一次 */
+    private fun rulesetHasFormationWhitelist(): Boolean {
+        val ruleset = civ.gameInfo.ruleset
+        if (formationWhitelistCachedRuleset === ruleset) return formationWhitelistCached
+        formationWhitelistCached = ruleset.technologies.values.any { it.hasUnique(UniqueType.AllowsFormation) }
+            || ruleset.policies.values.any { it.hasUnique(UniqueType.AllowsFormation) }
+            || ruleset.nations.values.any { it.hasUnique(UniqueType.AllowsFormation) }
+            || ruleset.buildings.values.any { it.hasUnique(UniqueType.AllowsFormation) }
+            || ruleset.eras.values.any { it.hasUnique(UniqueType.AllowsFormation) }
+            || ruleset.beliefs.values.any { it.hasUnique(UniqueType.AllowsFormation) }
+            || ruleset.modOptions.hasUnique(UniqueType.AllowsFormation)
+        formationWhitelistCachedRuleset = ruleset
+        return formationWhitelistCached
+    }
+
     /** 是否可以组成军团 (陆军军事单位, 无禁止 unique, 当前为 Single; 白名单模式时需匹配 AllowsFormation) */
-    @Readonly
     fun canFormCorps(): Boolean {
         if (!isMilitary() || isCivilian()) return false
         if (baseUnit.isAirUnit()) return false  // 空军不能合并; 水军可合并为舰队/无敌舰队 (2026-08-22)
@@ -321,14 +343,12 @@ class MapUnit : IsPartOfGameInfoSerialization {
     }
 
     /** 是否可以升级编队等级 (军团/舰队形态 + 还能再加一个 → 集团军/无敌舰队; 白名单模式时需匹配 AllowsFormation) */
-    @Readonly
     fun canFormArmy(): Boolean {
         if (formation.tier != 1 || formationSnapshots.size >= 2) return false
         return formationAllowed(if (formation == UnitFormation.Fleet) UnitFormation.Armada else UnitFormation.Army)
     }
 
     /** 获取相邻格中可以被合并的同种单位列表 */
-    @Readonly
     fun getMergeableNeighbors(): List<MapUnit> {
         val tile = getTile()
         return tile.neighbors.flatMap { it.getUnits() }

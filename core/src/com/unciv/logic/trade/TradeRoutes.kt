@@ -106,19 +106,24 @@ object TradeRoutes {
         return result
     }
 
-    /** 文明商路容量: 时代序号 (远古=1, 古典=2, ...) + Provides [X] Trade Routes unique 加成 */
+    /** 文明商路容量: 时代序号 (远古=1, 古典=2, ...) + Provides [X] Trade Routes unique 加成
+     *  2026-08-31 修复: Market 等建筑提供 2 条商路而非 1 条 — 建筑 uniques 被计两次: ①civ.getMatchingUniques
+     *  (城市→建筑, 无条件词条能通过 civ 上下文) ②城市级循环。修复: 城市级循环先计并收集文本,
+     *  文明级循环跳过建筑来源 (港口那种带城市条件的词条仍由城市级以城市上下文评估, 8-28 行为不变) */
     fun capacity(civ: Civilization): Int {
         var cap = civ.getEraNumber() + 1
-        // 文明级: 政策/文明特性/全局 uniques
-        for (unique in civ.getMatchingUniques(UniqueType.ProvidesTradeRoutes)) {
-            cap += unique.params[0].toInt()
-        }
-        // 2026-08-28 修复: 建筑级 ProvidesTradeRoutes (Harbor 等) 原只匹配文明级 → 港口商路容量+1 不生效;
-        // 城市条件 (<in cities without a [Market]>) 由 city.state context 正确评估
+        // 建筑级 ProvidesTradeRoutes (Harbor 等): 城市条件 (<in cities without a [Market]>) 由 city.state context 正确评估
+        val buildingRouteUniqueTexts = HashSet<String>()
         for (city in civ.cities) {
             for (unique in city.getMatchingUniques(UniqueType.ProvidesTradeRoutes, includeCivUniques = false)) {
+                buildingRouteUniqueTexts.add(unique.text)
                 cap += unique.params[0].toInt()
             }
+        }
+        // 文明级: 政策/文明特性/全局 uniques — 排除建筑来源 (否则 Market 计两次, 用户反馈原版/LM 都是)
+        for (unique in civ.getMatchingUniques(UniqueType.ProvidesTradeRoutes)) {
+            if (unique.text in buildingRouteUniqueTexts) continue
+            cap += unique.params[0].toInt()
         }
         return cap
     }
