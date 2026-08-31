@@ -35,6 +35,7 @@ data class ModMirrorEntry(val name: String = "", val size: Long = 0, val updated
 
 @Serializable
 data class UpdateInfo(
+    val code: Int = 0,  // 2026-09-01: 服务器构建号 (数字比较, 防 version 字符串格式漂移)
     val version: String = "",
     val notes: String = "",
     val apkSize: Long = 0,

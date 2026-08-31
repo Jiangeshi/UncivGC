@@ -28,7 +28,13 @@ object UpdateChecker {
         Concurrency.run("UpdateCheck") {
             val info = LobbyApi.checkUpdate() ?: return@run
             val localVersion = com.unciv.UncivGame.UGC_VERSION
-            if (info.version.isNotEmpty() && info.version == localVersion) return@run
+            val localCode = com.unciv.UncivGame.VERSION.number
+            // 2026-09-01 修复: 服务器 version 字段历史用短格式 ("v1.15"), 与本地 UGC_VERSION
+            // ("4.21.10.gc.v1.15") 字符串比较永不相等 → 装到最新仍弹更新提醒. 改用数字 code 比较
+            // (权威); 服务器未返回 code 时退回字符串比较
+            val upToDate = if (info.code > 0) info.code <= localCode
+            else info.version.isNotEmpty() && info.version == localVersion
+            if (upToDate) return@run
             launchOnGLThread {
                 if (screen.stage.root.isVisible) {
                     ConfirmPopup(
