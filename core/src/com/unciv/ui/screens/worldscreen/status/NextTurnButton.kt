@@ -24,7 +24,7 @@ import yairm210.purity.annotations.Readonly
 
 class NextTurnButton(
     private val worldScreen: WorldScreen
-) : IconTextButton("", null, 30) {
+) : IconTextButton("", null, 22) {
     private var nextTurnAction = Default
     private val unitsDueLabel = Label("", BaseScreen.skin)
     private val unitsDueCell: Cell<Label>
@@ -47,7 +47,21 @@ class NextTurnButton(
 
     fun update() {
         nextTurnAction = getNextTurnAction(worldScreen)
-        updateButton(nextTurnAction)
+        // UncivGC 2026-08-31: 有待办未清空时状态按钮显示「有待办未完成」(置灰提示, 不消失) —
+        // 仅实验性UI (非实验性UI保持原版: 按钮直接显示待办动作)
+        val fsFinished = FrameSync.isFsMode(worldScreen.gameInfo) && FrameSync.myTurnFinished
+        val todoBlocks = com.unciv.GUI.getSettings().experimentalUi && !fsFinished
+            && nextTurnAction == NextTurnAction.NextTurn
+            && currentTodoAction(worldScreen) != null
+        if (todoBlocks) {
+            label.setText("有待办未完成".tr())
+            label.color = com.badlogic.gdx.graphics.Color.GRAY
+            iconCell.clearActor()
+            unitsDueCell.clearActor()
+            pack()
+        } else {
+            updateButton(nextTurnAction)
+        }
         val autoPlay = worldScreen.autoPlay
         // UncivGC 帧同步: 禁 autoPlay — automateTurn 会在本地跑单位操作, 绕过服务器拦截
         val fsMode = FrameSync.isFsMode(worldScreen.gameInfo)
@@ -66,11 +80,11 @@ class NextTurnButton(
             "NextTurnBtn update: action=$nextTurnAction base=$baseEnabled isPlayersTurn=${worldScreen.isPlayersTurn} " +
             "waitingAutosave=${worldScreen.waitingForAutosave} isNextTurnRunning=${worldScreen.isNextTurnUpdateRunning()} " +
             "myTurnFinished=" + com.unciv.ui.screens.worldscreen.FrameSync.myTurnFinished)
-        isEnabled = nextTurnAction.getText(worldScreen) == "AutoPlay" || baseEnabled
-        // UncivGC 帧同步: 已点“完成回合”后按钮变「取消完成」仍可点 (点击取消); NextUnit 例外: 完成回合后仍可跳转/操作剩余闲置单位
-        if (FrameSync.isFsMode(worldScreen.gameInfo) && FrameSync.myTurnFinished
-            && nextTurnAction != NextTurnAction.NextUnit
-            && nextTurnAction != NextTurnAction.NextTurn) isEnabled = false
+        // UncivGC 2026-08-31 一行按钮: 待办未清空 → 「下一个回合/完成回合」置灰 (不完成不能过回合;
+        // 取消完成回合不挡; 单机「下一个回合」与 fs「完成回合」同规则 — 用户 2026-08-31)
+        isEnabled = (nextTurnAction.getText(worldScreen) == "AutoPlay" || baseEnabled) && !todoBlocks
+        // UncivGC 帧同步: 已点“完成回合”后按钮变「取消完成」仍可点 (点击取消)
+        if (fsFinished && nextTurnAction != NextTurnAction.NextTurn) isEnabled = false
         // UncivGC 帧同步: 观战者不能点完成回合
         if (FrameSync.isFsMode(worldScreen.gameInfo) && worldScreen.viewingCiv.isSpectator()) isEnabled = false
         if (isEnabled) {
@@ -104,15 +118,38 @@ class NextTurnButton(
     }
 
     private fun getNextTurnAction(worldScreen: WorldScreen) =
-        // UncivGC 帧同步 2026-08-30: 已完成回合 → 按钮只能是“取消完成回合”(可点反悔);
-        // 点取消 → myTurnFinished=false → 走 else → 显示没做完的事 (选择建造/训练等待办, 可点);
-        // “完成回合”只在所有待办处理完才出现 (待办动作永远优先)
+        // UncivGC 帧同步 2026-08-30: 已完成回合 → 按钮只能是“取消完成回合”(可点反悔)
+        // UncivGC 2026-08-31: 实验性UI下状态按钮只显示状态类动作 (待办/单位拆到独立按钮);
+        // 非实验性UI保持原版 (待办动作优先显示, 如 选择建造/选择科技)
         if (FrameSync.isFsMode(worldScreen.gameInfo) && FrameSync.myTurnFinished) {
             NextTurnAction.NextTurn
-        } else
+        } else if (com.unciv.GUI.getSettings().experimentalUi) {
+            // Guaranteed to return a non-null NextTurnAction because the last isChoice always returns true
+            NextTurnAction.entries.first { it in statusActions && it.isChoice(worldScreen) }
+        } else {
             // Guaranteed to return a non-null NextTurnAction because the last isChoice always returns true
             NextTurnAction.entries.first { it.isChoice(worldScreen) }
+        }
 
     @Readonly fun isNextUnitAction(): Boolean = nextTurnAction == NextTurnAction.NextUnit
 
+    companion object {
+        /** 状态按钮动作集 (2026-08-31 一行按钮拆分: 状态显示+完成回合留在主按钮) */
+        val statusActions = setOf(
+            NextTurnAction.RetryUpload, NextTurnAction.AutoPlay, NextTurnAction.Working,
+            NextTurnAction.Waiting, NextTurnAction.NextTurn
+        )
+
+        /** 待办动作集 (不完成不能过回合; 拆到「待办」按钮, 2026-08-31) */
+        val todoActions = setOf(
+            NextTurnAction.PickConstruction, NextTurnAction.PickTech, NextTurnAction.PickPolicy,
+            NextTurnAction.MoveSpies, NextTurnAction.FoundPantheon, NextTurnAction.ExpandPantheon,
+            NextTurnAction.FoundReligion, NextTurnAction.EnhanceReligion, NextTurnAction.ReformReligion,
+            NextTurnAction.WorldCongressVote, NextTurnAction.MoveAutomatedUnits
+        )
+
+        /** 当前待办动作 (优先级最高的第一个满足条件项) */
+        fun currentTodoAction(worldScreen: WorldScreen): NextTurnAction? =
+            todoActions.firstOrNull { it.isChoice(worldScreen) }
+    }
 }

@@ -43,10 +43,10 @@ class ModEditorScreen : BaseScreen() {
         val newModButton = "New mod".toTextButton()
         newModButton.onActivation { showNewModPopup() }
         topBar.add(newModButton).pad(8f)
-        // UncivGC: 上传至国内镜像 (审核后上架) — 2026-08-21
-        val uploadButton = "Upload to mirror".toTextButton()
-        uploadButton.onActivation { showUploadPopup() }
-        topBar.add(uploadButton).pad(8f)
+        // UncivGC 2026-08-31: 上传至国内镜像功能已关闭 (用户要求) — 按钮不显示
+        // val uploadButton = "Upload to mirror".toTextButton()
+        // uploadButton.onActivation { showUploadPopup() }
+        // topBar.add(uploadButton).pad(8f)
         root.add(topBar).fillX().row()
 
         val scrollPane = AutoScrollPane(listTable)

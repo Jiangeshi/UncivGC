@@ -196,6 +196,8 @@ object FrameSync {
     /** 已广播但未选择的事件弹窗 (eventName): 存档重载会触发 start() 清空 popupAlerts →
      *  重新挂起未解决的事件, 防止"时代奖励闪现一下就没了" */
     private val pendingEvents = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
+    /** 2026-09-01: 事件年龄 (eventName -> 已跨过的回合数; 0=出现回合, >3 清掉) — 事件保留 3 回合 */
+    private val pendingEventAges = HashMap<String, Int>()
     /** 2026-08-29 同盟弹窗本地挂起 (value=civId): 存档重载清空 popupAlerts 后只恢复事件弹窗,
      *  同盟提议/续约/跟进弹窗完全依赖 fs 补推 — 多个同盟提议并发时 fs 单槽只补推最后一条,
      *  其余永久丢失 (对方一直等). 本地也挂起, 重载后重新恢复 (与 pendingEvents 同机制) */
@@ -309,9 +311,29 @@ object FrameSync {
             localDueSeen.clear()
             localDueSeenGameId = gameId
             worldScreen.viewingCiv.popupAlerts.clear()
-            // UncivGC 待办事件 (实验性UI): 事件不立即弹, 排队由「事件」按钮查看 — 下回合清空, 重载不重挂
+            // UncivGC 待办事件 (实验性UI): 事件排队由「事件」按钮查看 — 保留 3 回合 (2026-09-01 用户,
+            // 原来下回合清空; 重载时年龄+1, >3 移除不再重挂)
             if (com.unciv.GUI.getSettings().experimentalUi) {
-                pendingEvents.clear()
+                val iter = pendingEvents.iterator()
+                while (iter.hasNext()) {
+                    val ev = iter.next()
+                    val evName = ev.split(com.unciv.Constants.stringSplitCharacter)[0]
+                    val age = (pendingEventAges[evName] ?: 0) + 1
+                    if (age > 3) {
+                        iter.remove()
+                        pendingEventAges.remove(evName)
+                        continue
+                    }
+                    pendingEventAges[evName] = age
+                    val exists = worldScreen.viewingCiv.popupAlerts.any {
+                        it.type == com.unciv.logic.civilization.AlertType.Event
+                                && it.value.split(com.unciv.Constants.stringSplitCharacter)[0] == evName
+                    }
+                    if (!exists) {
+                        worldScreen.viewingCiv.popupAlerts.add(com.unciv.logic.civilization.PopupAlert(
+                            com.unciv.logic.civilization.AlertType.Event, ev))
+                    }
+                }
                 pendingAlliancePopups.clear()
             } else {
             // 事件弹窗 (时代奖励等): 服务器广播后挂起未选择, 存档重载会清空 → 重新挂起, 弹窗不消失
@@ -1420,6 +1442,7 @@ object FrameSync {
                 com.unciv.logic.civilization.AlertType.Event, eventValue))
             // 记录挂起事件: 存档重载 (start() 清空 popupAlerts) 后重新挂起, 弹窗不消失
             pendingEvents.add(eventValue)
+            pendingEventAges[eventName] = 0  // 2026-09-01: 事件保留 3 回合 (年龄从出现回合起算)
             worldScreen.shouldUpdate = true
         }
     }
@@ -1428,6 +1451,7 @@ object FrameSync {
     fun markEventResolved(eventName: String) {
         // 按名字段匹配移除 — 挂起列表存完整 value (可能带 "|unitId=N" 后缀), 精确 remove 会漏 (孙武事件每回合重弹根因)
         pendingEvents.removeIf { it.split(com.unciv.Constants.stringSplitCharacter)[0] == eventName }
+        pendingEventAges.remove(eventName)  // 2026-09-01: 同步清年龄
     }
 
     // ---- UncivGC 同盟 (2026-08-26 设计稿 v1.0): 提议/续约/跟进弹窗 + 通知 ----

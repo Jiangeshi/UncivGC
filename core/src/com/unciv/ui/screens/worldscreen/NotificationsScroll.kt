@@ -163,6 +163,13 @@ class NotificationsScroll(
         coveredNotificationsTop: Float,
         coveredNotificationsBottom: Float
     ) {
+        // UncivGC 2026-08-31: 实验性UI下通知栏顶部让出顶栏+快捷工具栏 (否则被工具栏挡住)
+        if (com.unciv.GUI.getSettings().experimentalUi) {
+            val toolbarBottom = worldScreen.topBar.y - 64f  // QuickActionBar.barHeight
+            height = toolbarBottom * inverseScaleFactor
+        } else {
+            height = worldScreen.stage.height * inverseScaleFactor
+        }
         getUserSetting()
         if (userSetting == UserSetting.Disabled) {
             restoreButton.setPosition(coveredNotificationsBottom)
@@ -503,6 +510,8 @@ class NotificationsScroll(
         }
 
         fun show() {
+            // UncivGC 2026-08-31: 实验性UI下有工具栏「通知」按钮, 原版恢复铃铛不显示 (用户反馈)
+            if (com.unciv.GUI.getSettings().experimentalUi) return
             active = true
             clearActions()
             updateUserSetting(UserSetting.Hidden)

@@ -28,7 +28,18 @@ internal class DisplayTab(
 
         addHeader("Screen")
 
-        addCheckbox("Use experimental UI", settings::experimentalUi, updateWorld = true)
+        addCheckbox("Use experimental UI", settings::experimentalUi, updateWorld = true) {
+            // UncivGC 2026-08-31: 实验性UI切换影响大量 init 布局 (左组/工具栏/完成回合按钮行为),
+            // 必须重建 WorldScreen 才生效 (设置界面开关不触发重建, 用户反馈切换后布局错乱)
+            val ws = com.unciv.GUI.getWorldScreenIfActive()
+            if (ws != null) {
+                val gameInfo = ws.gameInfo
+                val autoPlay = ws.autoPlay
+                com.unciv.utils.Concurrency.runOnGLThread("ExpUiRebuild") {
+                    com.unciv.UncivGame.Current.loadGame(gameInfo, autoPlay)
+                }
+            }
+        }
 
         addScreenSizeSelectBox()
         addScreenOrientationSelectBox()

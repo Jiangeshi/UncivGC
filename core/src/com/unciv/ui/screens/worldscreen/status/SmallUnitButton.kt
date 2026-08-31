@@ -41,13 +41,16 @@ class SmallUnitButton(
             keyShortcuts.add(KeyboardBinding.Cycle)
             addTooltip(KeyboardBinding.Cycle)
         }
-        val nextTurnButton = statusButtons.nextTurnButton
+        // UncivGC 2026-08-31: 完成回合按钮不再显示 NextUnit — 改用「周转」按钮判断闲置单位;
+        // 实验性UI下工具栏已有「周转」, 右下小单位按钮隐藏避免重复 (用户反馈)
+        val unitButton = worldScreen.unitButton
         val visible = worldScreen.game.settings.smallUnitButton
-            && nextTurnButton.isVisible
-            && nextTurnButton.isNextUnitAction()
+            && !com.unciv.GUI.getSettings().experimentalUi
+            && unitButton.isVisible
+            && unitButton.isEnabled
             && worldScreen.bottomUnitTable.selectedUnit != null
         statusButtons.smallUnitButton = if (visible) this else null
-        isEnabled = visible && nextTurnButton.isEnabled
+        isEnabled = visible && unitButton.isEnabled
             && worldScreen.bottomUnitTable.selectedUnit?.run { due && isIdle() } == true
         pack()
     }

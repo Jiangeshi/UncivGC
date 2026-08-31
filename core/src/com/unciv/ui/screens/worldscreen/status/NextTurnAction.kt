@@ -163,8 +163,8 @@ enum class NextTurnAction(protected val text: String, val color: Color) {
             worldScreen.confirmedNextTurn()
         }
         override fun getSubText(worldScreen: WorldScreen): String? =
-            if (FrameSync.isFsMode(worldScreen.gameInfo)) null
-            else getIdleUnitsText(worldScreen)
+            if (com.unciv.GUI.getSettings().experimentalUi) null  // 2026-08-31 实验性UI: 闲置数在「单位」按钮
+            else getIdleUnitsText(worldScreen)  // 非实验性UI保持原版: 状态按钮显示闲置数
     },
 
     ;

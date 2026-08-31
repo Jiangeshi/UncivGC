@@ -47,19 +47,30 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
     private val diplomacyButtonHolder = Container<Button?>()
     private val diplomacyButton = Button(skin)
     /** 外交按钮 cell 引用 — 实验性 UI 下动态设置尺寸 (宽=科技1/3, 高50; 2026-08-23) */
-    private var diplomacyCell: com.badlogic.gdx.scenes.scene2d.ui.Cell<Container<Button?>>? = null
-    /** 科技按钮 cell 引用 — 实验性 UI 下固定尺寸 (280×50) */
-    private var techCell: com.badlogic.gdx.scenes.scene2d.ui.Cell<Container<Table?>>? = null
-    /** 政策按钮 cell 引用 — 实验性 UI 下固定尺寸 (50×50) */
-    private var policyCell: com.badlogic.gdx.scenes.scene2d.ui.Cell<Container<Button?>>? = null
-    /** 间谍按钮 cell 引用 */
-    private var espionageCell: com.badlogic.gdx.scenes.scene2d.ui.Cell<Container<Button?>>? = null
-    /** 撤销按钮 cell 引用 */
-    private var undoCell: com.badlogic.gdx.scenes.scene2d.ui.Cell<Container<Button?>>? = null
+    /** UncivGC 2026-08-31: 左组改右组同款风格 — 不再持有 cell 引用, 高度由 cell height(60f).fillY() 强制 */
     private val undoButtonHolder = Container<Button?>()
     private val undoButton = Button(skin)
     private val espionageButtonHolder = Container<Button?>()
     private val espionageButton = Button(skin)
+
+    // ===== UncivGC 2026-08-31 重写: 实验性UI左组 政策/外交/间谍 = 右组同款 TextButton (用户要求) =====
+    private val expPolicyButton = "政策".toTextButton().apply {
+        onActivation(binding = KeyboardBinding.SocialPolicies) {
+            game.pushScreen(PolicyPickerScreen(worldScreen.selectedCiv, worldScreen.canChangeState))
+        }
+    }
+    private val expDiplomacyButton = "外交".toTextButton().apply {
+        onActivation(binding = KeyboardBinding.Diplomacy) {
+            game.pushScreen(DiplomacyScreen(viewingCiv))
+        }
+    }
+    private val expEspionageButton = "间谍".toTextButton().apply {
+        onActivation(binding = KeyboardBinding.Espionage) {
+            if (worldScreen.bottomUnitTable.selectedSpy != null)
+                worldScreen.bottomUnitTable.selectSpy(null)
+            game.pushScreen(EspionageOverviewScreen(worldScreen.selectedCiv, worldScreen))
+        }
+    }
 
     private val viewingCiv = worldScreen.viewingCiv
     private val game = worldScreen.game
@@ -70,13 +81,14 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
         add(fogOfWarButtonHolder).colspan(4).row()
         if (GUI.getSettings().experimentalUi) {
             // UncivGC 2026-08-23 用户要求: 按钮顺序 科技 政策 外交 间谍 (间谍有才显示); 撤销保留在最后
-            // 2026-08-23 用户要求: 顶对齐, 全部贴着上面的边 (外交/政策曾比科技低); 政策外交不再跟科技绑定, 只顶对齐
-            // 注意: 全部改动只生效于 experimentalUi — 非实验性 UI 保持原版布局 (2026-08-23 用户强调)
-            techCell = add(techButtonHolder).padRight(10f).top()
-            policyCell = add(policyButtonHolder).padLeft(10f).padRight(10f).padTop(-6f).top()
-            diplomacyCell = add(diplomacyButtonHolder).padLeft(10f).padRight(10f).padTop(-6f).top()
-            espionageCell = add(espionageButtonHolder).padRight(10f).top()
-            undoCell = add(undoButtonHolder).padRight(10f).top()
+            // 2026-08-31 用户要求: 左组与右组同款写法 — 统一 height(60f).fillY(), 去掉 padTop hack
+            // UncivGC 2026-08-31: 左组 = 右组同款 TextButton, 全部 60 高 (与右组一致 — 用户 2026-08-31)
+            add(techButtonHolder).padRight(4f).height(60f).minHeight(60f).fillY()
+            add(expPolicyButton).padLeft(8f).padRight(4f).height(60f).minHeight(60f).fillY()
+            add(expDiplomacyButton).padLeft(4f).padRight(4f).height(60f).minHeight(60f).fillY()
+            add(expEspionageButton).padRight(4f).height(60f).minHeight(60f).fillY()
+            // UncivGC 2026-08-31: 撤销按钮移入顶栏快捷工具栏右组 (QuickActionBar), 左组不再显示
+            // undoCell = add(undoButtonHolder).padRight(10f).top()
             add().growX()
             row()
             add(rankingPanelHolder).colspan(4).padTop(10f).row()  // 排行面板下一行
@@ -96,30 +108,10 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
         // 操作触发 updateRankingPanel 后才被压到 60 → init 里把按钮本体尺寸+fill 全部固定, 高度恒定不再跳变
         if (GUI.getSettings().experimentalUi) {
             try {
-                techCell?.size(260f, 60f)
-                policyCell?.size(80f, 60f)
-                diplomacyCell?.size(80f, 60f)
-                espionageCell?.size(50f, 60f)
-                undoCell?.size(50f, 60f)
-                // 按钮本体尺寸 + fill 也必须在 init 固定 (只设 cell 不够: 本体 prefHeight=60 会溢出/跳变)
-                techButtonHolder.fill()
-                policyButtonHolder.fill()
-                diplomacyButtonHolder.fill()
-                espionageButtonHolder.fill()
-                undoButtonHolder.fill()
-                techButtonHolder.setSize(260f, 60f)
-                policyButtonHolder.setSize(80f, 60f)
-                policyScreenButton.setSize(80f, 60f)
-                diplomacyButtonHolder.setSize(80f, 60f)
-                diplomacyButton.setSize(80f, 60f)
-                espionageButtonHolder.setSize(50f, 60f)
-                espionageButton.setSize(50f, 60f)
-                undoButtonHolder.setSize(50f, 60f)
-                undoButton.setSize(50f, 60f)
+                fixExpUiSizes()
             } catch (ignored: Exception) {}
         }
-        fsLog("init 完成: expUi=" + GUI.getSettings().experimentalUi + " techCellH=" + (techCell?.prefHeight ?: -1)
-            + " policyCellH=" + (policyCell?.prefHeight ?: -1) + " diploCellH=" + (diplomacyCell?.prefHeight ?: -1))
+        fsLog("init 完成: expUi=" + GUI.getSettings().experimentalUi)
 
 
         fogOfWarButton.label.setFontSize(30)
@@ -163,7 +155,27 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
                 game.pushScreen(EspionageOverviewScreen(worldScreen.selectedCiv, worldScreen))
             }
         }
+        // 2026-08-31 修复: 图标 add 完成后**再**固定一次 — 之前 fixExpUiSizes 在 add 图标前执行,
+        // 图标 add 改变按钮 prefHeight 后初始固定被冲掉 → 开局政策/外交变大 (用户反馈)
+        if (GUI.getSettings().experimentalUi) {
+            try {
+                fixExpUiSizes()
+                invalidateHierarchy()
+            } catch (ignored: Exception) {}
+        }
+        fsLog("init 末尾再固定: policyBtnH=" + (policyScreenButton.height.toInt()) + " diploBtnH=" + (diplomacyButton.height.toInt()))
     }
+
+    /** UncivGC 实验性 UI: 保证 holder 内按钮填满 (2026-08-31: cell 已由 height(60f).fillY() 强制高度,
+     *  这里只处理 holder 内部填充, 不再持有 cell 引用) */
+    private fun fixExpUiSizes() {
+        techButtonHolder.fill()  // 科技内容动态, 填满 60
+        // 政策/外交/间谍不 fill — 按钮本体由 setSize 强制 40 (2026-08-31 用户要求)
+    }
+
+    /** 左组贴顶栏: 实验性UI贴快捷工具栏 (无间距), 非实验性UI保持原版 15px 间距 (2026-09-01 自检修复) */
+    private fun buttonsY(): Float =
+        worldScreen.topBar.y - height - (if (GUI.getSettings().experimentalUi) 0f else 15f)
 
     fun update(): Boolean {
         // 观战者 (看海): 不显示科技/政策/外交/间谍/撤销 — 无操作权限, 只保留迷雾开关 (2026-08-23 用户反馈)
@@ -175,9 +187,13 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
             diplomacyButtonHolder.actor = null; diplomacyButtonHolder.touchable = Touchable.disabled
             espionageButtonHolder.actor = null; espionageButtonHolder.touchable = Touchable.disabled
             undoButtonHolder.actor = null; undoButtonHolder.touchable = Touchable.disabled
+            // 2026-08-31: 实验性UI TextButton 同步隐藏
+            expPolicyButton.isVisible = false
+            expDiplomacyButton.isVisible = false
+            expEspionageButton.isVisible = false
             updateRankingPanel()
             pack()
-            setPosition(10f, worldScreen.topBar.y - height - 15f)
+            setPosition(10f, buttonsY())
             return false
         }
         updateFogOfWarButton()
@@ -189,7 +205,7 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
             updateEspionageButton()
         updateRankingPanel()
         pack()
-        setPosition(10f, worldScreen.topBar.y - height - 15f)
+        setPosition(10f, buttonsY())
         fsLog("update() pack后: techH=" + (techButtonHolder.height.toInt()) + " policyH=" + (policyButtonHolder.height.toInt())
             + " diploH=" + (diplomacyButtonHolder.height.toInt()) + " expUi=" + GUI.getSettings().experimentalUi)
         return result
@@ -297,32 +313,20 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
     /** UncivGC 实验性 UI: 排行面板 (与外交按钮同行并列 — 科技按钮下方; 2026-08-22 用户要求)
      *  防御: 面板异常不得中断 WorldScreen.update (相遇弹窗/回合推进都在其后 — 2026-08-22) */
     private fun updateRankingPanel() {
+        // 2026-08-31 修复: 固定尺寸放 try 外 — 开局排行面板异常时不固定 → 外交/政策/间谍明显偏高
+        // (用户反馈"刚开局按钮高, 点击后刷新变正常")
+        if (GUI.getSettings().experimentalUi) fixExpUiSizes()
         try {
             if (GUI.getSettings().experimentalUi) {
                 // 科技按钮内容宽 (布局前用 prefWidth)
                 val techWidth = techButtonHolder.actor?.prefWidth
                     ?: (if (techButtonHolder.width > 0f) techButtonHolder.width else 320f)
-                // ===== 科技/政策/外交/间谍/撤销 全部固定尺寸 (任何情况不变 — 2026-08-23 用户要求) =====
-                // 高度统一 60 (用户 2026-08-23: 三个都 60; 统一高度后自然对齐, 不再一上一下)
-                techCell?.size(260f, 60f)
+                // ===== 高度统一 60 由 cell height(60f).fillY() 强制 (2026-08-31 右组同款) =====
                 techButtonHolder.fill()
-                techButtonHolder.setSize(260f, 60f)
-                policyCell?.size(80f, 60f)
                 policyButtonHolder.fill()
-                policyButtonHolder.setSize(80f, 60f)
-                policyScreenButton.setSize(80f, 60f)
-                diplomacyCell?.size(80f, 60f)
                 diplomacyButtonHolder.fill()
-                diplomacyButtonHolder.setSize(80f, 60f)
-                diplomacyButton.setSize(80f, 60f)
-                espionageCell?.size(50f, 60f)
                 espionageButtonHolder.fill()
-                espionageButtonHolder.setSize(50f, 60f)
-                espionageButton.setSize(50f, 60f)
-                undoCell?.size(50f, 60f)
                 undoButtonHolder.fill()
-                undoButtonHolder.setSize(50f, 60f)
-                undoButton.setSize(50f, 60f)
                 rankingPanel.update()
                 rankingPanelHolder.actor = rankingPanel
                 rankingPanelHolder.touchable = Touchable.enabled
@@ -331,12 +335,6 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
             } else {
                 rankingPanelHolder.actor = null
                 rankingPanelHolder.touchable = Touchable.disabled
-                diplomacyCell?.width(-1f)  // 恢复默认尺寸
-                diplomacyCell?.height(-1f)
-                techCell?.size(-1f, -1f)
-                policyCell?.size(-1f, -1f)
-                espionageCell?.size(-1f, -1f)
-                undoCell?.size(-1f, -1f)
             }
         } catch (e: Exception) {
             rankingPanelHolder.actor = null
@@ -355,10 +353,9 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
     }
 
     private fun updatePolicyButton() {
-        // UncivGC 实验性 UI: 政策按钮常开 (F5 快捷键对应 — 2026-08-23 用户要求)
+        // UncivGC 实验性 UI: 政策按钮常开 (F5 快捷键对应 — 2026-08-23 用户要求); 2026-08-31 改 TextButton
         if (GUI.getSettings().experimentalUi) {
-            policyButtonHolder.touchable = Touchable.enabled
-            policyButtonHolder.actor = policyScreenButton
+            expPolicyButton.isVisible = true
             return
         }
         // Don't show policies until they become relevant
@@ -372,10 +369,9 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
     }
 
     private fun updateDiplomacyButton(): Boolean {
-        // UncivGC 实验性 UI: 外交按钮常开 (不建城/不认识文明也显示 — 2026-08-23 用户要求)
+        // UncivGC 实验性 UI: 外交按钮常开; 2026-08-31 改 TextButton
         if (GUI.getSettings().experimentalUi) {
-            diplomacyButtonHolder.touchable = Touchable.enabled
-            diplomacyButtonHolder.actor = diplomacyButton
+            expDiplomacyButton.isVisible = true
             return true
         }
         return if (viewingCiv.isDefeated() || viewingCiv.isSpectator()
@@ -393,9 +389,11 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
 
     private fun updateEspionageButton() {
         if (worldScreen.selectedCiv.espionageManager.spyList.isEmpty()) {
+            if (GUI.getSettings().experimentalUi) expEspionageButton.isVisible = false  // 2026-08-31 TextButton
             espionageButtonHolder.touchable = Touchable.disabled
             espionageButtonHolder.actor = null
         } else {
+            if (GUI.getSettings().experimentalUi) expEspionageButton.isVisible = true  // 2026-08-31 TextButton
             espionageButtonHolder.touchable = Touchable.enabled
             espionageButtonHolder.actor = espionageButton
         }

@@ -27,9 +27,12 @@ object WorldMapTileUpdater {
 
         // 2026-08-31 分层重绘: 静态层只刷脏格子 (数据变化标记), 其余格子只更新动态层 (轻量);
         // 全量脏 (全量帧/视野探索变化) 时全部刷新静态层
+        // 2026-08-31 修复: 单机/热座 (非帧同步) 建城/买地/文化扩张没有标脏路径 → 领土/城市显示丢失,
+        // 非帧同步模式恢复全量静态层刷新 (原版行为; 分层优化只用于帧同步广播频繁场景)
         val (allDirty, dirtySet) = consumeStaticDirty()
+        val fsMode = com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo)
         for (tileGroup in tileGroups.values)
-            tileGroup.update(civView, updateStatic = allDirty || dirtySet.contains(tileGroup.tile))
+            tileGroup.update(civView, updateStatic = allDirty || !fsMode || dirtySet.contains(tileGroup.tile))
 
         // Update tiles according to selected unit/city
         val unitTable = worldScreen.bottomUnitTable

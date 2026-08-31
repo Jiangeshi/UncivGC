@@ -146,7 +146,28 @@ class WorldScreen(
     private val bottomTileInfoTable = TileInfoTable(this)
     internal val notificationsScroll = NotificationsScroll(this)
     internal val nextTurnButton = NextTurnButton(this)
-    private val statusButtons = StatusButtons(nextTurnButton)
+    /** UncivGC 2026-08-31 顶栏快捷工具栏: 待办/事件/周转/通知/撤回/自动/状态 右组按钮 */
+    internal val autoPlayButton = com.unciv.ui.screens.worldscreen.status.AutoPlayStatusButton(this, nextTurnButton)
+    internal val todoButton = com.unciv.ui.screens.worldscreen.status.TodoButton(this)
+    internal val eventButton = com.unciv.ui.screens.worldscreen.status.EventButton(this)
+    internal val unitButton = com.unciv.ui.screens.worldscreen.status.UnitButton(this)
+    internal val notifyButton = com.unciv.ui.screens.worldscreen.status.NotifyButton(this)
+    internal val undoButton = com.unciv.ui.screens.worldscreen.status.UndoButton(this)
+    // ⚠️ statusButtons 必须在 quickActionBar 之前声明: 它的 init add(nextTurnButton),
+    // 若在 quickActionBar 组装之后, 会把状态按钮从 rightGroup 抢走 parent,
+    // 随后 statusButtons.update() 的 clear() 使其变孤儿 → 状态按钮消失 (2026-08-31 根因)
+    // 2026-09-01 自检: undoButton 传入 — 非实验性UI右下角恢复原版「自动+撤回竖排一组」
+    private val statusButtons = StatusButtons(nextTurnButton, undoButton)
+    internal val quickActionBar = com.unciv.ui.screens.worldscreen.QuickActionBar(this).also { bar ->
+        // 顺序: 撤回 自动 周转 事件 待办 通知 状态 (状态最右 — 用户 2026-08-31)
+        bar.rightGroup.add(undoButton).padLeft(4f).height(60f).align(com.badlogic.gdx.utils.Align.top)
+        bar.rightGroup.add(autoPlayButton).padLeft(4f).height(60f).fillY()
+        bar.rightGroup.add(unitButton).padLeft(4f).height(60f).fillY()
+        bar.rightGroup.add(eventButton).padLeft(4f).height(60f).fillY()
+        bar.rightGroup.add(todoButton).padLeft(4f).height(60f).fillY()
+        bar.rightGroup.add(notifyButton).padLeft(4f).height(60f).fillY()
+        bar.rightGroup.add(nextTurnButton).padLeft(4f).height(60f).fillY()
+    }
     /** UncivGC 撤回: 快照管理器 (自己回合内后台存快照, 点撤回回退) */
     val undoManager = UndoManager(this).also { it.start() }
     internal val smallUnitButton = SmallUnitButton(this, statusButtons)
@@ -188,6 +209,8 @@ class WorldScreen(
         stage.addActor(tutorialTaskTable)    // behind topBar!
         stage.addActor(topBar)
         stage.addActor(statusButtons)
+        // UncivGC 2026-08-31 快捷工具栏: 背景条先加(底层), 科技按钮组后加(上层覆盖背景条)
+        stage.addActor(quickActionBar)
         stage.addActor(techPolicyAndDiplomacy)
         // UncivGC: 帧同步模式聊天按钮移到顶栏 (与 状态/暂停/概览 并列) — 2026-08-22; 原版模式照旧挂 stage
         // 帧同步也显示聊天按钮 (新版私聊弹窗, 2026-08-25 用户要求)
@@ -267,6 +290,7 @@ class WorldScreen(
         undoManager.stop()
         events.stopReceiving()
         statusButtons.dispose()
+        autoPlayButton.dispose()  // UncivGC 2026-08-31: 自动回合按钮移入工具栏, 单独释放
         super.dispose()
     }
 
@@ -822,6 +846,12 @@ class WorldScreen(
 
     private fun updateGameplayButtons() {
         nextTurnButton.update()
+        // UncivGC 2026-08-31 快捷工具栏: 同步刷新右组按钮状态 + 背景条定位
+        todoButton.update()
+        eventButton.update()
+        unitButton.update()
+        notifyButton.update()
+        quickActionBar.updateLayout()
 
         updateAutoPlayStatusButton()
         updateUndoStatusButton()
@@ -839,31 +869,41 @@ class WorldScreen(
     }
 
     private fun updateAutoPlayStatusButton() {
-        if (statusButtons.autoPlayStatusButton == null) {
-            // UncivGC 帧同步: 隐藏 AutoPlay — 客户端本地自动化会被服务器广播回滚 (单位乱跳)
-            if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo)) return
-            if (game.settings.autoPlay.showAutoPlayButton)
-                statusButtons.autoPlayStatusButton = AutoPlayStatusButton(this, nextTurnButton)
-        } else {
-            if (!game.settings.autoPlay.showAutoPlayButton) {
+        // UncivGC 帧同步: 隐藏 AutoPlay — 客户端本地自动化会被服务器广播回滚 (单位乱跳)
+        val fsMode = com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(gameInfo)
+        if (com.unciv.GUI.getSettings().experimentalUi) {
+            // UncivGC 2026-08-31: 自动回合按钮移入顶栏快捷工具栏 (撤回右边)
+            val shouldShow = !fsMode && game.settings.autoPlay.showAutoPlayButton
+            if (!shouldShow && autoPlayButton.isVisible) autoPlay.stopAutoPlay()
+            autoPlayButton.isVisible = shouldShow
+            // 从非实验性UI切回时清掉右下角旧实例 (2026-09-01 自检)
+            if (statusButtons.autoPlayStatusButton != null) {
                 statusButtons.autoPlayStatusButton = null
                 autoPlay.stopAutoPlay()
+            }
+        } else {
+            // 非实验性UI: 保持原版右下角「自动回合」按钮 (与撤回竖排一组 — 2026-09-01 自检修复)
+            autoPlayButton.isVisible = false
+            if (statusButtons.autoPlayStatusButton == null) {
+                if (!fsMode && game.settings.autoPlay.showAutoPlayButton)
+                    statusButtons.autoPlayStatusButton = AutoPlayStatusButton(this, nextTurnButton)
+            } else {
+                if (!game.settings.autoPlay.showAutoPlayButton || fsMode) {
+                    statusButtons.autoPlayStatusButton = null
+                    autoPlay.stopAutoPlay()
+                }
             }
         }
     }
 
     /** UncivGC 撤回按钮: 只在自己回合内创建/显示 */
     private fun updateUndoStatusButton() {
-        if (statusButtons.undoButton == null) {
-            statusButtons.undoButton = UndoButton(this).also { it.update() }
-        } else {
-            statusButtons.undoButton?.update()
-        }
+        undoButton.update()
     }
 
     /** 快照变化后刷新撤回按钮状态 (由 UndoManager 调用) */
     fun refreshUndoButton() {
-        statusButtons.updateUndoButton()
+        undoButton.update()
     }
 
     private fun updateMultiplayerStatusButton() {

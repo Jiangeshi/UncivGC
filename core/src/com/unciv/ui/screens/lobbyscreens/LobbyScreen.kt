@@ -198,15 +198,12 @@ class LobbyScreen : PickerScreen() {
     private fun showCreateRoomPopup() {
         val popup = Popup(this)
         popup.addGoodSizedLabel("Create room".tr()).colspan(2).row()
-        val nameField = UncivTextField("My room".tr())
-        popup.add(nameField).width(stage.width / 2).row()
-        // 2026-08-31 房间密码: 可选, 留空=公开房间
-        val passwordField = UncivTextField("")
-        popup.add("Password (optional)".tr()).padTop(5f)
+        // 2026-08-31 用户要求: 房间名不再玩家自定义, 服务器自动序号 (房间1/2/3...)
+        // 2026-08-31 房间密码: 可选, 留空=公开房间; 提示文本放输入框内
+        val passwordField = UncivTextField("Password (optional)".tr())
         popup.add(passwordField).width(stage.width / 2).row()
         val createButton = "Create".toTextButton()
         createButton.onActivation {
-            val name = nameField.text.trim().ifEmpty { "My room".tr() }
             val password = passwordField.text.trim()
             popup.close()
             val loading = Popup(this)
@@ -214,7 +211,8 @@ class LobbyScreen : PickerScreen() {
             loading.open()
             Concurrency.run("LobbyCreate") {
                 try {
-                    val room = LobbyApi.createRoom(name, nickname, playerId, null, password)
+                    // 名字传空 → 服务器自动命名 房间N
+                    val room = LobbyApi.createRoom("", nickname, playerId, null, password)
                     launchOnGLThread {
                         loading.close()
                         game.pushScreen(LobbyRoomScreen(room.id, room.name))

@@ -22,9 +22,9 @@ import com.unciv.ui.screens.worldscreen.WorldScreen
  *    结束回合入口放在这里, 不阻挡过回合 */
 class EventQueueMenu(
     stage: Stage,
-    nextTurnButton: NextTurnButton,
+    anchor: com.badlogic.gdx.scenes.scene2d.Actor,
     private val worldScreen: WorldScreen
-) : ScrollableAnimatedMenuPopup(stage, nextTurnButton) {
+) : ScrollableAnimatedMenuPopup(stage, anchor, com.badlogic.gdx.utils.Align.bottomLeft) {
 
     private val viewingCiv get() = worldScreen.viewingCiv
     private val gameInfo get() = worldScreen.gameInfo
@@ -37,6 +37,7 @@ class EventQueueMenu(
     override fun createScrollableContent(): Table? {
         val table = Table()
         table.defaults().pad(5f, 15f, 5f, 15f).growX()
+        // 固定宽度让条目左右填满 (2026-08-31 用户: 下拉框元素应填满, 不居中)
         var any = false
 
         // popupAlerts 排队事件 (通知/决策弹窗 — 下回合清空; 立即弹类型除外: 占领城市/外交联姻/游戏结束)
@@ -44,7 +45,7 @@ class EventQueueMenu(
             if (alert.type in com.unciv.ui.screens.worldscreen.immediatePopupAlertTypes) continue
             table.add(menuButton(alertLabel(alert)) {
                 AlertPopup(worldScreen, alert)
-            }).row()
+            }).width(260f).row()
             any = true
         }
 
@@ -52,7 +53,7 @@ class EventQueueMenu(
         if (viewingCiv.greatPeople.freeGreatPeople > 0) {
             table.add(menuButton("选择免费伟人".tr()) {
                 worldScreen.game.pushScreen(GreatPersonPickerScreen(worldScreen, viewingCiv))
-            }).row()
+            }).width(260f).row()
             any = true
         }
 
@@ -67,23 +68,14 @@ class EventQueueMenu(
                     list.add(0, req)
                 }
                 TradePopup(worldScreen).open()
-            }).row()
+            }).width(260f).row()
             any = true
         }
 
         return if (any) table else null
     }
 
-    override fun createFixedContent(): Table? {
-        val table = Table()
-        table.defaults().pad(5f, 15f, 5f, 15f).growX()
-        // 结束回合入口: 当前下一个动作 (与按钮原逻辑一致; 帧同步 = 完成回合/取消完成回合)
-        val action = NextTurnAction.entries.first { it.isChoice(worldScreen) }
-        table.add(getButton(action.getText(worldScreen).tr(), KeyboardBinding.NextTurnMenuNextTurn) {
-            action.action(worldScreen)
-        }).row()
-        return table
-    }
+    override fun createFixedContent(): Table? = null
 
     /** 事件项按钮 (无键盘绑定 — 动态数量, 同绑定会全部触发) */
     private fun menuButton(text: String, action: () -> Unit): Actor =

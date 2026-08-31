@@ -10,6 +10,7 @@ import io.ktor.client.plugins.timeout
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
+import io.ktor.client.statement.bodyAsText
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsChannel
@@ -140,7 +141,12 @@ object LobbyApi {
 
     private suspend inline fun <reified T> parse(response: HttpResponse): T {
         if (!response.status.isSuccess()) {
-            val err = try { response.body<ApiError>().error } catch (e: Exception) { null }
+            // 2026-08-31: 错误信息读取更稳 — ApiError 序列化失败时退回原始文本 (否则只显示连接异常)
+            val err = try {
+                response.body<ApiError>().error
+            } catch (e: Exception) {
+                try { response.bodyAsText().trim().ifEmpty { null } } catch (e2: Exception) { null }
+            }
             throw RuntimeException(err ?: "HTTP ${response.status.value}")
         }
         return response.body()

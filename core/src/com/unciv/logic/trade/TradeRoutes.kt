@@ -42,7 +42,9 @@ object TradeRoutes {
         val stats = Stats()
         val distFactor = if (route.isSea) 0.3f else 1.2f  // 2026-08-31 用户调整: 陆商 1.2/格, 海商 0.3/格 (原 1.5/0.5)
         val rank = expectedRank ?: routeRank(city, route.otherCity.id)
-        val popFactor = 1f + route.otherCity.population.population / 20f  // 方案A: 接收方人口
+        // 2026-09-01 用户: 人口系数分档 (原 x/20 后期增长太高): 1~10: x/20, 11~20: 0.5+(x-10)/40,
+        // 21~30: 0.75+(x-20)/60, 31+: 0.917+(x-30)/80 (每档起点=上档终点, 分母 20/40/60/80 递增)
+        val popFactor = 1f + populationFactor(route.otherCity.population.population)  // 方案A: 接收方人口
         stats.gold = improvedResourceCount(city) * 0.5f + distFactor * route.distance
         // 词条固定加成并入基础 (2026-08-28 晚): 吃同盟/人口/rank 系数; 只发起方有
         // 2026-08-28 修复: 全 stat 并入 — 原只取 gold, 产能/粮食/科学/文化等词条全部不生效 (用户 LM2ugc 商路词条)
@@ -58,7 +60,7 @@ object TradeRoutes {
         val stats = Stats()
         val resources = improvedResourceTypes(city)
         val rank = expectedRank ?: routeRank(city, route.otherCity.id)
-        val popFactor = 1f + city.population.population / 20f  // 方案A: 发起方人口 (city=发起方)
+        val popFactor = 1f + populationFactor(city.population.population)  // 方案A: 发起方人口 (city=发起方)
         val mult = allianceBonus(city, route.otherCity) * popFactor * (1f / rank)
         stats.culture = (resources[ResourceType.Luxury]?.toFloat() ?: 0f) * mult
         stats.production = (resources[ResourceType.Strategic]?.toFloat() ?: 0f) * mult
@@ -68,6 +70,16 @@ object TradeRoutes {
 
     /** 同盟商路加成 (2026-08-26 同盟设计稿 v1.0): 两城市文明间存在同盟 → 1.25 (Lv1 起生效)
      *  2026-08-28 用户调整: 1.5 (+50%) → 1.25 (+25%) */
+    /** 2026-09-01 用户: 人口系数分档 (原 x/20 后期增长太高): 每 10 人口一档,
+     *  每档起点=上一档终点, 分母 20/40/60/80 递增, 31+ 锁分母 80 — 曲线连续、后期增长平缓
+     *  1~10: x/20; 11~20: 0.5+(x-10)/40; 21~30: 0.75+(x-20)/60; 31+: 0.75+10/60+(x-30)/80 */
+    private fun populationFactor(pop: Int): Float = when {
+        pop <= 10 -> pop / 20f
+        pop <= 20 -> 0.5f + (pop - 10) / 40f
+        pop <= 30 -> 0.75f + (pop - 20) / 60f
+        else -> 0.75f + 10f / 60f + (pop - 30) / 80f
+    }
+
     private fun allianceBonus(city: City, otherCity: City): Float {
         return if (city.civ.gameInfo.alliances.any {
                 it.contains(city.civ.civID) && it.contains(otherCity.civ.civID)
