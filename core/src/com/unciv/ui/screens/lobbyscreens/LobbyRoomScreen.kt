@@ -70,9 +70,10 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
     ), RecreateOnResize {
 
     companion object {
-        /** UncivGC 自建存档服务器 (与 gen_lobby.py 一致): 存档上传/下载都走这里; 本地联调用 -Duncivgc.spUrl 覆盖 */
+        /** UncivGC 自建存档服务器 (与 gen_lobby.py 一致): 存档上传/下载都走这里; 本地联调用 -Duncivgc.spUrl 覆盖
+         *  ⚠️ 开源仓库保持占位符 — 正式包由 release_build.sh 注入真实地址 (2026-08-31 合规) */
         val SP_SERVER_URL: String
-            get() = System.getProperty("uncivgc.spUrl") ?: "http://110.40.151.9:30126"
+            get() = System.getProperty("uncivgc.spUrl") ?: "http://YOUR_SP_HOST:30126"
 
         /** 当前所在房间 ID (游戏内菜单「退出房间」用) */
         var activeRoomId: String? = null
@@ -756,11 +757,15 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         // [closeButton][chatButton][descriptionScroll(grow)][rightSideGroup]
         bottomTable.clearChildren()
         bottomTable.add(closeButton).pad(10f)
-        bottomTable.add(chatButton).pad(10f)
+        // UncivGC 2026-08-31 合规: 聊天功能全部 ban — 房间聊天按钮不显示
+        if (!com.unciv.ui.screens.worldscreen.chat.ChatButton.chatDisabled)
+            bottomTable.add(chatButton).pad(10f)
         bottomTable.add(descriptionScroll).grow()
         bottomTable.add(rightSideGroup)
         chatButton.onClick { openChatPopup() }
-        startChatUnreadPolling()  // 2026-08-29: 房间聊天按钮未读提示 "Chat (n)"
+        // UncivGC 2026-08-31 合规: 聊天 ban — 不启动未读轮询
+        if (!com.unciv.ui.screens.worldscreen.chat.ChatButton.chatDisabled)
+            startChatUnreadPolling()  // 2026-08-29: 房间聊天按钮未读提示 "Chat (n)"
 
         // ---- 退出房间 (替换原版返回动作: 先清掉原版 Tap 激活, 避免双重弹屏) ----
         closeButton.setText("Leave room".tr())

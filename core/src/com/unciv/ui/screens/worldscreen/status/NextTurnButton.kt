@@ -1,6 +1,5 @@
 package com.unciv.ui.screens.worldscreen.status
 
-import com.badlogic.gdx.graphics.Color
 import com.badlogic.gdx.scenes.scene2d.ui.Cell
 import com.badlogic.gdx.scenes.scene2d.ui.Label
 import com.unciv.logic.civilization.managers.TurnManager
@@ -37,12 +36,7 @@ class NextTurnButton(
             com.unciv.ui.screens.worldscreen.FrameSync.log(
                 "NextTurnBtn clicked: action=$nextTurnAction myTurnFinished=" +
                 com.unciv.ui.screens.worldscreen.FrameSync.myTurnFinished)
-            // UncivGC 待办事件 (实验性UI): 有排队事件 → 打开事件列表 (替代直接执行当前动作)
-            if (com.unciv.GUI.getSettings().experimentalUi && worldScreen.hasPendingQueueEvents()) {
-                EventQueueMenu(stage, this, worldScreen)
-            } else {
-                nextTurnAction.action(worldScreen)
-            }
+            nextTurnAction.action(worldScreen)
         }
         addContextMenu { NextTurnMenu(stage, this, worldScreen) }
         keyShortcuts.add(KeyboardBinding.NextTurn)
@@ -52,18 +46,6 @@ class NextTurnButton(
     }
 
     fun update() {
-        // UncivGC 待办事件 (实验性UI): 有排队事件 → 按钮显示「事件 (n)」, 点击开列表
-        if (com.unciv.GUI.getSettings().experimentalUi && worldScreen.hasPendingQueueEvents()) {
-            label.setText("事件 (${worldScreen.pendingQueueEventCount()})".tr())
-            label.color = Color.WHITE
-            iconCell.clearActor()
-            unitsDueCell.clearActor()
-            removeTooltips()
-            pack()
-            isEnabled = true
-            worldScreen.smallUnitButton.update()
-            return
-        }
         nextTurnAction = getNextTurnAction(worldScreen)
         updateButton(nextTurnAction)
         val autoPlay = worldScreen.autoPlay

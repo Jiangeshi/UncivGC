@@ -84,6 +84,8 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
      *  纯文字按钮 (去掉 icon, 大小与其他按钮一致); lazy: WorldScreen.chatButton 声明在 topBar 之后,
      *  init 直接访问会 NPE (开房卡住根因) */
     private val fsChatButton: com.badlogic.gdx.scenes.scene2d.Actor? by lazy {
+        // UncivGC 2026-08-31 合规: 聊天功能全部 ban — 不创建局内聊天按钮
+        if (com.unciv.ui.screens.worldscreen.chat.ChatButton.chatDisabled) return@lazy null
         if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo)) {
             val btn = com.badlogic.gdx.scenes.scene2d.ui.TextButton("聊天", BaseScreen.skin)
             fsChatButtonRef = btn

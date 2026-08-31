@@ -26,7 +26,15 @@ class ChatButton(val worldScreen: WorldScreen) : IconTextButton(
 ) {
     private val chat = ChatStore.getChatByGameId(worldScreen.gameInfo.gameId)
 
+    init {
+        // UncivGC 2026-08-31 合规: 聊天功能全部 ban (房间+局内) — 按钮隐藏, 入口统一走 companion.chatDisabled
+        if (chatDisabled) isVisible = false
+    }
+
     companion object {
+        /** UncivGC 2026-08-31 合规: 自由聊天全部禁用 (房间+局内) — true=隐藏所有聊天入口 (服务器 lobby 同时拒绝) */
+        @Volatile var chatDisabled = true
+
         /** 帧同步已读进度 (弹窗读过的消息 seq; 按钮轮询按此计未读) — 2026-08-25 */
         @Volatile var fsReadSeq = 0
 

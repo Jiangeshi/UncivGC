@@ -198,3 +198,7 @@ jre-macOS.tar.gz
 packr-all-4.0.0.jar
 /desktop/packr/
 /deploy/
+
+# 签名密钥不入库
+*.keystore
+*.jks

@@ -121,7 +121,7 @@ object FrameSync {
 
     /** fs_server 主机 (2026-08-25 对局分离架构: 打包时改新机 IP; null = 与 lobby 同主机, 兼容旧部署;
      *  运行时 -Duncivgc.fsHost 覆盖 — 仅对局(模拟器/广播)走新机, 大厅/存档仍走 lobby 主机) */
-    private val FS_HOST: String? = "118.25.42.214"
+    private val FS_HOST: String? = "YOUR_FS_HOST"
     private const val RECONNECT_BASE_MS = 2000L
     private const val RECONNECT_MAX_MS = 15000L
     /** 心跳间隔: 5s 一次 (断线检测提速 — 网络切换/服务器关闭时收不到 pong 快速判死) */

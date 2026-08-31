@@ -117,11 +117,13 @@ data class SettingsRequest(val nickname: String, val playerId: String, val setti
 /** 联机大厅 API 客户端 (M2 服务器: unciv-lobby/lobby_server.py) */
 object LobbyApi {
     // 生产默认; 本地联调可用 -Duncivgc.lobbyUrl=http://127.0.0.1:8124 覆盖
+    // ⚠️ 开源仓库保持占位符 — 正式包由 release_build.sh 注入真实地址 (2026-08-31 合规)
     val SERVER_URL: String
-        get() = System.getProperty("uncivgc.lobbyUrl") ?: "http://110.40.151.9:8125"
+        get() = System.getProperty("uncivgc.lobbyUrl") ?: "http://YOUR_LOBBY_HOST:8125"
 
-    /** 房间接口鉴权 token (与服务器 LOBBY_TOKEN 一致; 防止陌生客户端建房/进房) */
-    const val LOBBY_TOKEN = "fe645aeabf2862a9d70405643a849bee"
+    /** 房间接口鉴权 token (与服务器 LOBBY_TOKEN 一致; 防止陌生客户端建房/进房)
+     *  ⚠️ 开源仓库保持占位符 — 正式包由 release_build.sh 注入真实 token (2026-08-31 合规) */
+    const val LOBBY_TOKEN = "YOUR_LOBBY_TOKEN"
 
     private val client = HttpClient(CIO) {
         // 所有请求统一带鉴权头 (房间接口必需; 模组下载/健康检查服务器侧不强制)
