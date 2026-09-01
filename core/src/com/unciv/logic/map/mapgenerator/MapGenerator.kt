@@ -256,7 +256,10 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
         
         fun getMirrorTile(tile: Tile): Tile? {
             val mirrorTileVector = when (mirroringType) {
-                MirroringType.topbottom -> if (tile.getRow() <= 0) return null else flipTopBottom(tile.position)
+                // 2026-09-01 修复: getRow=(x+y)/2 增大=向上 (y 是 2 点钟方向) → row>=0 才是上半;
+                // 原 row<=0 保留的是下半 (上下镜像"下面翻上去了", 用户反馈); leftright 的
+                // getColumn=y-x 增大=向右, column<=0=左半 原本就正确
+                MirroringType.topbottom -> if (tile.getRow() >= 0) return null else flipTopBottom(tile.position)
                 MirroringType.leftright -> if (tile.getColumn() <= 0) return null else flipLeftRight(tile.position)
                 MirroringType.aroundCenterTile -> if (tile.getRow() <= 0) return null else flipLeftRight(flipTopBottom(tile.position))
                 MirroringType.fourway -> when {
