@@ -98,9 +98,9 @@ class ModConstants {
     var religionLimitBase = 1
     var religionLimitMultiplier = 0.5f
 
-    // Factors in formula for pantheon cost
-    var pantheonBase = 10
-    var pantheonGrowth = 5
+    // Factors in formula for pantheon cost (2026-09-01 用户调整: 基础 10→15, 增长 5→2)
+    var pantheonBase = 15
+    var pantheonGrowth = 2
 
     // AI behaviour
     var workboatAutomationSearchMaxTiles = 37

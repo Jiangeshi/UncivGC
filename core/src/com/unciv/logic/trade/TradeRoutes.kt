@@ -112,7 +112,15 @@ object TradeRoutes {
         for (tile in city.getTiles()) {
             if (tile.getCity() != city) continue
             val res = tile.tileResource ?: continue
-            if (tile.getUnpillagedImprovement() == null && tile != city.getCenterTileOrNull()) continue
+            // 2026-09-01 修复: ①战略资源有前置科技, 未解锁不可见 → 不参与商路判定 (canSeeResource)
+            // ②「开发资源」= 对应的改良 (羊盖农场不算开发羊, 只有牧场才算; 城市中心坐资源保留原版自动开发)
+            if (!city.civ.canSeeResource(res)) continue
+            val improvement = tile.getUnpillagedImprovement()
+            if (improvement != null) {
+                if (improvement !in res.getImprovements()) continue
+            } else if (tile != city.getCenterTileOrNull()) {
+                continue
+            }
             result[res.resourceType] = (result[res.resourceType] ?: 0) + 1
         }
         return result
