@@ -2277,17 +2277,19 @@ object FrameSync {
                 }
             }
             // 2026-08-29: 服务器权威商路收益 (tradeRouteStats) — 商路页显示用, 双方一致 (以发起方为准)
+            // 2026-09-01: key 编码 "from\u0001to\u0001fromIsInitiator" — 双向商路区分发起/接收方向
             state["tradeRouteStats"]?.jsonArray?.let { statsArr ->
-                val newStats = HashMap<Pair<String, String>, com.unciv.models.stats.Stats>()
+                val newStats = HashMap<String, com.unciv.models.stats.Stats>()
                 for (item in statsArr) {
                     val arr = item.jsonArray ?: continue
                     val from = arr.getOrNull(0)?.jsonPrimitive?.contentOrNull ?: continue
                     val to = arr.getOrNull(1)?.jsonPrimitive?.contentOrNull ?: continue
+                    val fromIsInitiator = arr.getOrNull(2)?.jsonPrimitive?.contentOrNull == "1"
                     val gold = arr.getOrNull(3)?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0f
                     val food = arr.getOrNull(4)?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0f
                     val prod = arr.getOrNull(5)?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0f
                     val culture = arr.getOrNull(6)?.jsonPrimitive?.contentOrNull?.toFloatOrNull() ?: 0f
-                    newStats[Pair(from, to)] = com.unciv.models.stats.Stats().apply {
+                    newStats["$from${com.unciv.Constants.stringSplitCharacter}$to${com.unciv.Constants.stringSplitCharacter}${if (fromIsInitiator) "1" else "0"}"] = com.unciv.models.stats.Stats().apply {
                         this.gold = gold; this.food = food; this.production = prod; this.culture = culture
                     }
                 }

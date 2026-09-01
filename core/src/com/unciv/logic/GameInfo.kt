@@ -140,9 +140,11 @@ class GameInfo : IsPartOfGameInfoSerialization, HasGameInfoSerializationVersion 
     var tradeRouteCooldowns = HashMap<String, Int>()
 
     /** 2026-08-29: 服务器权威商路收益缓存 (帧同步广播 tradeRouteStats) — 商路页显示用,
-     *  不随存档保存 (每次开局/重载由服务器广播重建) */
+     *  不随存档保存 (每次开局/重载由服务器广播重建)
+     *  2026-09-01: key 改为编码串 "fromId\u0001toId\u0001fromIsInitiator" —
+     *  双向商路时同 (from,to) 有两个方向的收益 (发起方得金钱/接收方得文产食), 必须带方向区分 */
     @Transient
-    var tradeRouteStats = HashMap<Pair<String, String>, com.unciv.models.stats.Stats>()
+    var tradeRouteStats = HashMap<String, com.unciv.models.stats.Stats>()
     //endregion
 
     //region UncivGC 同盟系统 (2026-08-26, 设计稿: 文档/同盟系统-设计稿.md)

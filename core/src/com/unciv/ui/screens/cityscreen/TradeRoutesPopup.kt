@@ -154,16 +154,17 @@ class TradeRoutesPopup(private val screen: com.unciv.ui.screens.basescreen.BaseS
             // 我的收益: 受益者=本城; 对方收益: 受益者=对方城市
             // 2026-08-29: 优先用服务器权威收益 (tradeRouteStats) — 双方显示完全一致 (以发起方为准,
             // 修复: 接收方本地缺发起方城市地块/资源数据 → 本地算收益不一致); 无权威值回退本地算 (单机)
-            fun serverStats(from: City, to: City): com.unciv.models.stats.Stats? =
-                gameInfo.tradeRouteStats[Pair(from.id, to.id)]
+            // 2026-09-01: key 编码 "from\u0001to\u0001fromIsInitiator" (双向商路区分方向, 修复接收方收益显示金钱)
+            fun serverStats(from: City, to: City, fromIsInitiator: Boolean): com.unciv.models.stats.Stats? =
+                gameInfo.tradeRouteStats["${from.id}${com.unciv.Constants.stringSplitCharacter}${to.id}${com.unciv.Constants.stringSplitCharacter}${if (fromIsInitiator) "1" else "0"}"]
             val myStats = if (isInitiatorGroup)
-                serverStats(city, other) ?: TradeRoutes.totalStats(city, city, route, true)
+                serverStats(city, other, true) ?: TradeRoutes.totalStats(city, city, route, true)
             else
-                serverStats(city, other) ?: TradeRoutes.totalStats(route.otherCity, city, route, false)
+                serverStats(city, other, false) ?: TradeRoutes.totalStats(route.otherCity, city, route, false)
             val theirStats = if (isInitiatorGroup)
-                serverStats(other, city) ?: TradeRoutes.totalStats(city, other, route, false)
+                serverStats(other, city, false) ?: TradeRoutes.totalStats(city, other, route, false)
             else
-                serverStats(other, city) ?: TradeRoutes.totalStats(route.otherCity, route.otherCity, route, true)
+                serverStats(other, city, true) ?: TradeRoutes.totalStats(route.otherCity, route.otherCity, route, true)
             contentTable.add(makeLabel(type)).minWidth(columnWidths[0]).pad(6f, 8f)
             contentTable.add(makeCityLabel(other.name.tr())).minWidth(columnWidths[1]).maxWidth(columnWidths[1]).pad(6f, 8f)
             contentTable.add(makeLabel(route.distance.toString())).minWidth(columnWidths[2]).pad(6f, 8f)
