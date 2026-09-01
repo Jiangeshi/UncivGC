@@ -210,6 +210,25 @@ class MapEditorGenerateTab(
                 parent.generate(choice)
                 choice.copyParameters?.invoke(newMapParameters, actualMapParameters)
             }
+
+            // UncivGC 2026-09-01: 手动镜像 — 以基准半为基 (左/上保留, 右/下覆盖为镜像)
+            add("Mirror map (keeps left / top half):".toLabel()).padTop(10f).row()
+            val mirrorButtons = Table()
+            mirrorButtons.add("Mirror left-right".toTextButton().apply {
+                onClick { mirrorMap(com.unciv.logic.map.MirroringType.leftright) }
+            }).pad(5f)
+            mirrorButtons.add("Mirror top-bottom".toTextButton().apply {
+                onClick { mirrorMap(com.unciv.logic.map.MirroringType.topbottom) }
+            }).pad(5f)
+            add(mirrorButtons).row()
+        }
+
+        private fun mirrorMap(type: String) {
+            val map = parent.editorScreen.tileMap
+            if (map.values.isEmpty()) return
+            MapGenerator(parent.editorScreen.ruleset).mirrorMap(map, type)
+            parent.editorScreen.mapHolder.updateTileGroups()
+            parent.editorScreen.isDirty = true
         }
     }
 }

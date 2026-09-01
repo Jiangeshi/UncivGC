@@ -242,6 +242,15 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
     private fun flipTopBottom(vector: HexCoord): HexCoord = HexCoord.of(-vector.y, -vector.x)
     private fun flipLeftRight(vector: HexCoord): HexCoord = HexCoord.of(vector.y, vector.x)
 
+    /** UncivGC 2026-09-01: 地图编辑器手动镜像 — 以基准半为基覆盖另一半
+     *  (leftright: 左半保留, 右半 = 左半镜像; topbottom: 上半保留, 下半 = 上半镜像).
+     *  用完恢复 mirroring=none, 防止参数残留影响后续生成/保存 */
+    fun mirrorMap(map: TileMap, mirroringType: String) {
+        map.mapParameters.mirroring = mirroringType
+        mirror(map)
+        map.mapParameters.mirroring = MirroringType.none
+    }
+
     private fun mirror(map: TileMap) {
         val mirroringType = map.mapParameters.mirroring
         
