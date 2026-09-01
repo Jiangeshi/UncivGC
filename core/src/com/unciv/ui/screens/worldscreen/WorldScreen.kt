@@ -908,7 +908,8 @@ class WorldScreen(
 
     private fun updateMultiplayerStatusButton() {
         // UncivGC 联机大厅: 大厅局不显示多人状态按钮 (等待/回合提示由大厅自己的一套逻辑负责)
-        val isLobbyGame = gameInfo.gameParameters.multiplayerServerUrl == com.unciv.ui.screens.lobbyscreens.LobbyRoomScreen.SP_SERVER_URL
+        // 2026-09-01: 大厅局识别改用 viaLobby 标志 (原按存档服务器地址, 误伤用 30126 开的原版多人局)
+        val isLobbyGame = gameInfo.gameParameters.viaLobby
         val shouldShow = !isLobbyGame &&
             (gameInfo.gameParameters.isOnlineMultiplayer || game.settings.multiplayer.statusButtonInSinglePlayer)
         if (shouldShow) {

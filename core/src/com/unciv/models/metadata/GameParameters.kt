@@ -34,6 +34,11 @@ class GameParameters : IsPartOfGameInfoSerialization { // Default values are the
     var espionageEnabled = false
     /** UncivGC 帧同步: 同时回合 (实时联机, Civ6 模式) — 房间设置开关, 服务器权威 */
     var simultaneousTurns = false
+
+    /** UncivGC 联机大厅局标志 (2026-09-01): 大厅创建/进入的局 = true;
+     *  官方多人列表/「是否大厅局」判断按此识别, 不再按存档服务器地址
+     *  (原按地址 == SP_SERVER_URL 判断, 把用 30126 开原版多人局的房间也误藏/误判了) */
+    var viaLobby: Boolean = false
     /** UncivGC 帧同步: 每段回合保底时长 (分钟) — 5 段 [0-25, 26-50, 51-75, 76-100, 100+]; 0=无限制 (该段不设倒计时, 全员完成才过回合); null=服务器默认 */
     var fsTurnTimes: Array<Float>? = null
     /** UncivGC 帧同步: 回合结算后强制停留/锁定秒数 (客户端结算锁定+提示条时长; 0=不锁定) — 2026-08-22 用户要求可设置, 默认 3; 2026-08-27 用户调整默认 3→1 */

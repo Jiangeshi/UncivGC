@@ -39,7 +39,8 @@ class WorldScreenMenuPopup(
         defaults().fillX()
 
         // UncivGC 联机大厅开局: 隐藏单机选项, 增加「退出房间」(AI托管)
-        val isLobbyGame = worldScreen.gameInfo.gameParameters.multiplayerServerUrl == LobbyRoomScreen.SP_SERVER_URL
+        // 2026-09-01: 大厅局识别改用 viaLobby 标志 (原按存档服务器地址, 误伤用 30126 开的原版多人局)
+        val isLobbyGame = worldScreen.gameInfo.gameParameters.viaLobby
 
         val showSave = !worldScreen.gameInfo.gameParameters.isOnlineMultiplayer
         val showMusic = worldScreen.game.musicController.isMusicAvailable()
