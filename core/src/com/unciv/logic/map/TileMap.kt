@@ -615,6 +615,10 @@ class TileMap(initialCapacity: Int = 10) : IsPartOfGameInfoSerialization {
 
         for (tileInfo in values) {
             tileMatrix[tileInfo.position.x - leftX][tileInfo.position.y - bottomY] = tileInfo
+            // 2026-09-01 修复: ruleset 提前到 matrix 填充时设置 — 否则第二个循环里
+            // setUnitTransients → unique 条件评估 (如 "adjacent to [terrain]") 会访问相邻 tile 的
+            // ruleset, 相邻 tile 若还没轮到则 lateinit 崩溃 (Emperors and Deities 模组新版触发)
+            tileInfo.ruleset = this.ruleset!!
         }
         for ((index, tileInfo) in values.withIndex()) {
             // Do ***NOT*** call Tile.setTerrainTransients before the tileMatrix is complete -
@@ -624,7 +628,6 @@ class TileMap(initialCapacity: Int = 10) : IsPartOfGameInfoSerialization {
             // transients in the same loop will leave incomplete cached `neighbors`.
             tileInfo.tileMap = this
             tileInfo.zeroBasedIndex = index
-            tileInfo.ruleset = this.ruleset!!
             tileInfo.setTerrainTransients()
             tileInfo.setUnitTransients(setUnitCivTransients)
         }
