@@ -54,7 +54,7 @@ class NextTurnButton(
             && nextTurnAction == NextTurnAction.NextTurn
             && currentTodoAction(worldScreen) != null
         if (todoBlocks) {
-            label.setText("有待办未完成".tr())
+            label.setText("Unfinished todo actions".tr())
             label.color = com.badlogic.gdx.graphics.Color.GRAY
             iconCell.clearActor()
             unitsDueCell.clearActor()

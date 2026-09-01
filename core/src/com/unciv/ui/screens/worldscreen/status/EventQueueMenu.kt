@@ -51,7 +51,7 @@ class EventQueueMenu(
 
         // 免费伟人 (必选, 服务器计数驱动 — 不随下回合清空)
         if (viewingCiv.greatPeople.freeGreatPeople > 0) {
-            table.add(menuButton("选择免费伟人".tr()) {
+            table.add(menuButton("Choose a free great person".tr()) {
                 worldScreen.game.pushScreen(GreatPersonPickerScreen(worldScreen, viewingCiv))
             }).width(260f).row()
             any = true
@@ -60,7 +60,7 @@ class EventQueueMenu(
         // 贸易请求 (商路/贸易提议; 服务器存档驱动 — 回应前保留)
         for (req in viewingCiv.tradeRequests.toList()) {
             val civName = gameInfo.getCivilizationOrNull(req.requestingCiv)?.civName?.tr() ?: req.requestingCiv
-            table.add(menuButton("贸易请求: [$civName]".tr()) {
+            table.add(menuButton("Trade request: [$civName]".tr()) {
                 // TradePopup 固定取 first → 把点中的那条移到队首再开
                 val list = viewingCiv.tradeRequests
                 if (list.firstOrNull { it === req } != null) {
@@ -86,7 +86,7 @@ class EventQueueMenu(
             }
         }
 
-    /** 弹窗摘要文案 (按 AlertType 映射) */
+    /** 弹窗摘要文案 (按 AlertType 映射) — 全部走 tr() 英文源串, 动态名用 [x] 占位符由 tr() 替换 */
     private fun alertLabel(alert: PopupAlert): String {
         val value = alert.value
         return when (alert.type) {
@@ -94,42 +94,43 @@ class EventQueueMenu(
                 val name = value.split(Constants.stringSplitCharacter)[0]
                 gameInfo.ruleset.events[name]?.name ?: name
             }
-            AlertType.WonderBuilt -> "奇观建成: " + (gameInfo.ruleset.buildings[value]?.name ?: value)
-            AlertType.TechResearched -> "科技研究完成: " + (gameInfo.ruleset.technologies[value]?.name ?: value)
-            AlertType.WarDeclaration -> "宣战: " + civLabel(value)
-            AlertType.FirstContact -> "相遇: " + civLabel(value)
-            AlertType.CityConquered -> "占领城市: " + cityLabel(value)
-            AlertType.CityTraded -> "城市交易: " + cityLabel(value)
-            AlertType.BorderConflict -> "边境冲突: " + civLabel(value)
-            AlertType.TilesStolen -> "土地被占: " + civLabel(value)
-            AlertType.DemandToStopSettlingCitiesNear -> "要求停止扩张: " + civLabel(value)
-            AlertType.CitySettledNearOtherCivDespiteOurPromise -> "违反承诺建城: " + civLabel(value)
-            AlertType.DemandToStopSpreadingReligion -> "要求停止传教: " + civLabel(value)
-            AlertType.ReligionSpreadDespiteOurPromise -> "违反承诺传教: " + civLabel(value)
-            AlertType.DemandToStopSpyingOnUs -> "要求停止间谍: " + civLabel(value)
-            AlertType.SpyingOnUsDespiteOurPromise -> "违反承诺间谍: " + civLabel(value)
-            AlertType.DemandToNotAttackUs -> "要求停止攻击: " + civLabel(value)
-            AlertType.AttackedUsDespitePromise -> "违反承诺攻击: " + civLabel(value)
-            AlertType.AcceptingDemand -> "接受要求: " + civLabel(value)
-            AlertType.RejectingDemand -> "拒绝要求: " + civLabel(value)
-            AlertType.GoldenAge -> "黄金时代"
-            AlertType.DeclarationOfFriendship -> "友谊宣言: " + civLabel(value)
-            AlertType.StartIntro -> "开场"
-            AlertType.DiplomaticMarriage -> "外交联姻: " + cityLabel(value)
+            AlertType.WonderBuilt -> "Wonder built: [${gameInfo.ruleset.buildings[value]?.name ?: value}]".tr()
+            AlertType.TechResearched -> "Technology researched: [${gameInfo.ruleset.technologies[value]?.name ?: value}]".tr()
+            AlertType.WarDeclaration -> "Declared war on: [${civLabel(value)}]".tr()
+            AlertType.FirstContact -> "Met: [${civLabel(value)}]".tr()
+            AlertType.CityConquered -> "City conquered: [${cityLabel(value)}]".tr()
+            AlertType.CityTraded -> "City traded: [${cityLabel(value)}]".tr()
+            AlertType.BorderConflict -> "Border conflict: [${civLabel(value)}]".tr()
+            AlertType.TilesStolen -> "Tiles stolen: [${civLabel(value)}]".tr()
+            AlertType.DemandToStopSettlingCitiesNear -> "Demand to stop settling: [${civLabel(value)}]".tr()
+            AlertType.CitySettledNearOtherCivDespiteOurPromise -> "Settled despite promise: [${civLabel(value)}]".tr()
+            AlertType.DemandToStopSpreadingReligion -> "Demand to stop spreading religion: [${civLabel(value)}]".tr()
+            AlertType.ReligionSpreadDespiteOurPromise -> "Spread religion despite promise: [${civLabel(value)}]".tr()
+            AlertType.DemandToStopSpyingOnUs -> "Demand to stop spying: [${civLabel(value)}]".tr()
+            AlertType.SpyingOnUsDespiteOurPromise -> "Spied despite promise: [${civLabel(value)}]".tr()
+            AlertType.DemandToNotAttackUs -> "Demand to not attack us: [${civLabel(value)}]".tr()
+            AlertType.AttackedUsDespitePromise -> "Attacked despite promise: [${civLabel(value)}]".tr()
+            AlertType.AcceptingDemand -> "Accepting demand: [${civLabel(value)}]".tr()
+            AlertType.RejectingDemand -> "Rejecting demand: [${civLabel(value)}]".tr()
+            AlertType.GoldenAge -> "Golden Age".tr()
+            AlertType.DeclarationOfFriendship -> "Declaration of Friendship: [${civLabel(value)}]".tr()
+            AlertType.StartIntro -> "Opening".tr()
+            AlertType.DiplomaticMarriage -> "Diplomatic marriage: [${cityLabel(value)}]".tr()
             AlertType.BulliedProtectedMinor, AlertType.AttackedProtectedMinor, AlertType.AttackedAllyMinor ->
-                "城邦事件: " + (value.split('@').firstOrNull()?.let { civLabel(it) } ?: "")
-            AlertType.RecapturedCivilian -> "夺回平民"
-            AlertType.GameHasBeenWon -> "游戏结束"
-            AlertType.Defeated -> "文明灭亡: " + civLabel(value)
-            AlertType.Denounced -> "谴责: " + civLabel(value)
+                "City-state event: [${value.split('@').firstOrNull()?.let { civLabel(it) } ?: ""}]".tr()
+            AlertType.RecapturedCivilian -> "Recaptured civilian".tr()
+            AlertType.GameHasBeenWon -> "Game has been won".tr()
+            AlertType.Defeated -> "Civilization defeated: [${civLabel(value)}]".tr()
+            AlertType.Denounced -> "Denounced: [${civLabel(value)}]".tr()
             AlertType.TradeRouteOffer -> {
                 val parts = value.split("|")
-                if (parts.size >= 2) "贸易邀请: " + cityLabel(parts[0]) + " → " + cityLabel(parts[1])
-                else "贸易邀请"
+                if (parts.size >= 2)
+                    "Trade invitation: [${cityLabel(parts[0])}] to [${cityLabel(parts[1])}]".tr()
+                else "Trade invitation".tr()
             }
-            AlertType.AllianceOffer -> "同盟提议: " + civLabel(value)
-            AlertType.AllianceRenew -> "续约同盟: " + civLabel(value)
-            AlertType.AllianceFollowUp -> "盟友战争跟进: " + civLabel(value)
+            AlertType.AllianceOffer -> "Alliance offer: [${civLabel(value)}]".tr()
+            AlertType.AllianceRenew -> "Alliance renewal: [${civLabel(value)}]".tr()
+            AlertType.AllianceFollowUp -> "Ally war follow-up: [${civLabel(value)}]".tr()
         }
     }
 

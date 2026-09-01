@@ -14,7 +14,7 @@ import com.unciv.ui.screens.worldscreen.WorldScreen
 class AutoPlayStatusButton(
     val worldScreen: WorldScreen,
     nextTurnButton: NextTurnButton
-) : TextButton("自动".tr(), BaseScreen.skin), Disposable {
+) : TextButton("Auto".tr(), BaseScreen.skin), Disposable {
 
     init {
         setSize(90f, 60f)

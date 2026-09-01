@@ -87,7 +87,7 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
         // UncivGC 2026-08-31 合规: 聊天功能全部 ban — 不创建局内聊天按钮
         if (com.unciv.ui.screens.worldscreen.chat.ChatButton.chatDisabled) return@lazy null
         if (com.unciv.ui.screens.worldscreen.FrameSync.isFsMode(worldScreen.gameInfo)) {
-            val btn = com.badlogic.gdx.scenes.scene2d.ui.TextButton("聊天", BaseScreen.skin)
+            val btn = com.badlogic.gdx.scenes.scene2d.ui.TextButton("Chat".tr(), BaseScreen.skin)
             fsChatButtonRef = btn
             btn.onClick {
                 val chat = com.unciv.logic.multiplayer.chat.ChatStore.getChatByGameId(worldScreen.gameInfo.gameId)
@@ -111,8 +111,8 @@ class WorldScreenTopBar(internal val worldScreen: WorldScreen) : Table() {
         /** 更新顶栏聊天按钮文本: Chat (n) — 2026-08-25 用户要求 */
         fun updateFsChatUnread(count: Int) {
             val btn = fsChatButtonRef ?: return
-            // 中文"聊天" + 数字; 只改文本不 pack (宽度固定, 不向右衍生) — 2026-08-25
-            btn.setText("聊天" + if (count > 0) " ($count)" else "")
+            // "聊天" + 数字; 只改文本不 pack (宽度固定, 不向右衍生) — 2026-08-25
+            btn.setText("Chat".tr() + if (count > 0) " ($count)" else "")
         }
     }
     //endregion

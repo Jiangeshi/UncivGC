@@ -54,17 +54,17 @@ class TechPolicyDiplomacyButtons(val worldScreen: WorldScreen) : Table(BaseScree
     private val espionageButton = Button(skin)
 
     // ===== UncivGC 2026-08-31 重写: 实验性UI左组 政策/外交/间谍 = 右组同款 TextButton (用户要求) =====
-    private val expPolicyButton = "政策".toTextButton().apply {
+    private val expPolicyButton = "Policies".tr().toTextButton().apply {
         onActivation(binding = KeyboardBinding.SocialPolicies) {
             game.pushScreen(PolicyPickerScreen(worldScreen.selectedCiv, worldScreen.canChangeState))
         }
     }
-    private val expDiplomacyButton = "外交".toTextButton().apply {
+    private val expDiplomacyButton = "Diplomacy".tr().toTextButton().apply {
         onActivation(binding = KeyboardBinding.Diplomacy) {
             game.pushScreen(DiplomacyScreen(viewingCiv))
         }
     }
-    private val expEspionageButton = "间谍".toTextButton().apply {
+    private val expEspionageButton = "Spy".tr().toTextButton().apply {
         onActivation(binding = KeyboardBinding.Espionage) {
             if (worldScreen.bottomUnitTable.selectedSpy != null)
                 worldScreen.bottomUnitTable.selectSpy(null)

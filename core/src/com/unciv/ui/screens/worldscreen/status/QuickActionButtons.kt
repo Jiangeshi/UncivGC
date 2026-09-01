@@ -19,7 +19,7 @@ import com.unciv.ui.screens.worldscreen.WorldScreen
  */
 
 /** 「待办」按钮: 点击弹待办下拉 (TodoMenu); 显示待办数量「待办 (n)」, 无待办置灰 (用户 2026-08-31) */
-class TodoButton(private val worldScreen: WorldScreen) : TextButton("待办", BaseScreen.skin) {
+class TodoButton(private val worldScreen: WorldScreen) : TextButton("Todo".tr(), BaseScreen.skin) {
 
     init {
         setSize(100f, 60f)
@@ -30,13 +30,13 @@ class TodoButton(private val worldScreen: WorldScreen) : TextButton("待办", Ba
 
     fun update() {
         val count = NextTurnButton.todoActions.count { it.isChoice(worldScreen) }
-        setText(("待办" + if (count > 0) " ($count)" else "").tr())
+        setText("Todo".tr() + if (count > 0) " ($count)" else "")
         isEnabled = count > 0
     }
 }
 
 /** 「事件」按钮: 排队事件列表 (实验性UI开启时显示); 有事件亮「事件 (n)」, 无事件置灰 */
-class EventButton(private val worldScreen: WorldScreen) : TextButton("事件", BaseScreen.skin) {
+class EventButton(private val worldScreen: WorldScreen) : TextButton("Events".tr(), BaseScreen.skin) {
 
     init {
         setSize(110f, 60f)
@@ -52,14 +52,14 @@ class EventButton(private val worldScreen: WorldScreen) : TextButton("事件", B
         }
         isVisible = true
         val count = worldScreen.pendingQueueEventCount()
-        setText(("事件" + if (count > 0) " ($count)" else "").tr())
+        setText("Events".tr() + if (count > 0) " ($count)" else "")
         isEnabled = count > 0
     }
 }
 
 /** 「单位」按钮: 下一个单位 — 有闲置单位时跳闲置 (NextUnit), 无闲置时按单位列表轮询;
  *  带闲置数「单位 (n)」; 数字清零仍可点 (用户 2026-08-31) */
-class UnitButton(private val worldScreen: WorldScreen) : TextButton("单位", BaseScreen.skin) {
+class UnitButton(private val worldScreen: WorldScreen) : TextButton("Units".tr(), BaseScreen.skin) {
 
     init {
         setSize(130f, 60f)
@@ -89,14 +89,14 @@ class UnitButton(private val worldScreen: WorldScreen) : TextButton("单位", Ba
         // 闲置单位数 (复用 NextUnit 的 subText 口径: "[n] units idle" → 提取数字) — 2026-08-31 用户要求保留
         val idle = NextTurnAction.NextUnit.getSubText(worldScreen)
             ?.replace(Regex("\\D+"), "")
-        setText(("单位" + (idle?.let { " ($it)" } ?: "")).tr())
+        setText("Units".tr() + (idle?.let { " ($it)" } ?: ""))
         // 无闲置也可点 (轮询所有单位) — 2026-08-31 用户要求
         isEnabled = worldScreen.viewingCiv.units.getCivUnits().any { !it.isDestroyed && it.hasTile() }
     }
 }
 
 /** 「通知」按钮: 通知栏开关 — 蓝=通知栏展开, 灰=收起 (复用 NotificationsScroll.isHidden) */
-class NotifyButton(private val worldScreen: WorldScreen) : TextButton("通知", BaseScreen.skin) {
+class NotifyButton(private val worldScreen: WorldScreen) : TextButton("Notification".tr(), BaseScreen.skin) {
 
     init {
         setSize(110f, 60f)
@@ -109,7 +109,7 @@ class NotifyButton(private val worldScreen: WorldScreen) : TextButton("通知", 
 
     fun update() {
         val hidden = worldScreen.notificationsScroll.isHidden
-        setText("通知".tr())
+        setText("Notification".tr())
         // 蓝=展开 (isHidden=false), 灰=收起 (isHidden=true)
         label.color = if (hidden) com.badlogic.gdx.graphics.Color.GRAY
             else com.badlogic.gdx.graphics.Color.SKY
