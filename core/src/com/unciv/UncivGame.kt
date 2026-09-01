@@ -153,11 +153,15 @@ open class UncivGame(val isConsoleMode: Boolean = false) : Game(), PlatformSpeci
         setAsRootScreen(GameStartScreen())  // NOT dependent on any atlas or skin
 
         // UncivGC: 上次大厅局被强杀时, 多人服务器还停留在大厅存档服务器 → 启动时自动恢复
+        // 2026-09-01 修复: lobbyPreviousServer 为 null 时不能回退到 uncivXyzServer —
+        // 用户默认服务器本来就是 gc 存档服务器 (SP_SERVER_URL) 时不会记录 previous,
+        // 若强行改成原版默认 → 闪退后"服务器变成原版默认服务器" (用户反馈)
         try {
             val mp = settings.multiplayer
             if (mp.getServer() == com.unciv.ui.screens.lobbyscreens.LobbyRoomScreen.SP_SERVER_URL) {
-                mp.setServer(mp.lobbyPreviousServer ?: Constants.uncivXyzServer)
+                val prev = mp.lobbyPreviousServer
                 mp.lobbyPreviousServer = null
+                if (prev != null) mp.setServer(prev)
             }
         } catch (e: Exception) {
         }
@@ -366,6 +370,8 @@ open class UncivGame(val isConsoleMode: Boolean = false) : Game(), PlatformSpeci
         setScreen(newScreen)
         newScreen.resume()
         oldScreen.dispose()
+        // 2026-09-01 修复: 弹出的若是 WorldScreen, 同步清空 worldScreen 字段 (isWorldLoaded 与栈一致)
+        if (oldScreen is WorldScreen) worldScreen = null
         return newScreen
     }
 
@@ -375,6 +381,10 @@ open class UncivGame(val isConsoleMode: Boolean = false) : Game(), PlatformSpeci
         screenStack.addLast(newScreen)
         setScreen(newScreen)
         oldScreen.dispose()
+        // 2026-09-01 修复 (房主死亡崩溃): 旧屏若是 WorldScreen 且新屏不是,
+        // 同步清空 worldScreen 字段 — 否则 isWorldLoaded() 误判 true → resumeGame 调 resetToWorldScreen 空栈崩溃
+        if (oldScreen is WorldScreen && newScreen !is WorldScreen) worldScreen = null
+        else if (newScreen is WorldScreen) worldScreen = newScreen as WorldScreen
     }
 
     /** Resets the game to the stored world screen and automatically [disposes][Screen.dispose] all other screens. */
@@ -406,6 +416,8 @@ open class UncivGame(val isConsoleMode: Boolean = false) : Game(), PlatformSpeci
         val toRemove = getScreensOfType(clazz).toList()
         for (screen in toRemove) screen.dispose()
         screenStack.removeAll(toRemove)
+        // 2026-09-01 修复: 移除 WorldScreen 时同步清空 worldScreen 字段, 防 resumeGame 误判
+        if (clazz == WorldScreen::class && toRemove.isNotEmpty()) worldScreen = null
     }
 
     private fun tryLoadDeepLinkedGame() = Concurrency.run("LoadDeepLinkedGame") {

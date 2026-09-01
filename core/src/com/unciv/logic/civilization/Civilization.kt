@@ -497,6 +497,8 @@ class Civilization : IsPartOfGameInfoSerialization {
     fun canSeeResource(resource: TileResource?): Boolean {
         contract { returns(true) implies(resource != null) }
         if (resource == null) return false
+        // 2026-09-01 修复 (观战看不到战略资源): 观战者没有科技, 但应能看到全部资源
+        if (isSpectator()) return true
         return tech.isRevealed(resource)
     }
 

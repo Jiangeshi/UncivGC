@@ -5,6 +5,7 @@ import com.badlogic.gdx.scenes.scene2d.ui.Image
 import com.badlogic.gdx.scenes.scene2d.ui.Table
 import com.badlogic.gdx.utils.Align
 import com.unciv.logic.civilization.Civilization
+import com.unciv.models.stats.Stat
 import com.unciv.ui.components.extensions.toLabel
 import com.unciv.ui.images.ImageGetter
 import com.unciv.ui.screens.basescreen.BaseScreen
@@ -55,16 +56,24 @@ class RankingPanel(private val worldScreen: WorldScreen) : Table(BaseScreen.skin
     private fun formatValue(v: Int): String = if (v >= 10000) "${v / 1000}k" else v.toString()
 
     /** 取值: 分数/军力为累计值; 科技/文化/金钱/产能/增长为每回合增量 —
-     *  2026-08-30 公共/私有拆分: 增量列用服务器 stats 摘要 (别人的工作格/专家已不广播, 本地算不了别人增量) */
+     *  2026-08-30 公共/私有拆分: 增量列用服务器 stats 摘要 (别人的工作格/专家已不广播, 本地算不了别人增量)
+     *  2026-09-01 修复 (排行回合金与顶栏不一致): 自己文明用本地 statsForNextTurn (与顶栏同源),
+     *  别人文明用服务器摘要 — 服务器摘要在 op 后可能滞后, 本地政策加成即时生效导致两者不同 */
     private fun getValue(civ: Civilization, category: RankingType): Int = when (category) {
         RankingType.Score -> civ.getStatForRanking(category)
         RankingType.Force -> serverStat(civ, 6)          // 军力 (服务器摘要, 本地缓存不失效) 2026-08-30
-        RankingType.Technologies -> serverStat(civ, 3)  // science 增量
-        RankingType.Culture -> serverStat(civ, 4)       // culture 增量
-        RankingType.Gold -> serverStat(civ, 2)          // gold 增量
-        RankingType.Production -> serverStat(civ, 1)    // production 增量
-        RankingType.Growth -> serverStat(civ, 0)        // food 增量
+        RankingType.Technologies -> if (civ == worldScreen.viewingCiv) localStat(civ, Stat.Science) else serverStat(civ, 3)  // science 增量
+        RankingType.Culture -> if (civ == worldScreen.viewingCiv) localStat(civ, Stat.Culture) else serverStat(civ, 4)       // culture 增量
+        RankingType.Gold -> if (civ == worldScreen.viewingCiv) localStat(civ, Stat.Gold) else serverStat(civ, 2)          // gold 增量
+        RankingType.Production -> if (civ == worldScreen.viewingCiv) localStat(civ, Stat.Production) else serverStat(civ, 1)    // production 增量
+        RankingType.Growth -> if (civ == worldScreen.viewingCiv) localStat(civ, Stat.Food) else serverStat(civ, 0)        // food 增量
         else -> civ.getStatForRanking(category)
+    }
+
+    /** 自己文明本地 statsForNextTurn (与顶栏完全一致) */
+    private fun localStat(civ: Civilization, stat: Stat): Int {
+        val own = civ.stats.statsForNextTurn
+        return own[stat].roundToInt()
     }
 
     /** 读服务器 stats 摘要; 摘要缺失时回落本地算 (自己文明) */

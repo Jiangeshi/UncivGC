@@ -3641,6 +3641,17 @@ object FrameSync {
                         tile.improvement = improvement
                         changed = true
                     }
+                    // 2026-09-01 修复 (砍树反复砍): 地形特征被移除 (森林砍伐完成) 时,
+                    // 若本地改良队列还残留对应的 Remove X 条目 → 清掉 (否则显示剩余1回合还能再砍)
+                    if (tile.improvementQueue.isNotEmpty()
+                        && tile.improvementInProgress?.startsWith(com.unciv.Constants.remove) == true) {
+                        val inProgress = tile.improvementInProgress
+                        val targetFeature = inProgress?.removePrefix(com.unciv.Constants.remove)
+                        if (targetFeature != null && targetFeature !in features) {
+                            tile.improvementQueue.clear()
+                            changed = true
+                        }
+                    }
                 } catch (e: Exception) {
                 }
             }
