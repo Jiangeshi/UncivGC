@@ -256,7 +256,7 @@ class VictoryTypesEditorScreen(private val modFolder: FileHandle) : BaseScreen()
         }
         milestonesBox.add(milestonesScroll).grow().pad(10f)
         formTable.add(milestonesBox).growX().height(360f).left().pad(6f).row()
-        val milestoneHint = "Supported: Build [building], Anyone should build [building], Add all [comment] in capital, Destroy all players, Capture all capitals, Complete [amount] Policy branches, Win diplomatic vote, Become the world religion, Have highest score after max turns, Have more [countable] than each player's [countable]".tr()
+        val milestoneHint = "Supported: Build [building], Anyone should build [building2], Add all [comment] in capital, Destroy all players, Capture all capitals, Complete [amount] Policy branches, Win diplomatic vote, Become the world religion, Have highest score after max turns, Have more [countable] than each player's [countable2]".tr()
             .toLabel(fontSize = 12, fontColor = Color(1f, 1f, 1f, 0.45f))
         milestoneHint.wrap = true
         formTable.add(milestoneHint).growX().left().pad(0f, 8f, 6f, 8f).row()
