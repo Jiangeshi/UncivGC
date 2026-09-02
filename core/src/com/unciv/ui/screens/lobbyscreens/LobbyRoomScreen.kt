@@ -579,6 +579,8 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
             if (mp != null) {
                 val m = setup.mapParameters
                 m.type = mp.s("type") ?: m.type
+                // UncivGC 自定义地图: 恢复地图文件名 (MapFileSelectTable 按 name 预选, GameStarter 走 loadMap)
+                m.name = mp.s("name") ?: m.name
                 m.shape = mp.s("shape") ?: m.shape
                 // mapSize 是 MapSize 类型: 预定义按名称转换; 自定义 (Custom) 用半径/宽/高重建
                 mp.s("mapSize")?.let { sizeName ->
@@ -1175,6 +1177,7 @@ class LobbyRoomScreen(val roomId: String, val initialName: String, settings: Map
         }
         val mpJson = buildJsonObject {
             put("type", mp.type)
+            put("name", mp.name)  // UncivGC 自定义地图文件名 (模组地图随 mods 同步)
             put("shape", mp.shape)
             put("mapSize", mp.mapSize.name)
             // 自定义地图大小: 半径/宽/高单独传 (mapSize.name 只有 "Custom", 不带尺寸)
