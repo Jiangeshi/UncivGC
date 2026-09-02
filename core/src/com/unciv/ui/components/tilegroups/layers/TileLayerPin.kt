@@ -5,6 +5,7 @@ import com.badlogic.gdx.scenes.scene2d.Touchable
 import com.badlogic.gdx.scenes.scene2d.ui.Label
 import com.badlogic.gdx.utils.Align
 import com.unciv.view.CivView
+import com.unciv.ui.components.fonts.Fonts
 import com.unciv.ui.components.tilegroups.TileGroup
 import com.unciv.ui.components.extensions.toLabel
 
@@ -27,11 +28,17 @@ class TileLayerPin(tileGroup: TileGroup, size: Float) : TileLayer(tileGroup, siz
             }
             return
         }
-        if (pinLabel != null && pinLabel!!.text.toString() == pin.text) return  // 无变化
+        // 文本/字号/颜色任一变化都要重建 (只比较文本 → 改字号/颜色不刷新, 用户反馈 2026-09-02)
+        val fontColor = if (pin.color == "Black") Color.BLACK else Color.WHITE
+        val fontSize = (size * 0.5f * pin.fontSize).toInt().coerceAtLeast(4)
+        if (pinLabel != null
+            && pinLabel!!.text.toString() == pin.text
+            && pinLabel!!.style.fontColor == fontColor
+            && pinLabel!!.fontScaleX == fontSize / Fonts.ORIGINAL_FONT_SIZE) return
 
         val label = pin.text.toLabel(
-            fontColor = if (pin.color == "Black") Color.BLACK else Color.WHITE,
-            fontSize = (size * 0.5f * pin.fontSize).toInt().coerceAtLeast(4),
+            fontColor = fontColor,
+            fontSize = fontSize,
             alignment = Align.center,
         ).apply {
             touchable = Touchable.disabled
