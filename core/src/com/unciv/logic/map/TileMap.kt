@@ -63,6 +63,15 @@ class TileMap(initialCapacity: Int = 10) : IsPartOfGameInfoSerialization {
     }
     val startingLocations = arrayListOf<StartingLocation>()
 
+    /** UncivGC 2026-09-02: 地图钉 — key="x,y", 随地图文件保存, 谁打开都看得到; 仅地图编辑器可见, 纯展示无逻辑 */
+    data class MapPin(
+        val text: String = "",
+        val fontSize: Float = 1f,      // 字号倍率 (1 = 默认)
+        val color: String = "White",   // White / Black
+    ) : IsPartOfGameInfoSerialization
+
+    var mapPins = HashMap<String, MapPin>()
+
     /** Optional freeform text a mod map creator can set for their "customers" */
     var description = ""
 
@@ -214,6 +223,7 @@ class TileMap(initialCapacity: Int = 10) : IsPartOfGameInfoSerialization {
 
         toReturn.description = description
         toReturn.tileUniqueMapCache = tileUniqueMapCache
+        toReturn.mapPins = HashMap(mapPins)
 
         return toReturn
     }

@@ -56,6 +56,7 @@ open class TileGroup(
     @Suppress("LeakingThis") val layerUnitArt = TileLayerUnitSprite(this, groupSize)
     @Suppress("LeakingThis") val layerUnitFlag = TileLayerUnitFlag(this, groupSize)
     @Suppress("LeakingThis") val layerCityButton = TileLayerCityButton(this, groupSize)
+    @Suppress("LeakingThis") val layerPin = TileLayerPin(this, groupSize) // UncivGC 地图钉, 置顶纯展示
 
     private val allLayers = listOf(
         layerTerrain,
@@ -68,7 +69,8 @@ open class TileGroup(
         layerOverlay, // highlight, fog, crosshair
         layerUnitArt,
         layerUnitFlag,
-        layerCityButton
+        layerCityButton,
+        layerPin // UncivGC 地图钉: 最后 = 最顶层
     )
 
     /** 2026-08-31 分层重绘: 静态层 (地形/特征/边界/资源/改良/产出) 是否需重建 —
@@ -156,6 +158,7 @@ open class TileGroup(
         layerUnitArt.update(viewingCiv)
         layerUnitFlag.update(viewingCiv)
         layerCityButton.update(viewingCiv)
+        layerPin.update(viewingCiv) // UncivGC 地图钉 (轻量, 每次检查有无变化)
     }
 
     private fun removeMissingModReferences() {

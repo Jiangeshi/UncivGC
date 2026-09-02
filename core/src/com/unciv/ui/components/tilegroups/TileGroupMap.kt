@@ -135,6 +135,8 @@ class TileGroupMap<T: TileGroup>(
         val unitFlagMapLayer    = TileMapLayer<TileLayerUnitFlag>(numberOfTilegroups, actable = true)
         // CityButton wrapper Groups are Touchable.childrenOnly, so the container must forward touches
         val cityButtonMapLayer  = TileMapLayer<TileLayerCityButton>(numberOfTilegroups, actable = true, touchable = true)
+        // UncivGC 地图钉: 最顶层纯展示, 不拦截点击 (touchable=false)
+        val pinMapLayer         = TileMapLayer<TileLayerPin>(numberOfTilegroups)
 
         // Apparently the sortedByDescending is kinda memory-intensive because it needs to sort ALL the tiles
         //  So instead we group by and then sort on the groups
@@ -156,6 +158,7 @@ class TileGroupMap<T: TileGroup>(
             overlayMapLayer.add(group.layerOverlay, group.x, group.y)
             unitFlagMapLayer.add(group.layerUnitFlag, group.x, group.y)
             cityButtonMapLayer.add(group.layerCityButton, group.x, group.y)
+            pinMapLayer.add(group.layerPin, group.x, group.y)
         }
 
         sortedTileGroups = sortedGroups
@@ -175,7 +178,8 @@ class TileGroupMap<T: TileGroup>(
             unitSpriteMapLayer,
             overlayMapLayer,
             unitFlagMapLayer,
-            cityButtonMapLayer
+            cityButtonMapLayer,
+            pinMapLayer            // UncivGC 地图钉: 最后 = 最顶层
         )
 
         children.ensureCapacity(allMapLayers.size)

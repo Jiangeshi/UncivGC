@@ -105,6 +105,22 @@ class MapResizeTests {
     }
 
     @Test
+    fun `map pins outside new bounds are filtered`() {
+        val map = makeRectangular(11, 7)
+        // pin key 是 tile 的 hex 坐标 (getTileCoordsFromColumnRow 生成), 不是列/行值
+        // topleft 裁剪后保留列 -5..-1, 行 1..3
+        val keptPos = HexMath.getTileCoordsFromColumnRow(-5, 1)   // 保留区内
+        val droppedPos = HexMath.getTileCoordsFromColumnRow(5, 3) // 保留区外 (右下角)
+        map.mapPins["${keptPos.x},${keptPos.y}"] = TileMap.MapPin("keep", 1f, "White")
+        map.mapPins["${droppedPos.x},${droppedPos.y}"] = TileMap.MapPin("drop", 1f, "White")
+        val generator = MapGenerator(game.ruleset)
+        generator.resize(map, 5, 3, "topleft")
+        assertEquals(1, map.mapPins.size)
+        assertTrue(map.mapPins.containsKey("${keptPos.x},${keptPos.y}"))
+        assertTrue(!map.mapPins.containsKey("${droppedPos.x},${droppedPos.y}"))
+    }
+
+    @Test
     fun `hexagonal map is not resized`() {
         game.makeHexagonalMap(3, Constants.grassland)
         val map = game.tileMap

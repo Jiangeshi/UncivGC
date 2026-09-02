@@ -186,7 +186,7 @@ class MapEditorGenerateTab(
 
     class MapEditorGenerateStepsTab(
         private val parent: MapEditorGenerateTab
-    ): Table(BaseScreen.skin) {
+    ): Table(BaseScreen.skin), TabbedPager.IPageExtensions {
         private val optionGroup = ButtonGroup<CheckBox>()
         val generateButton = "".toTextButton()
         private var choice = MapGeneratorSteps.None
@@ -198,6 +198,122 @@ class MapEditorGenerateTab(
         private var selectedAnchor = "center"
         private lateinit var resizeWidthField: UncivTextField
         private lateinit var resizeHeightField: UncivTextField
+
+        // UncivGC 2026-09-02: 地图钉 — 单次模式: 点 Pin 按钮进入放置模式, 点格子放置/修改/删除后自动退出
+        private var pinModeActive = false
+        private var pinFontScale = 1f
+        private var pinColor = "White"
+        private var pinButton: com.badlogic.gdx.scenes.scene2d.ui.TextButton? = null
+
+        override fun activated(index: Int, caption: String, pager: TabbedPager) {
+            // 裁剪默认值 = 当前地图实际尺寸 (地图可能已加载/调整过, 每次进标签页刷新)
+            if (::resizeWidthField.isInitialized) {
+                val current = parent.editorScreen.tileMap.mapParameters.mapSize
+                resizeWidthField.setText(current.width.toString())
+                resizeHeightField.setText(current.height.toString())
+            }
+            // 进入本标签页时若 pin 模式还开着, 恢复点击 handler (EditTab 的 activated 会覆盖)
+            if (pinModeActive) {
+                parent.editorScreen.tileClickHandler = ::handlePinClick
+                pinButton?.setChecked(true)
+            }
+        }
+
+        override fun deactivated(index: Int, caption: String, pager: TabbedPager) {
+            // 离开标签页时退出 pin 模式, 避免残留点击 handler
+            exitPinMode()
+        }
+
+        private fun exitPinMode() {
+            if (!pinModeActive) return
+            pinModeActive = false
+            pinButton?.setChecked(false)
+            if (parent.editorScreen.tileClickHandler == ::handlePinClick)
+                parent.editorScreen.tileClickHandler = null
+        }
+
+        private fun handlePinClick(tile: com.unciv.logic.map.tile.Tile) {
+            val editorScreen = parent.editorScreen
+            if (editorScreen.mapHolder.isPanning || editorScreen.mapHolder.isZooming()) return
+            editorScreen.hideSelection()
+            val existing = editorScreen.tileMap.mapPins["${tile.position.x},${tile.position.y}"]
+
+            val popup = Popup(editorScreen)
+            popup.addGoodSizedLabel(
+                if (existing == null) "Add map pin:".tr() else "Edit map pin:".tr()
+            )
+            popup.row()
+
+            val textField = UncivTextField("Pin text", existing?.text ?: "").apply {
+                maxLength = 40
+                selectAll()
+            }
+            popup.add(textField).width(260f).pad(5f)
+            popup.row()
+
+            // 字号选择
+            popup.add("Font size:".tr().toLabel()).row()
+            val fontGroup = ButtonGroup<CheckBox>()
+            fontGroup.setMinCheckCount(1); fontGroup.setMaxCheckCount(1)
+            val fontSizes = listOf(
+                "Font: Small" to 0.8f, "Font: Normal" to 1f, "Font: Large" to 1.4f
+            )
+            val fontTable = Table()
+            for ((label, scale) in fontSizes) {
+                val cb = label.toCheckBox(scale == pinFontScale) { pinFontScale = scale }
+                fontGroup.add(cb)
+                fontTable.add(cb).pad(4f)
+            }
+            popup.add(fontTable).row()
+
+            // 颜色选择
+            popup.add("Color:".tr().toLabel()).row()
+            val colorGroup = ButtonGroup<CheckBox>()
+            colorGroup.setMinCheckCount(1); colorGroup.setMaxCheckCount(1)
+            val colorTable = Table()
+            for (color in listOf("White", "Black")) {
+                val cb = color.toCheckBox(color == pinColor) { pinColor = color }
+                colorGroup.add(cb)
+                colorTable.add(cb).pad(4f)
+            }
+            popup.add(colorTable).row()
+
+            popup.addButton("Apply".tr()) {
+                val text = textField.text.trim()
+                if (text.isEmpty()) {
+                    editorScreen.tileMap.mapPins.remove("${tile.position.x},${tile.position.y}")
+                } else {
+                    editorScreen.tileMap.mapPins["${tile.position.x},${tile.position.y}"] =
+                        com.unciv.logic.map.TileMap.MapPin(text, pinFontScale, pinColor)
+                }
+                refreshPinTile(tile)
+                editorScreen.isDirty = true
+                exitPinMode()
+                popup.close()
+            }
+            if (existing != null) {
+                popup.addButton("Delete pin".tr()) {
+                    editorScreen.tileMap.mapPins.remove("${tile.position.x},${tile.position.y}")
+                    refreshPinTile(tile)
+                    editorScreen.isDirty = true
+                    exitPinMode()
+                    popup.close()
+                }
+            }
+            popup.addButton("Cancel".tr()) {
+                exitPinMode()
+                popup.close()
+            }
+            popup.open()
+        }
+
+        private fun refreshPinTile(tile: com.unciv.logic.map.tile.Tile) {
+            val holder = parent.editorScreen.mapHolder
+            holder.tileGroups[tile]?.let { group ->
+                group.layerPin.update(null)
+                group.update()
+            }
+        }
 
         init {
             top()
@@ -268,6 +384,24 @@ class MapEditorGenerateTab(
             add("Preview resize".tr().toTextButton().apply {
                 onClick { showResizePreview() }
             }).padTop(5f).row()
+
+            // UncivGC 2026-09-02: 地图钉 — 点按钮进入放置模式, 点格子放置/修改/删除, 完成后自动退出 (单次模式)
+            add("Map pins:".tr().toLabel()).padTop(10f).row()
+            val pinEditorScreen = parent.editorScreen
+            pinButton = "Place map pin".tr().toTextButton().apply {
+                isChecked = false
+                onClick {
+                    pinModeActive = !pinModeActive
+                    setChecked(pinModeActive)
+                    if (pinModeActive) {
+                        pinEditorScreen.tileClickHandler = ::handlePinClick
+                    } else {
+                        pinEditorScreen.tileClickHandler = null
+                    }
+                }
+            }
+            add(pinButton).row()
+            add("Click a tile to add / edit / delete its pin.".tr().toLabel()).padTop(3f).row()
         }
 
         private fun showResizePreview() {

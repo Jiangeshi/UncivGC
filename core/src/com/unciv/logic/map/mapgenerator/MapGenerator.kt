@@ -317,6 +317,18 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
             col < newColMin || col > newColMax || row < newRowMin || row > newRowMax
         }
 
+        // 过滤超出新范围的地图钉 (key="x,y")
+        map.mapPins.keys.removeAll { key ->
+            val parts = key.split(',')
+            if (parts.size != 2) return@removeAll true
+            val x = parts[0].toIntOrNull() ?: return@removeAll true
+            val y = parts[1].toIntOrNull() ?: return@removeAll true
+            val col = HexMath.getColumn(HexCoord.of(x, y))
+            val parity = if (col % 2 != 0) 1 else 0
+            val row = (x + y - parity) / 2
+            col < newColMin || col > newColMax || row < newRowMin || row > newRowMax
+        }
+
         // 替换 tileList 并重建 transients
         map.tileList = newTiles
         map.mapParameters.mapSize = MapSize(width, height)
