@@ -196,8 +196,11 @@ class MapEditorScreen(map: TileMap? = null) : BaseScreen(), RecreateOnResize {
         mapHolder.zoom(savedScale)
     }
 
-    /** UncivGC 2026-09-02: 地图裁剪/扩展后重建视图 (tileList 增删, 必须整体重建 mapHolder) */
+    /** UncivGC 2026-09-02: 地图裁剪/扩展后重建视图 (tileList 增删, 必须整体重建 mapHolder)
+     *  先清空 tileMatrix: resizeMap 已按新 tileList 重建过一次, newMapHolder 再调 setTransients 时
+     *  矩阵非空会走尺寸启发式检查 (TileMap.kt:611), 对不对称矩形 (如右下扩展) 不成立会崩 */
     fun rebuildMapHolderAfterResize() {
+        tileMap.tileMatrix.clear()
         recreateMapHolder()
     }
 
