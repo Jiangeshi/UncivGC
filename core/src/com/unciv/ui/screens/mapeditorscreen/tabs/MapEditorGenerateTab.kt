@@ -205,6 +205,14 @@ class MapEditorGenerateTab(
         private var pinColor = "White"
         private var pinButton: com.badlogic.gdx.scenes.scene2d.ui.TextButton? = null
 
+        /** 按钮外观: 激活时变灰 (让用户知道点到了), 退出恢复 */
+        private fun updatePinButtonAppearance() {
+            val button = pinButton ?: return
+            button.setChecked(pinModeActive)
+            button.color = if (pinModeActive) com.badlogic.gdx.graphics.Color.GRAY
+            else com.badlogic.gdx.graphics.Color.WHITE
+        }
+
         override fun activated(index: Int, caption: String, pager: TabbedPager) {
             // 裁剪默认值 = 当前地图实际尺寸 (地图可能已加载/调整过, 每次进标签页刷新)
             if (::resizeWidthField.isInitialized) {
@@ -215,7 +223,7 @@ class MapEditorGenerateTab(
             // 进入本标签页时若 pin 模式还开着, 恢复点击 handler (EditTab 的 activated 会覆盖)
             if (pinModeActive) {
                 parent.editorScreen.tileClickHandler = ::handlePinClick
-                pinButton?.setChecked(true)
+                updatePinButtonAppearance()
             }
         }
 
@@ -227,7 +235,7 @@ class MapEditorGenerateTab(
         private fun exitPinMode() {
             if (!pinModeActive) return
             pinModeActive = false
-            pinButton?.setChecked(false)
+            updatePinButtonAppearance()
             if (parent.editorScreen.tileClickHandler == ::handlePinClick)
                 parent.editorScreen.tileClickHandler = null
         }
@@ -251,20 +259,12 @@ class MapEditorGenerateTab(
             popup.add(textField).width(260f).pad(5f)
             popup.row()
 
-            // 字号选择
+            // 字号: 输入框, 单位 = 百分数 (100 = 默认, 20-400; 实际渲染倍率 = 值/100)
             popup.add("Font size:".tr().toLabel()).row()
-            val fontGroup = ButtonGroup<CheckBox>()
-            fontGroup.setMinCheckCount(1); fontGroup.setMaxCheckCount(1)
-            val fontSizes = listOf(
-                "Font: Small" to 0.8f, "Font: Normal" to 1f, "Font: Large" to 1.4f
-            )
-            val fontTable = Table()
-            for ((label, scale) in fontSizes) {
-                val cb = label.toCheckBox(scale == pinFontScale) { pinFontScale = scale }
-                fontGroup.add(cb)
-                fontTable.add(cb).pad(4f)
+            val fontField = UncivTextField("100", (pinFontScale * 100).toInt().toString()).apply {
+                textFieldFilter = TextField.TextFieldFilter { _, char -> char.isDigit() }
             }
-            popup.add(fontTable).row()
+            popup.add(fontField).width(100f).pad(5f).row()
 
             // 颜色选择
             popup.add("Color:".tr().toLabel()).row()
@@ -280,6 +280,8 @@ class MapEditorGenerateTab(
 
             popup.addButton("Apply".tr()) {
                 val text = textField.text.trim()
+                // 字号输入 20-400, 越界取默认 100; 转存为倍率
+                pinFontScale = (fontField.text.toIntOrNull() ?: 100).coerceIn(20, 400) / 100f
                 if (text.isEmpty()) {
                     editorScreen.tileMap.mapPins.remove("${tile.position.x},${tile.position.y}")
                 } else {
@@ -392,7 +394,7 @@ class MapEditorGenerateTab(
                 isChecked = false
                 onClick {
                     pinModeActive = !pinModeActive
-                    setChecked(pinModeActive)
+                    updatePinButtonAppearance()
                     if (pinModeActive) {
                         pinEditorScreen.tileClickHandler = ::handlePinClick
                     } else {
