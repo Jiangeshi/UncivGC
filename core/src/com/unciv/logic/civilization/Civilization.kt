@@ -899,10 +899,13 @@ class Civilization : IsPartOfGameInfoSerialization {
     private fun calculateMilitaryMight(): Int {
         var sum = 1 // minimum value, so we never end up with 0
         for (unit in units.getCivUnits()) {
+            // 编队按内部单位数计军力 (军团/舰队=2, 集团军/无敌舰队=3) — 与维护费/补给口径一致;
+            // 否则排行榜军力低估编队单位 (2026-09-02 用户反馈"排行榜军事实力显示错误")
+            val formationMultiplier = unit.formation.tier + 1
             sum += if (unit.baseUnit.isWaterUnit)
-                unit.getForceEvaluation() / 2   // Really don't value water units highly
+                unit.getForceEvaluation() / 2 * formationMultiplier   // Really don't value water units highly
             else
-                unit.getForceEvaluation()
+                unit.getForceEvaluation() * formationMultiplier
         }
         val goldBonus = sqrt(max(0f, gold.toFloat())).toPercent()  // 2f if gold == 10000
         sum = (sum * min(goldBonus, 2f)).toInt()    // 2f is max bonus

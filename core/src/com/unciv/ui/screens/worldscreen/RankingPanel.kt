@@ -82,9 +82,11 @@ class RankingPanel(private val worldScreen: WorldScreen) : Table(BaseScreen.skin
         if (s != null) return s[idx].roundToInt()
         val own = civ.stats.statsForNextTurn
         return when (idx) {
-            0 -> own.food; 1 -> own.production; 2 -> own.gold; 3 -> own.science; 4 -> own.culture
-            else -> own.faith
-        }.roundToInt()
+            0 -> own.food.roundToInt(); 1 -> own.production.roundToInt(); 2 -> own.gold.roundToInt()
+            3 -> own.science.roundToInt(); 4 -> own.culture.roundToInt(); 5 -> own.faith.roundToInt()
+            // idx=6 军力: 服务器 stats 缺失时用本地军力 (getMilitaryMight), 不是 faith — 2026-09-02 修复
+            else -> civ.getStatForRanking(RankingType.Force)
+        }
     }
 
     /** 固定列宽 (用户 2026-08-23: 宽度高度都不变; 232→1/3≈77) */
