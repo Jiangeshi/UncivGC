@@ -251,6 +251,79 @@ class MapGenerator(val ruleset: Ruleset, private val coroutineScope: CoroutineSc
         map.mapParameters.mirroring = MirroringType.none
     }
 
+    /** UncivGC 2026-09-02: 地图编辑器裁剪/扩展 — 基于锚点重设矩形地图大小
+     *  anchor: topleft/top/topright/left/center/right/bottomleft/bottom/bottomright
+     *  仅矩形地图; worldWrap 时宽度自动取偶 (与构造器一致) */
+    fun resizeMap(map: TileMap, newWidth: Int, newHeight: Int, anchor: String) {
+        if (map.mapParameters.shape != MapShape.rectangular) return
+        if (map.values.isEmpty()) return
+
+        // world-wrap 地图宽度必须偶数, 向下取偶 (与 TileMap 构造器一致)
+        var width = newWidth
+        if (map.mapParameters.worldWrap && width % 2 != 0) width--
+        val height = newHeight
+
+        // 当前地图列/行范围 (与 TileMap 构造器一致, 基于 mapSize; getRow 对负行奇数列有截断误差, 不用真实坐标反推)
+        var oldWidth = map.mapParameters.mapSize.width
+        if (map.mapParameters.worldWrap && oldWidth % 2 != 0) oldWidth--
+        val oldColMin = -oldWidth / 2
+        val oldColMax = (oldWidth - 1) / 2
+        val oldRowMin = -map.mapParameters.mapSize.height / 2
+        val oldRowMax = (map.mapParameters.mapSize.height - 1) / 2
+
+        // 新列范围 (column 增大=向右; 左/中/右锚)
+        val newColMin = when {
+            anchor.contains("left") -> oldColMin
+            anchor.contains("right") -> oldColMax - width + 1
+            else -> oldColMin + (oldColMax - oldColMin + 1 - width) / 2
+        }
+        val newColMax = newColMin + width - 1
+        // 新行范围 (row 增大=向上; 上/中/下锚)
+        val newRowMin = when {
+            anchor.contains("top") -> oldRowMax - height + 1
+            anchor.contains("bottom") -> oldRowMin
+            else -> oldRowMin + (oldRowMax - oldRowMin + 1 - height) / 2
+        }
+        val newRowMax = newRowMin + height - 1
+
+        // 扩展填充: 海洋 (waterTerrain 取不到时用第一个地形兑底)
+        val waterTerrainName = try {
+            MapLandmassGenerator.getInitializationTerrain(map.ruleset!!, TerrainType.Water)
+        } catch (_: Exception) {
+            map.values.first().baseTerrain
+        }
+
+        val newTiles = ArrayList<Tile>(width * height)
+        for (column in newColMin..newColMax) {
+            for (row in newRowMin..newRowMax) {
+                val pos = HexMath.getTileCoordsFromColumnRow(column, row)
+                val existing = map.getOrNull(pos.x, pos.y)
+                if (existing != null) {
+                    newTiles.add(existing)
+                } else {
+                    newTiles.add(Tile().apply {
+                        position = pos
+                        baseTerrain = waterTerrainName
+                    })
+                }
+            }
+        }
+
+        // 过滤超出新范围的出生点 (row 用精确反推, getRow 对负行奇数列有截断误差)
+        map.startingLocations.removeAll { loc ->
+            val col = HexMath.getColumn(loc.position)
+            val parity = if (col % 2 != 0) 1 else 0
+            val row = (loc.position.x + loc.position.y - parity) / 2
+            col < newColMin || col > newColMax || row < newRowMin || row > newRowMax
+        }
+
+        // 替换 tileList 并重建 transients
+        map.tileList = newTiles
+        map.mapParameters.mapSize = MapSize(width, height)
+        map.tileMatrix.clear()
+        map.setTransients(map.ruleset, setUnitCivTransients = false)
+    }
+
     private fun mirror(map: TileMap) {
         val mirroringType = map.mapParameters.mirroring
         

@@ -196,6 +196,11 @@ class MapEditorScreen(map: TileMap? = null) : BaseScreen(), RecreateOnResize {
         mapHolder.zoom(savedScale)
     }
 
+    /** UncivGC 2026-09-02: 地图裁剪/扩展后重建视图 (tileList 增删, 必须整体重建 mapHolder) */
+    fun rebuildMapHolderAfterResize() {
+        recreateMapHolder()
+    }
+
     private fun newMapHolder(): EditorMapHolder {
         ImageGetter.setNewRuleset(ruleset)
         // setNewRuleset is missing some graphics - those "EmojiIcons"&co already rendered as font characters

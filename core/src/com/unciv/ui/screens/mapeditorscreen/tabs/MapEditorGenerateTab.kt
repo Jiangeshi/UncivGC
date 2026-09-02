@@ -4,9 +4,11 @@ import com.badlogic.gdx.Gdx
 import com.badlogic.gdx.scenes.scene2d.ui.ButtonGroup
 import com.badlogic.gdx.scenes.scene2d.ui.CheckBox
 import com.badlogic.gdx.scenes.scene2d.ui.Table
+import com.badlogic.gdx.scenes.scene2d.ui.TextField
 import com.unciv.Constants
 import com.unciv.logic.map.MapGeneratedMainType
 import com.unciv.logic.map.MapParameters
+import com.unciv.logic.map.MapShape
 import com.unciv.logic.map.MapType
 import com.unciv.logic.map.TileMap
 import com.unciv.logic.map.mapgenerator.MapGenerator
@@ -14,6 +16,7 @@ import com.unciv.models.ruleset.Ruleset
 import com.unciv.models.ruleset.RulesetCache
 import com.unciv.models.translations.tr
 import com.unciv.ui.components.widgets.TabbedPager
+import com.unciv.ui.components.widgets.UncivTextField
 import com.unciv.ui.components.extensions.disable
 import com.unciv.ui.components.extensions.enable
 import com.unciv.ui.components.extensions.isEnabled
@@ -30,6 +33,7 @@ import com.unciv.ui.screens.basescreen.BaseScreen
 import com.unciv.ui.screens.mapeditorscreen.MapEditorScreen
 import com.unciv.ui.screens.mapeditorscreen.MapGeneratorSteps
 import com.unciv.ui.screens.newgamescreen.MapParametersTable
+import com.unciv.ui.screens.victoryscreen.LoadMapPreview
 import com.unciv.utils.Concurrency
 import com.unciv.utils.Log
 
@@ -190,6 +194,11 @@ class MapEditorGenerateTab(
         private val tileMap = parent.editorScreen.tileMap
         private val actualMapParameters = tileMap.mapParameters
 
+        // UncivGC 2026-09-02: 地图裁剪/扩展 — 基于锚点重设矩形地图大小
+        private var selectedAnchor = "center"
+        private lateinit var resizeWidthField: UncivTextField
+        private lateinit var resizeHeightField: UncivTextField
+
         init {
             top()
             pad(10f)
@@ -221,6 +230,81 @@ class MapEditorGenerateTab(
                 onClick { mirrorMap(com.unciv.logic.map.MirroringType.topbottom) }
             }).pad(5f)
             add(mirrorButtons).row()
+
+            // UncivGC 2026-09-02: 地图裁剪/扩展 — 基于锚点重设矩形地图大小
+            add("Resize map (rectangular only):".tr().toLabel()).padTop(10f).row()
+            val resizeTable = Table()
+            resizeWidthField = UncivTextField("Width", tileMap.mapParameters.mapSize.width.toString())
+            resizeWidthField.textFieldFilter = TextField.TextFieldFilter { _, char -> char.isDigit() }
+            resizeHeightField = UncivTextField("Height", tileMap.mapParameters.mapSize.height.toString())
+            resizeHeightField.textFieldFilter = TextField.TextFieldFilter { _, char -> char.isDigit() }
+            resizeTable.add("Width".tr().toLabel()).padRight(5f)
+            resizeTable.add(resizeWidthField).width(60f)
+            resizeTable.add("Height".tr().toLabel()).padLeft(10f).padRight(5f)
+            resizeTable.add(resizeHeightField).width(60f)
+            add(resizeTable).row()
+
+            // 锚点选择: 3x3 网格, 单选 (默认中心)
+            val anchorLabel = "Anchor:".tr().toLabel()
+            add(anchorLabel).padTop(5f).row()
+            val anchorGrid = Table()
+            val anchors = listOf(
+                "Top-left" to "topleft", "Top" to "top", "Top-right" to "topright",
+                "Left" to "left", "Center" to "center", "Right" to "right",
+                "Bottom-left" to "bottomleft", "Bottom" to "bottom", "Bottom-right" to "bottomright",
+            )
+            val anchorGroup = ButtonGroup<CheckBox>()
+            anchorGroup.setMinCheckCount(1)
+            anchorGroup.setMaxCheckCount(1)
+            for ((i, anchor) in anchors.withIndex()) {
+                val (label, value) = anchor
+                val checkBox = label.toCheckBox(value == "center") { selectedAnchor = value }
+                anchorGroup.add(checkBox)
+                anchorGrid.add(checkBox).pad(3f)
+                if (i % 3 == 2) anchorGrid.row()
+            }
+            add(anchorGrid).row()
+
+            add("Preview resize".tr().toTextButton().apply {
+                onClick { showResizePreview() }
+            }).padTop(5f).row()
+        }
+
+        private fun showResizePreview() {
+            val editorScreen = parent.editorScreen
+            val map = editorScreen.tileMap
+            if (map.mapParameters.shape != MapShape.rectangular) {
+                ToastPopup("Resize map is only available for rectangular maps!".tr(), editorScreen)
+                return
+            }
+            val newWidth = resizeWidthField.text.toIntOrNull()
+            val newHeight = resizeHeightField.text.toIntOrNull()
+            if (newWidth == null || newHeight == null || newWidth < 3 || newHeight < 3) {
+                ToastPopup("Invalid map size!".tr(), editorScreen)
+                return
+            }
+
+            // 预览: 克隆当前地图并应用 resize (不改动真实地图)
+            // 注意 TileMap.clone() 的 mapParameters 是共享引用, 必须深拷贝, 否则预览会改到原地图尺寸
+            val previewMap = editorScreen.getMapCloneForSave().apply {
+                mapParameters = editorScreen.tileMap.mapParameters.clone()
+            }
+            MapGenerator(editorScreen.ruleset).resizeMap(previewMap, newWidth, newHeight, selectedAnchor)
+
+            val popup = Popup(editorScreen).apply {
+                addGoodSizedLabel("Resize map preview:".tr())
+                row()
+                add(LoadMapPreview(previewMap, 420f, 320f))
+                row()
+                addButton("Apply".tr()) {
+                    MapGenerator(editorScreen.ruleset).resizeMap(map, newWidth, newHeight, selectedAnchor)
+                    editorScreen.rebuildMapHolderAfterResize()
+                    editorScreen.isDirty = true
+                    close()
+                }
+                addButton("Cancel".tr()) { close() }
+            }
+            popup.open()
         }
 
         private fun mirrorMap(type: String) {
